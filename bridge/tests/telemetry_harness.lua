@@ -20,7 +20,7 @@ io.open = function(path, mode) return native_open(path:gsub('\\', '/'), mode) en
 local clock = 1790000000
 os.time = function() return clock end
 local next_address = 1
-local state = { rpm = 2400, throttle = 0.65, running = true, unsafe_calls = 0 }
+local state = { rpm = 2400, throttle = 0.65, running = true, gear = 3, unsafe_calls = 0 }
 
 local function object(fields, kind)
     local value = io.tmpfile()
@@ -102,6 +102,33 @@ local vehicle, vehicle_fields = object({
     IsA = function(self, name) return name == '/Script/MotorTown.MTVehicle' end,
     GetClass = function() return schema({'VehicleSimulation','ThrottleInput'}, {}) end,
 })
+if scenario == 'deep_vehicle' then
+    local junk = {}
+    for i = 1, 2200 do junk[#junk + 1] = 'Junk' .. i end
+    local seat = object({ GetClass = function() return schema(junk, {}) end })
+    vehicle_fields.DriverSeat = seat
+    vehicle_fields.EngineComponent = engine
+    vehicle_fields.VehicleSimulation = nil
+    vehicle_fields.GetClass = function() return schema({'DriverSeat','EngineComponent','ThrottleInput'}, {}) end
+end
+if scenario == 'gear_probe' then
+    local transmission, transmission_fields = object({
+        CurrentGear = state.gear,
+        GetClass = function() return schema({'CurrentGear'}, {}) end,
+    })
+    vehicle_fields.Transmission = transmission
+    vehicle_fields.GetClass = function() return schema({'VehicleSimulation','Transmission','ThrottleInput'}, {}) end
+    state.transmission_fields = transmission_fields
+end
+if scenario == 'audio_inventory' then
+    local props = {'VehicleSimulation','EngineSoundComponent'}
+    for i = 1, 350 do props[#props + 1] = 'Aaa' .. i end
+    vehicle_fields.EngineSoundComponent = object({
+        VolumeMultiplier = 0.75,
+        GetClass = function() return schema({'VolumeMultiplier'}, {}) end,
+    })
+    vehicle_fields.GetClass = function() return schema(props, {}) end
+end
 if scenario == 'struct' then vehicle_fields.VehicleSimulation = component end
 if scenario == 'struct_alias' then
     struct_members.GetStructAddress = function() return 4242 end
@@ -184,6 +211,10 @@ elseif scenario == 'changed_throttle_getter' then
     tick() -- old throttle getter is unavailable
     clock = clock + 1
     tick() -- discover the replacement getter
+elseif scenario == 'gear_probe' then
+    state.transmission_fields.CurrentGear = 4
+    clock = clock + 1
+    tick()
 end
 assert(state.unsafe_calls == 0, 'A getter with input parameters was called')
 assert(reflected_count <= 2000, 'Metadata enumeration exceeded budget: ' .. reflected_count)

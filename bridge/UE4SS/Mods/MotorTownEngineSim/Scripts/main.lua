@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.11, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.12, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Does not change vehicle physics or write any game properties.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
@@ -22,6 +22,7 @@ local mapping = nil
 local lastValue = ""
 local nextDiscovery = 0
 local dumpInventory = true
+local lastGear = nil
 
 local function log(line)
     local f = io.open(DEBUG_LOG, "a")
@@ -74,8 +75,32 @@ local function relevant(name)
     if n:find("class") or n:find("config") or n:find("setting") or
        n:find("curve") or n:find("tuning") then return false end
     return n:find("engine") or n:find("motor") or n:find("drive") or
+        n:find("gear") or n:find("transmission") or n:find("sound") or
+        n:find("audio") or n:find("exhaust") or
         n:find("movement") or n:find("vehicle") or n:find("power") or
         n:find("sim") or n:find("physics") or n:find("state") or n:find("data")
+end
+
+-- Engine data must be discovered before enormous generic actor/seat hierarchies
+-- consume the reflection budget. Priority affects order only, not candidate scores.
+local function member_priority(name)
+    local n = name:lower()
+    if n:find("engine") or n:find("motor") or n:find("vehiclesimulation") then return 0 end
+    if n:find("gear") or n:find("transmission") then return 1 end
+    if n:find("throttle") or n:find("ignition") then return 2 end
+    if n:find("sound") or n:find("audio") or n:find("exhaust") then return 3 end
+    if n:find("driver") or n:find("seat") or n:find("physicsvolume") then return 20 end
+    if relevant(name) then return 8 end
+    return 30
+end
+
+local function diagnostic_field(name)
+    local n = name:lower()
+    return n:find("rpm") or n:find("engine") or n:find("motor") or
+        n:find("gear") or n:find("transmission") or n:find("cylinder") or
+        n:find("displacement") or n:find("stroke") or n:find("firing") or
+        n:find("exhaust") or n:find("sound") or n:find("audio") or
+        n:find("volume") or n:find("boost") or n:find("turbo")
 end
 
 local function reflected_members(obj, diagnostic, budget)
@@ -141,8 +166,8 @@ local function reflected_members(obj, diagnostic, budget)
     end)
     if not ok then diagnostic("Reflection failed: " .. tostring(err)) end
     table.sort(members, function(a,b)
-        local ar, br = not not relevant(a.name), not not relevant(b.name)
-        if ar ~= br then return ar end
+        local ar, br = member_priority(a.name), member_priority(b.name)
+        if ar ~= br then return ar < br end
         return a.name < b.name
     end)
     return members
@@ -184,16 +209,25 @@ local function score(name, kind)
         elseif n:find("engine") and (n:find("running") or n:find("started")) then
             scoreValue = 65
         end
+    elseif kind == "gear" then
+        if n == "currentgear" or n == "actualgear" then scoreValue = 150
+        elseif n == "gear" or n == "selectedgear" then scoreValue = 120
+        elseif n:find("gear") and not (n:find("ratio") or n:find("count") or
+            n:find("max") or n:find("min") or n:find("target")) then scoreValue = 70 end
     end
     return scoreValue
 end
 
 local function discover(vehicle, detailed)
-    local candidates = { rpm = {}, throttle = {}, ignition = {} }
+    local candidates = { rpm = {}, throttle = {}, ignition = {}, gear = {} }
     local seen, objectCount, memberCount, inventory = {}, 0, 0, {}
+    local priorityInventory = {}
     local budget = { remaining = 2000 }
-    local function diagnostic(line)
+    local function diagnostic(line, priority)
         if #inventory < 300 then inventory[#inventory + 1] = line end
+        if priority and #priorityInventory < 180 then
+            priorityInventory[#priorityInventory + 1] = line
+        end
     end
     local function scan(obj, prefix, depth)
         if not valid(obj) or objectCount >= 32 or budget.remaining <= 0 then return end
@@ -226,16 +260,17 @@ local function discover(vehicle, detailed)
             local path = prefix .. name .. (entry.getter and "()" or "")
             -- Do not execute unrelated getters (UObject's GetWorld, etc.).
             local wanted = relevant(name) or score(signal, "rpm") > 0 or
-                score(signal, "throttle") > 0 or score(signal, "ignition") > 0
+                score(signal, "throttle") > 0 or score(signal, "ignition") > 0 or
+                score(signal, "gear") > 0
             local value = nil
             if not entry.getter or wanted then value = path_value(obj, name .. (entry.getter and "()" or ""), diagnostic) end
             local description = type(value)
             if description == "number" or description == "boolean" then description = tostring(value)
             elseif value ~= nil then description = reflected_type(value) end
             if entry.getter and not wanted then description = "unrelated getter (not queried)" end
-            diagnostic("Member " .. path .. " = " .. description)
+            diagnostic("Member " .. path .. " = " .. description, diagnostic_field(name))
             if type(value) == "number" or type(value) == "boolean" then
-                for _, kind in ipairs({"rpm", "throttle", "ignition"}) do
+                for _, kind in ipairs({"rpm", "throttle", "ignition", "gear"}) do
                     local confidence = score(signal, kind)
                     local rank = confidence - depth * 2
                     if rank > 0 then
@@ -244,15 +279,18 @@ local function discover(vehicle, detailed)
                         if kind == "throttle" and (type(value) ~= "number" or
                            value ~= value or value < 0 or value > 100) then rank = -1 end
                         if kind == "ignition" and type(value) ~= "boolean" then rank = -1 end
+                        if kind == "gear" and (type(value) ~= "number" or
+                           value % 1 ~= 0 or value < -2 or value > 32) then rank = -1 end
                         if rank > 0 then
                             candidates[kind][#candidates[kind] + 1] = {
                                 path = path, rank = rank, value = value, confidence = confidence
                             }
-                            diagnostic(string.format("Candidate %s: %s = %s", kind, path, tostring(value)))
+                            diagnostic(string.format("Candidate %s: %s = %s", kind, path, tostring(value)), true)
                         end
                     end
                 end
-            elseif depth < 3 and value ~= nil and relevant(name) and valid(value) then
+            elseif depth < 3 and value ~= nil and relevant(name) and
+                name ~= "GetPhysicsVolume" and valid(value) then
                 local classOk, isClass = pcall(function() return value:IsClass() end)
                 if not (classOk and isClass) then
                     scan(value, path .. ".", depth + 1)
@@ -262,7 +300,7 @@ local function discover(vehicle, detailed)
     end
     scan(vehicle, "", 0)
     local chosen = {}
-    for _, kind in ipairs({"rpm", "throttle", "ignition"}) do
+    for _, kind in ipairs({"rpm", "throttle", "ignition", "gear"}) do
         table.sort(candidates[kind], function(a,b)
             if a.rank ~= b.rank then return a.rank > b.rank end
             return a.path < b.path
@@ -277,15 +315,18 @@ local function discover(vehicle, detailed)
     local vehicleLine = "Player vehicle: " .. tostring(vehicle:GetFullName())
     local mappingLine = "Auto/override mapping: RPM=" .. tostring(chosen.rpm) ..
         " throttle=" .. tostring(chosen.throttle) ..
-        " ignition=" .. tostring(chosen.ignition)
+        " ignition=" .. tostring(chosen.ignition) ..
+        " gear=" .. tostring(chosen.gear)
     local totalsLine = "Discovery totals: objects=" .. objectCount .. " members=" .. memberCount ..
         " metadata=" .. (2000 - budget.remaining)
     -- Keep the latest bounded inventory separate from the growing history log.
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.11 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.12 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
+            "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
+            "First 300 inventory lines:\n",
             table.concat(inventory, "\n"), "\n")
         snapshot:close()
     end
@@ -317,13 +358,13 @@ local function tick()
     if not pc then pc = FindFirstOf("MotorTownPlayerController") end
     if not valid(pc) then
         write_telemetry(0, 0, false)
-        lastVehicle, mapping = nil, nil
+        lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
     local ok, vehicle = pcall(function() return pc:K2_GetPawn() end)
     if not ok or not valid(vehicle) then
         write_telemetry(0, 0, false)
-        lastVehicle, mapping = nil, nil
+        lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
     local isVehicle = pcall(function()
@@ -331,13 +372,13 @@ local function tick()
     end)
     if not isVehicle then
         write_telemetry(0, 0, false)
-        lastVehicle, mapping = nil, nil
+        lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
     local addr = vehicle:GetAddress()
     if addr ~= lastVehicle then
         lastVehicle = addr
-        mapping, nextDiscovery, dumpInventory = nil, 0, true
+        mapping, nextDiscovery, dumpInventory, lastGear = nil, 0, true, nil
     end
     if (not mapping or not mapping.rpm or not mapping.throttle or mapping.refresh) and os.time() >= nextDiscovery then
         mapping = discover(vehicle, dumpInventory)
@@ -346,6 +387,13 @@ local function tick()
     if not mapping or not mapping.rpm then
         write_telemetry(0, 0, false)
         return
+    end
+    if mapping.gear then
+        local gear = tonumber(path_value(vehicle, mapping.gear))
+        if gear and gear % 1 == 0 and gear >= -2 and gear <= 32 and gear ~= lastGear then
+            lastGear = gear
+            log("Live gear: " .. tostring(gear))
+        end
     end
     local rpm = tonumber(path_value(vehicle, mapping.rpm))
     if not rpm or rpm ~= rpm or rpm < 0 or rpm > 25000 then
@@ -370,7 +418,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.11 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.12 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then log("Sample failed: " .. tostring(err)) end

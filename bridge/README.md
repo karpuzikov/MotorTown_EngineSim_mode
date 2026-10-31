@@ -1,10 +1,22 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.11)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.12)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
 MIT-licensed Engine Simulator desktop application's RPM/dyno and throttle controls.
 Windows compilation was confirmed by the user's v0.2.6 installation log.
 Runtime rendering, telemetry and audio synchronization remain unverified.
+
+## Discovery diagnostics (v0.2.12)
+
+The exporter now examines engine and gearbox objects ahead of unrelated seat and
+physics objects. The bounded discovery report includes a dedicated list of
+engine/gear/audio fields and candidate values, even beyond its first 300 general
+inventory lines. It also logs live gear changes when a reflected integer field
+is available. The MTES1 packet stays unchanged for compatibility.
+
+This is diagnostic groundwork, **not** stock engine sound replacement or actual
+gear control. The native in-process mod design and phased implementation plan
+are in `docs/superpowers/`.
 
 ## What it does
 - Reads the **local player's** Motor Town vehicle through UE4SS reflection.

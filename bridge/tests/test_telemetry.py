@@ -78,9 +78,28 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.11', snapshot)
+        self.assertIn('v0.2.12', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
+
+    def test_engine_component_precedes_unrelated_deep_seat_metadata(self):
+        packet, snapshot = self.sample('deep_vehicle', report='discovery')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+        self.assertIn('RPM=EngineComponent.GetEngineRPM()', snapshot)
+        self.assertIn('Priority engine/gear/audio fields:', snapshot)
+
+    def test_gear_changes_are_visible_without_changing_audio_packet_abi(self):
+        packet, diagnostics = self.sample('gear_probe')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+        self.assertEqual(len(packet), 5)
+        self.assertIn('gear=Transmission.CurrentGear', diagnostics)
+        self.assertIn('Live gear: 3', diagnostics)
+        self.assertIn('Live gear: 4', diagnostics)
+
+    def test_snapshot_keeps_engine_audio_fields_visible_after_inventory_limit(self):
+        _, snapshot = self.sample('audio_inventory', report='discovery')
+        self.assertIn('Priority engine/gear/audio fields:', snapshot)
+        self.assertIn('EngineSoundComponent', snapshot)
 
 
 @unittest.skipUnless(shutil.which('g++') and ctypes.util.find_library('lua5.4'),
