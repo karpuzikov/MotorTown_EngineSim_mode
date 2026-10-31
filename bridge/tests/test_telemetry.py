@@ -25,6 +25,38 @@ class TelemetryTests(unittest.TestCase):
             diagnostics = (Path(temp) / f'MotorTownEngineSim_{report}.txt').read_text()
             return packet, diagnostics
 
+    def native_sample(self, scenario):
+        with tempfile.TemporaryDirectory() as temp:
+            env = dict(os.environ, TMP=temp, TEMP=temp)
+            result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'),
+                                     str(ROOT / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua'), scenario],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            return (Path(temp) / 'MotorTownEngineSim_native_telemetry.txt').read_text().split()
+
+    def test_native_feed_exposes_real_gear_without_changing_legacy_packet(self):
+        native = self.native_sample('deep_sound_and_gear')
+        self.assertEqual(native[0], 'MTES2')
+        self.assertRegex(native[1], r'^[0-9A-F]{16}$')
+        self.assertEqual(native[2:7], ['1', '2400.000', '0.8000', '1', '3'])
+        self.assertEqual(bytes.fromhex(native[7]).decode(), 'DoryWrecker_C test object')
+        self.assertEqual(native[8:], ['2', '2900.000'])
+
+    def test_native_feed_carries_engine_metadata_when_available(self):
+        native = self.native_sample('crowded_audio_and_engine_profile')
+        self.assertEqual(native[6], '3')
+        self.assertEqual(native[8:], ['2', '2900.000'])
+
+    def test_native_feed_rejects_unknown_gear_instead_of_assuming_neutral(self):
+        native = self.native_sample('autopilot')
+        self.assertEqual(native[6], '-99')
+
+    def test_native_feed_discovers_transmission_loaded_after_engine(self):
+        native = self.native_sample('late_gear')
+        self.assertEqual(native[0], 'MTES2')
+        self.assertEqual(native[2], '2')
+        self.assertEqual(native[6], '3')
+
     def test_getters_follow_autopilot_with_zero_driver_input(self):
         packet, _ = self.sample('autopilot')
         self.assertEqual(packet[:4], ['MTES1', '4100.000', '0.8000', '1'])

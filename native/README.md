@@ -1,13 +1,24 @@
 # Native Motor Town EngineSim mod - source foundation
 
 **Not a playable release.** This source exports the native UE4SS module entry
-points, a tested fail-open PCM controller, and an initial adapter that loads
+points, a tested read-only game-telemetry receiver, a fail-open PCM controller,
+and an initial adapter that loads
 the genuine Engine Simulator engine scripts and drives its synthesizer. The
 controller follows RPM/throttle/gear and clears data on telemetry or render
 failure. Only complete non-silent source buffers authorize replacing stock audio;
 partial buffers are discarded. Its PCM renderer accepts an Engine Volume gain
 (including zero without restoring unwanted stock engine sound), but **reading
 the game's volume slider is not connected yet**.
+The experimental Lua exporter now also writes `MTES2` telemetry (vehicle
+identity, live gear, RPM, throttle, ignition, engine type and max RPM) to a
+separate temp file. The native DLL polls that file in `on_update()` in the
+same game process. It rejects unknown gears, malformed packets and data older
+than 250 ms from the producer's write, tolerates Lua exporter reloads via a
+new session token, and logs observed gear transitions to UE4SS. The original `MTES1`
+companion packet is unchanged. This file handoff is temporary: direct native
+Motor Town reflection is still needed for the final mod. No automatic vehicle
+profile selection or Unreal audio routing is connected yet.
+
 The actual Engine Simulator backend **passed Windows builds and real-PCM smoke
 tests** using boxer-four, V8, and V10 engine profiles, including in-process
 engine switching. It is not yet connected to Motor Town's Unreal audio

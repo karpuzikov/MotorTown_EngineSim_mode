@@ -1,5 +1,20 @@
 # Motor Town -> Engine Simulator live audio bridge (experimental v0.2.14)
 
+## Native telemetry bridge (development only)
+
+The same in-game Lua exporter also writes a separate `MTES2` packet to
+`%TEMP%\MotorTownEngineSim_native_telemetry.txt` every game tick (20 Hz). It
+carries the actual reflected gear, vehicle identity and basic engine metadata
+alongside RPM, throttle and ignition. Unknown gear is `-99`, which the native
+DLL rejects rather than pretending the transmission is in neutral. The native
+UE4SS `on_update()` reader consumes this without an external application and
+ignores stale files. Each Lua exporter load has its own session token, so
+reloading the script can restart its packet sequence. The legacy `MTES1` file
+remains compatible with v0.2.14.
+
+This is a transitional in-process integration, not procedural audio playback
+or stock engine-sound replacement.
+
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
 MIT-licensed Engine Simulator desktop application's RPM/dyno and throttle controls.

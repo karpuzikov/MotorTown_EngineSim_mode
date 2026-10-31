@@ -120,6 +120,12 @@ if scenario == 'gear_probe' then
     vehicle_fields.GetClass = function() return schema({'VehicleSimulation','Transmission','ThrottleInput'}, {}) end
     state.transmission_fields = transmission_fields
 end
+if scenario == 'late_gear' then
+    state.late_transmission = object({
+        CurrentGear = state.gear,
+        GetClass = function() return schema({'CurrentGear'}, {}) end,
+    })
+end
 if scenario == 'audio_inventory' then
     local props = {'VehicleSimulation','EngineSoundComponent'}
     for i = 1, 350 do props[#props + 1] = 'Aaa' .. i end
@@ -280,6 +286,13 @@ elseif scenario == 'changed_throttle_getter' then
 elseif scenario == 'gear_probe' then
     state.transmission_fields.CurrentGear = 4
     clock = clock + 1
+    tick()
+elseif scenario == 'late_gear' then
+    vehicle_fields.TransmissionComponent = state.late_transmission
+    vehicle_fields.GetClass = function()
+        return schema({'VehicleSimulation','TransmissionComponent','ThrottleInput'}, {})
+    end
+    clock = clock + 2
     tick()
 elseif scenario == 'stable_engine_mapping' then
     clock = clock + 3

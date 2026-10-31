@@ -9,12 +9,14 @@ local RPM_PATH = nil
 local THROTTLE_PATH = nil
 local IGNITION_PATH = nil
 
-local TEMP = os.getenv("TMP") or os.getenv("TEMP")
+local TEMP = os.getenv("TMP")
+if not TEMP or TEMP == "" then TEMP = os.getenv("TEMP") end
 if not TEMP then
     print("[MotorTownEngineSim] No TEMP directory. Export disabled.\n")
     return
 end
 local TELEMETRY = TEMP .. "\\MotorTownEngineSim_telemetry.txt"
+local NATIVE_TELEMETRY = TEMP .. "\\MotorTownEngineSim_native_telemetry.txt"
 local DEBUG_LOG = TEMP .. "\\MotorTownEngineSim_diagnostics.txt"
 local DISCOVERY = TEMP .. "\\MotorTownEngineSim_discovery.txt"
 local lastVehicle = nil
@@ -23,6 +25,11 @@ local lastValue = ""
 local nextDiscovery = 0
 local dumpInventory = true
 local lastGear = nil
+local nativeSequence = 0
+-- A new token on Lua hot reload lets the persistent native DLL safely accept
+-- a sequence restart without trusting decreasing counters in one session.
+local nativeSession = string.format("%08X%08X",
+    math.random(0, 0x7FFFFFFF), math.random(0, 0x7FFFFFFF))
 
 local function log(line)
     local f = io.open(DEBUG_LOG, "a")
@@ -415,6 +422,33 @@ local function write_telemetry(rpm, throttle, running)
     lastValue = data
 end
 
+-- Same-game-process native DLL feed. The companion's MTES1 packet is kept
+-- unchanged. A missing gear is -99, never a guessed neutral (0).
+local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
+    nativeSequence = nativeSequence + 1
+    local name = ""
+    if valid(vehicle) then
+        local ok, value = pcall(function() return vehicle:GetFullName() end)
+        if ok and type(value) == "string" then name = value end
+    end
+    local encoded = name:gsub(".", function(c) return string.format("%02X", c:byte()) end)
+    if encoded == "" then encoded = "-" end
+    local engineType, maxRpm = -1, 0
+    if valid(vehicle) then
+        local kind = path_value(vehicle, "EngineComponent.EngineData.EngineProperty.EngineType")
+        local limit = path_value(vehicle, "EngineComponent.EngineData.EngineProperty.MaxRPM")
+        if type(kind) == "number" and kind % 1 == 0 and kind >= 0 and kind <= 1000 then
+            engineType = kind
+        end
+        if type(limit) == "number" and limit > 0 and limit <= 25000 then maxRpm = limit end
+    end
+    local packet = string.format("MTES2 %s %d %.3f %.4f %d %d %s %d %.3f\n",
+        nativeSession, nativeSequence, rpm, throttle, running and 1 or 0, gear or -99,
+        encoded, engineType, maxRpm)
+    local file = io.open(NATIVE_TELEMETRY, "w")
+    if file then file:write(packet); file:close() end
+end
+
 local function tick()
     local pc = nil
     local success, result = pcall(function()
@@ -425,12 +459,14 @@ local function tick()
     if not pc then pc = FindFirstOf("MotorTownPlayerController") end
     if not valid(pc) then
         write_telemetry(0, 0, false)
+        write_native_telemetry(nil, 0, 0, false, nil)
         lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
     local ok, vehicle = pcall(function() return pc:K2_GetPawn() end)
     if not ok or not valid(vehicle) then
         write_telemetry(0, 0, false)
+        write_native_telemetry(nil, 0, 0, false, nil)
         lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
@@ -439,6 +475,7 @@ local function tick()
     end)
     if not isVehicle then
         write_telemetry(0, 0, false)
+        write_native_telemetry(nil, 0, 0, false, nil)
         lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
@@ -447,25 +484,35 @@ local function tick()
         lastVehicle = addr
         mapping, nextDiscovery, dumpInventory, lastGear = nil, 0, true, nil
     end
-    if (not mapping or not mapping.rpm or not mapping.throttle or mapping.refresh) and os.time() >= nextDiscovery then
+    local retryMissingGear = mapping and mapping.rpm and mapping.throttle and not mapping.gear
+    if (not mapping or not mapping.rpm or not mapping.throttle or
+        mapping.refresh or retryMissingGear) and os.time() >= nextDiscovery then
+        -- A late transmission can appear after the engine is already mapped.
+        -- Once RPM/throttle are stable, cap expensive gear rediscovery to 5s.
+        local interval = retryMissingGear and 5 or 1
         mapping = discover(vehicle, dumpInventory)
-        nextDiscovery, dumpInventory = os.time() + 1, false
+        nextDiscovery, dumpInventory = os.time() + interval, false
     end
     if not mapping or not mapping.rpm then
         write_telemetry(0, 0, false)
+        write_native_telemetry(vehicle, 0, 0, false, nil)
         return
     end
-    if mapping.gear then
-        local gear = tonumber(path_value(vehicle, mapping.gear))
-        if gear and gear % 1 == 0 and gear >= -2 and gear <= 32 and gear ~= lastGear then
+    local gear = mapping.gear and tonumber(path_value(vehicle, mapping.gear)) or nil
+    if gear and gear % 1 == 0 and gear >= -2 and gear <= 32 then
+        if gear ~= lastGear then
             lastGear = gear
             log("Live gear: " .. tostring(gear))
         end
+    else
+        gear = nil
+        mapping.gear = nil
     end
     local rpm = tonumber(path_value(vehicle, mapping.rpm))
     if not rpm or rpm ~= rpm or rpm < 0 or rpm > 25000 then
         mapping = nil
         write_telemetry(0, 0, false)
+        write_native_telemetry(vehicle, 0, 0, false, nil)
         return
     end
     local throttle = tonumber(path_value(vehicle, mapping.throttle))
@@ -480,6 +527,7 @@ local function tick()
     local running
     if type(ignition) == "boolean" then running = ignition else running = rpm >= 100 end
     write_telemetry(rpm, throttle, running)
+    write_native_telemetry(vehicle, rpm, throttle, running, gear)
 end
 
 if type(LoopInGameThreadWithDelay) ~= "function" then
