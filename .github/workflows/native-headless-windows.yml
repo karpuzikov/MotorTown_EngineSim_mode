@@ -1,0 +1,40 @@
+name: Native headless audio (Windows)
+
+on:
+  push:
+    branches: [feat/native-engine-audio]
+  pull_request:
+
+jobs:
+  engine-sim-pcm:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install original Engine Simulator build dependencies
+        shell: pwsh
+        run: |
+          choco install winflexbison3 -y --no-progress
+          & 'C:\vcpkg\vcpkg.exe' install 'sdl2:x64-windows' 'sdl2-image:x64-windows' 'boost-filesystem:x64-windows'
+
+      - name: Configure headless PCM smoke (no UE4SS or GUI)
+        shell: pwsh
+        run: |
+          cmake -S native -B native/build-windows -G 'Visual Studio 17 2022' -A x64 `
+            -DMTES_HEADLESS_SMOKE=ON `
+            -DCMAKE_TOOLCHAIN_FILE='C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+
+      - name: Build genuine Engine Simulator PCM source
+        shell: pwsh
+        run: cmake --build native/build-windows --config Release --target mtes-headless-smoke --parallel 4
+
+      - name: Run actual combustion audio smoke
+        shell: pwsh
+        run: |
+          $profile = Join-Path (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path 'assets/main.mr'
+          & 'native/build-windows/Release/mtes-headless-smoke.exe' $profile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
