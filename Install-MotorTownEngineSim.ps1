@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.4 experimental installer.
+Motor Town EngineSim Bridge v0.2.5 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -298,6 +298,22 @@ try {
         Write-UTF8 $cpp $contents
         Say ('Patched source (backup: ' + $backup + ')')
     } else { Say 'Engine Simulator source already patched.' }
+
+    # Piranha's pinned source calls a Boost.Filesystem method removed in modern Boost.
+    $piranhaSource = Join-Path $Repo 'dependencies\submodules\piranha\src\path.cpp'
+    Ensure (Test-Path $piranhaSource) 'Piranha path.cpp missing from Engine Simulator submodules.'
+    $piranhaText = [IO.File]::ReadAllText($piranhaSource)
+    if ($piranhaText.Contains('m_path->is_complete()')) {
+        $piranhaBackup = $piranhaSource + '.before-mtes-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss')
+        Copy-Item -LiteralPath $piranhaSource -Destination $piranhaBackup
+        $piranhaText = $piranhaText.Replace('m_path->is_complete()', 'm_path->is_absolute()')
+        Write-UTF8 $piranhaSource $piranhaText
+        Say ('Patched Piranha for Boost.Filesystem (backup: ' + $piranhaBackup + ')')
+    } elseif ($piranhaText.Contains('m_path->is_absolute()')) {
+        Say 'Piranha already compatible with modern Boost.Filesystem.'
+    } else {
+        throw 'Piranha path.cpp changed unexpectedly; refusing source patch.'
+    }
 
     Say 'Building Engine Simulator (this can take substantial disk space)...'
     $build = Join-Path $Repo 'build-mtes'

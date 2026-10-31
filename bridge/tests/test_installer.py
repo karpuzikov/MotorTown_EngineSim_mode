@@ -41,6 +41,13 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertTrue(required in installer, "Missing installer dependency: " + required)
 
+    def test_piranha_path_uses_supported_boost_absolute_path_method(self):
+        installer = embedded_installer()
+        self.assertTrue(
+            "$piranhaText.Replace('m_path->is_complete()', 'm_path->is_absolute()')" in installer,
+            "Piranha needs the Boost.Filesystem is_complete -> is_absolute migration",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
