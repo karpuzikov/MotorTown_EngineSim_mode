@@ -1,0 +1,94 @@
+"""Exercise the actual parent CMake build/staging contract with tiny local targets.
+
+This tests CMake wiring, not the real UE4SS ABI or Motor Town DLL loading.
+"""
+
+from pathlib import Path
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PARENT = ROOT / 'ue4ss-parent'
+CMAKE = os.environ.get('MTES_TEST_CMAKE') or shutil.which('cmake')
+
+
+@unittest.skipUnless(CMAKE, 'Requires CMake and a C++ compiler')
+class UE4SSParentBuildTests(unittest.TestCase):
+    def configure(self, ue4ss, native, build):
+        return subprocess.run([
+            CMAKE, '-S', str(PARENT), '-B', str(build),
+            f'-DMTES_UE4SS_SOURCE={ue4ss}', f'-DMTES_NATIVE_SOURCE={native}',
+        ], text=True, capture_output=True, timeout=30)
+
+    def test_source_parent_builds_and_stages_a_mod_without_installing_game_files(self):
+        with tempfile.TemporaryDirectory(prefix='MTES UE4SS parent ') as directory:
+            temp = Path(directory)
+            ue4ss, native, build = temp / 'UE4SS source', temp / 'Native mod', temp / 'build'
+            (ue4ss / 'UE4SS/include/Mod').mkdir(parents=True)
+            (ue4ss / 'UE4SS/include/Mod/CppUserModBase.hpp').write_text('// ABI header fixture\n')
+            (ue4ss / 'CMakeLists.txt').write_text(
+                'cmake_minimum_required(VERSION 3.22)\n'
+                'project(FakeUE4SS LANGUAGES CXX)\n'
+                'add_library(UE4SS INTERFACE)\n'
+            )
+            native.mkdir()
+            (native / 'mod.cpp').write_text(
+                '#if defined(_WIN32)\n'
+                '#define MTES_TEST_EXPORT __declspec(dllexport)\n'
+                '#else\n'
+                '#define MTES_TEST_EXPORT\n'
+                '#endif\n'
+                'extern "C" MTES_TEST_EXPORT int native_entry() { return 7; }\n'
+            )
+            (native / 'CMakeLists.txt').write_text(
+                'add_library(MotorTownEngineSim SHARED mod.cpp)\n'
+                'target_link_libraries(MotorTownEngineSim PRIVATE UE4SS)\n'
+            )
+            configured = self.configure(ue4ss, native, build)
+            self.assertEqual(configured.returncode, 0, configured.stdout + configured.stderr)
+            compiled = subprocess.run([CMAKE, '--build', str(build), '--config', 'Release',
+                                       '--target', 'mtes-stage-dev'],
+                                      text=True, capture_output=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+
+            suffix = '.dll' if os.name == 'nt' else '.so'
+            staged = build / 'dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls' / ('main' + suffix)
+            self.assertTrue(staged.is_file(), f'Missing staged C++ mod: {staged}')
+            self.assertGreater(staged.stat().st_size, 0)
+            self.assertFalse((temp / 'MotorTown').exists(), 'Build must not modify a game installation')
+
+    def test_rejects_missing_sdk_source_and_incompatible_targets(self):
+        with tempfile.TemporaryDirectory(prefix='MTES UE4SS reject ') as directory:
+            temp = Path(directory)
+            ue4ss, native = temp / 'ue4ss', temp / 'native'
+            ue4ss.mkdir()
+            native.mkdir()
+            (native / 'CMakeLists.txt').write_text(
+                'add_library(MotorTownEngineSim INTERFACE)\n')
+            # A random directory is not a usable UE4SS checkout.
+            missing = self.configure(ue4ss, native, temp / 'missing-build')
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn('MTES_UE4SS_SOURCE', missing.stdout + missing.stderr)
+
+            (ue4ss / 'UE4SS/include/Mod').mkdir(parents=True)
+            (ue4ss / 'UE4SS/include/Mod/CppUserModBase.hpp').write_text('// fixture\n')
+            (ue4ss / 'CMakeLists.txt').write_text(
+                'cmake_minimum_required(VERSION 3.22)\n'
+                'project(BrokenUE4SS LANGUAGES CXX)\n'
+                'add_library(NotUE4SS INTERFACE)\n')
+            incompatible = self.configure(ue4ss, native, temp / 'invalid-build')
+            self.assertNotEqual(incompatible.returncode, 0)
+            self.assertIn('UE4SS target', incompatible.stdout + incompatible.stderr)
+
+            (ue4ss / 'CMakeLists.txt').write_text(
+                'cmake_minimum_required(VERSION 3.22)\n'
+                'project(FakeUE4SS LANGUAGES CXX)\n'
+                'add_library(UE4SS INTERFACE)\n')
+            missing_mod = self.configure(ue4ss, native, temp / 'missing-mod-build')
+            self.assertNotEqual(missing_mod.returncode, 0)
+            self.assertIn('MotorTownEngineSim must be a shared library',
+                          missing_mod.stdout + missing_mod.stderr)

@@ -70,9 +70,25 @@ Do not install it as a replacement for the current experimental companion.
 
 The planned mod is a C++ DLL loaded inside Motor Town by UE4SS. It needs no
 Engine Simulator desktop process or window. Its development build depends on a
-binary-compatible UE4SS source/SDK checkout. Per the official UE4SS C++ guide,
-create a parent CMake project with `add_subdirectory(RE-UE4SS)` followed by
-`add_subdirectory(MotorTown_EngineSim_mode/native)`, and build on Windows.
+binary-compatible UE4SS source/SDK checkout. The source includes a tested
+`native/ue4ss-parent` CMake entry point, which adds a supplied UE4SS checkout
+and the native mod, validates both targets, and stages a DLL without touching
+the game. A matching checkout with initialized Unreal submodules requires
+Epic-linked GitHub source access under the official UE4SS C++ build guide.
+
+On a Windows developer machine with Visual Studio 2022 and a compatible
+`RE-UE4SS` checkout (including its required submodules):
+
+```powershell
+cmake -S native/ue4ss-parent -B native/build-ue4ss -G "Visual Studio 17 2022" -DMTES_UE4SS_SOURCE="C:\path\to\RE-UE4SS"
+cmake --build native/build-ue4ss --config Game__Shipping__Win64 --target mtes-stage-dev
+```
+
+The output is staged as
+`native/build-ue4ss/dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls/main.dll`.
+This is a **development artifact only**, not an installer or verified working
+mod. The parent build's portable tests compile tiny stand-in UE4SS targets to
+verify CMake wiring and staging; they do not compile or load the real SDK.
 
 When complete and game-verified, the installer will place a compiled DLL under
 `ue4ss/Mods/MotorTownEngineSim/dlls/main.dll` and enable the mod. That native

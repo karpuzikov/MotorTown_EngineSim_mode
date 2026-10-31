@@ -15,6 +15,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Verify native UE4SS parent CMake wiring (stand-in SDK only)
+        shell: pwsh
+        run: python -m unittest native.tests.test_ue4ss_build_parent -v
+
       - name: Install original Engine Simulator build dependencies
         shell: pwsh
         run: |
