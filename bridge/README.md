@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.8)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.9)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -18,6 +18,31 @@ Runtime rendering, telemetry and audio synchronization remain unverified.
 Synchronization must use the vehicle's live engine state, including RPM and engine
 throttle under autopilot. Keyboard or WASD state is not a substitute for telemetry.
 Autopilot integration remains unverified until game-side values are captured.
+
+## Telemetry discovery (v0.2.9)
+
+The supplied connection report confirms UE4SS and the exporter load and recognize
+the player's Dory Wrecker. The failing boundary is discovery: RPM, throttle and
+ignition mappings were all `nil`, so the exporter continuously sent zero values.
+The previous scan only followed selected UObject components for one level and did
+not inspect getter functions. It also used a struct's metaclass instead of its data
+layout and silently hid reflection failures.
+
+Discovery now follows simulation/physics/state components to a bounded depth, reads
+UScriptStruct members through their own UStruct interface, and considers reflected
+Const/BlueprintPure getter functions with a return value and no input/out parameters.
+It prefers actual engine throttle over driver input, retries missing mappings, and
+preserves explicit ignition-off states. Unknown throttle defaults to zero rather
+than inventing a 30% input; ambiguous engine-speed units are not treated as RPM.
+The latest scan records a bounded member inventory and any reflection failure in
+`%TEMP%\MotorTownEngineSim_discovery.txt`; the connection report includes this
+snapshot even after retry messages have filled the history log.
+No game properties or driving-physics settings are written.
+
+The Lua tests execute the actual exporter, substituting the Unreal object boundary.
+They verify nested structs, read-only getters, changing RPM/throttle while driver
+input is zero, late component availability, and ignition-off behavior. These tests
+do not verify the live game's field names, sound synchronization, or stock muting.
 
 ## Limitations
 - Motor Town RPM/throttle property paths are **not yet verified** on game 0.7.19.

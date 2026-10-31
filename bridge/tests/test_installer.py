@@ -32,6 +32,13 @@ class InstallerTests(unittest.TestCase):
         source = (ROOT / "Install-MotorTownEngineSim.ps1").read_text(encoding="utf-8")
         self.assertEqual(embedded_installer().replace("\r\n", "\n"), source.replace("\r\n", "\n"))
 
+    def test_bat_delivers_the_tested_game_exporter(self):
+        match = re.search(r"\$lua = Decode '([^']+)'", embedded_installer())
+        self.assertIsNotNone(match, "BAT does not deliver game telemetry")
+        actual = gzip.decompress(base64.b64decode(match.group(1))).decode("utf-8")
+        source = (ROOT / "bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua").read_text(encoding="utf-8")
+        self.assertEqual(actual, source)
+
     def test_cmake_configure_passes_legacy_googletest_policy_flag(self):
         # This is the actual command in the BAT, not a separate mock command.
         configure = embedded_installer().split("Run $cmake @('-S'", 1)[1].split("Run $cmake @('--build'", 1)[0]

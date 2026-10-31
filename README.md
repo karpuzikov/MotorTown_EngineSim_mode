@@ -2,7 +2,7 @@
 
 Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Version: experimental v0.2.8.** Windows compilation and DirectX runtime installation are confirmed by the user's logs. The v0.2.7 executable was then blocked by a missing `d3dx10d_43.dll`: the pinned Delta Studio CMake file linked debug DirectX libraries into Release builds. This version fixes configuration-specific linkage and checks the built executable's DLL imports before launch. Windows rendering, telemetry detection and synchronized live audio remain **unverified**.
+**Version: experimental v0.2.9.** Windows compilation, retail DirectX linkage and Engine Simulator initialization are confirmed by the user's logs. The first game-side report confirms UE4SS loaded and detected a Dory Wrecker, but the exporter found no RPM/throttle/ignition mapping and sent zeros. This version extends discovery to nested simulation components, struct data and reflected read-only getters, retries missing mappings, and exposes reflection failures. These paths pass Lua tests against a controlled Unreal API boundary; the updated mapping and synchronized audio still need testing in Motor Town. Stock-audio replacement remains **unimplemented**.
 
 ## Installation
 

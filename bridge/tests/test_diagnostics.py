@@ -22,7 +22,7 @@ class DiagnosticPackagingTests(unittest.TestCase):
 
 @unittest.skipUnless(PWSH, "Requires PowerShell")
 class DiagnosticReportTests(unittest.TestCase):
-    def collect(self, root, packet, read_failures=False):
+    def collect(self, root, packet, read_failures=False, flood_log=False):
         game = root / "Game with spaces/Win64"
         game.mkdir(parents=True)
         exe = game / "MotorTown-Win64-Shipping.exe"
@@ -42,6 +42,9 @@ class DiagnosticReportTests(unittest.TestCase):
         tempdir = root / "Temp with spaces"
         tempdir.mkdir()
         (tempdir / "MotorTownEngineSim_diagnostics.txt").write_text("Exporter active. Synthetic diagnostic\n")
+        if flood_log:
+            (tempdir / "MotorTownEngineSim_diagnostics.txt").write_text("Retry mapping: missing\n" * 1000)
+        (tempdir / "MotorTownEngineSim_discovery.txt").write_text("Exporter v0.2.9\nMember RetainedEngineState = 5678\n")
         if packet is not None:
             (tempdir / "MotorTownEngineSim_telemetry.txt").write_text(packet)
         original = {p: p.read_bytes() for p in game.rglob("*") if p.is_file()}
@@ -98,6 +101,12 @@ exit $LASTEXITCODE
                 self.assertIn("NO LIVE game telemetry", report)
                 self.assertNotIn("LIVE game telemetry: RPM=", output)
                 self.assertIn("Synthetic exporter load failure", report)
+
+    def test_report_keeps_discovery_snapshot_after_retry_log_flood(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report, _ = self.collect(Path(temp), None, flood_log=True)
+            self.assertIn('Member RetainedEngineState = 5678', report)
+            self.assertIn('Retry mapping: missing', report)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.1, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.9, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Does not change vehicle physics or write any game properties.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
@@ -16,9 +16,12 @@ if not TEMP then
 end
 local TELEMETRY = TEMP .. "\\MotorTownEngineSim_telemetry.txt"
 local DEBUG_LOG = TEMP .. "\\MotorTownEngineSim_diagnostics.txt"
+local DISCOVERY = TEMP .. "\\MotorTownEngineSim_discovery.txt"
 local lastVehicle = nil
 local mapping = nil
 local lastValue = ""
+local nextDiscovery = 0
+local dumpInventory = true
 
 local function log(line)
     local f = io.open(DEBUG_LOG, "a")
@@ -41,36 +44,106 @@ local function member(obj, name)
     return nil
 end
 
-local function path_value(root, path)
+local function path_value(root, path, diagnostic)
     if not path or not root then return nil end
     local current = root
     for name in path:gmatch("[^%.]+") do
         if current == nil then return nil end
-        current = member(current, name)
+        if name:sub(-2) == "()" then
+            local context = current
+            local fn = member(context, name:sub(1, -3))
+            local ok, result = pcall(function() return fn(context) end)
+            if not ok and diagnostic then diagnostic("Getter failed: " .. name .. ": " .. tostring(result)) end
+            current = ok and result or nil
+            -- Preserve a getter's boolean false (Lua's and/or idiom loses it).
+            if ok and result == false then current = false end
+        else
+            current = member(current, name)
+        end
     end
     return current
 end
 
-local function field_names(obj)
-    local names = {}
-    local ok = pcall(function()
-        local klass = obj:GetClass()
+local function reflected_type(obj)
+    local ok, result = pcall(function() return obj:type() end)
+    return ok and result or type(obj)
+end
+
+local function relevant(name)
+    local n = name:lower()
+    if n:find("class") or n:find("config") or n:find("setting") or
+       n:find("curve") or n:find("tuning") then return false end
+    return n:find("engine") or n:find("motor") or n:find("drive") or
+        n:find("movement") or n:find("vehicle") or n:find("power") or
+        n:find("sim") or n:find("physics") or n:find("state") or n:find("data")
+end
+
+local function reflected_members(obj, diagnostic, budget)
+    local members, seen = {}, {}
+    local function take()
+        if budget.remaining <= 0 then return false end
+        budget.remaining = budget.remaining - 1
+        return true
+    end
+    local function add(name, getter)
+        if type(name) == "string" and not seen[name] then
+            seen[name] = true
+            members[#members + 1] = { name = name, getter = getter }
+        end
+    end
+    local ok, err = pcall(function()
+        -- UScriptStruct exposes its own UStruct methods. GetClass() gives the
+        -- metaclass, which does not enumerate the value's data members.
+        local klass = reflected_type(obj) == "UScriptStruct" and obj or obj:GetClass()
         for _ = 1, 12 do
-            if not valid(klass) then break end
+            if not valid(klass) or budget.remaining <= 0 then break end
             klass:ForEachProperty(function(prop)
-                local success, name = pcall(function()
-                    return prop:GetFName():ToString()
-                end)
-                if success and type(name) == "string" then
-                    names[#names + 1] = name
+                if not take() then return true end
+                add(prop:GetFName():ToString(), false)
+                return budget.remaining <= 0
+            end)
+            if budget.remaining <= 0 then break end
+            klass:ForEachFunction(function(fn)
+                if not take() then return true end
+                local name = fn:GetFName():ToString()
+                if name:match("^Get") or name:match("^Is") or name:match("^Has") then
+                    -- Invoke only reflected Const/BlueprintPure getters with
+                    -- exactly a return property and no input/out parameters.
+                    local flags = fn:GetFunctionFlags()
+                    if (flags & 0x50000000) ~= 0 then
+                        local returns, inputs = 0, 0
+                        if budget.remaining > 0 then
+                            fn:ForEachProperty(function(prop)
+                                if not take() then return true end
+                                if prop:GetFName():ToString() == "ReturnValue" then returns = returns + 1
+                                else inputs = inputs + 1 end
+                                return budget.remaining <= 0
+                            end)
+                        end
+                        -- A truncated parameter list cannot establish that a
+                        -- getter has no inputs. Never invoke it in that case.
+                        if budget.remaining <= 0 then
+                            diagnostic("Skipped getter " .. name .. ": metadata budget exhausted")
+                        elseif returns == 1 and inputs == 0 then add(name, true)
+                        elseif relevant(name) or name:lower():find("rpm") or name:lower():find("throttle") then
+                            diagnostic("Skipped getter " .. name .. ": returns=" .. returns .. " inputs/out=" .. inputs)
+                        end
+                    elseif relevant(name) or name:lower():find("rpm") or name:lower():find("throttle") then
+                        diagnostic("Skipped getter " .. name .. ": not reflected Const/BlueprintPure")
+                    end
                 end
-                return false
+                return budget.remaining <= 0
             end)
             klass = klass:GetSuperStruct()
         end
     end)
-    if not ok then return names end
-    return names
+    if not ok then diagnostic("Reflection failed: " .. tostring(err)) end
+    table.sort(members, function(a,b)
+        local ar, br = not not relevant(a.name), not not relevant(b.name)
+        if ar ~= br then return ar end
+        return a.name < b.name
+    end)
+    return members
 end
 
 local function score(name, kind)
@@ -81,16 +154,20 @@ local function score(name, kind)
             scoreValue = 120
         elseif n:find("rpm", 1, true) then
             scoreValue = 90
-        elseif n:find("engine", 1, true) and n:find("speed", 1, true) then
-            scoreValue = 45
         end
         if n:find("max") or n:find("min") or n:find("limit") or
            n:find("idle") or n:find("target") or n:find("redline") then
             scoreValue = -1
         end
     elseif kind == "throttle" then
-        if n == "throttle" or n == "throttleinput" or n == "currentthrottle" then
+        if n == "actualthrottle" or n == "enginethrottle" then
+            scoreValue = 150
+        elseif n == "currentthrottle" then
+            scoreValue = 140
+        elseif n == "throttle" then
             scoreValue = 120
+        elseif n == "throttleinput" then
+            scoreValue = 90
         elseif n:find("throttle") then
             scoreValue = 75
         elseif n == "acceleratorinput" then
@@ -109,43 +186,74 @@ local function score(name, kind)
     return scoreValue
 end
 
-local function discover(vehicle)
+local function discover(vehicle, detailed)
     local candidates = { rpm = {}, throttle = {}, ignition = {} }
-    local diagnostic = {}
-    local seen = {}
+    local seen, objectCount, memberCount, inventory = {}, 0, 0, {}
+    local budget = { remaining = 2000 }
+    local function diagnostic(line)
+        if #inventory < 300 then inventory[#inventory + 1] = line end
+    end
     local function scan(obj, prefix, depth)
-        if not valid(obj) or seen[tostring(obj:GetAddress())] then return end
-        seen[tostring(obj:GetAddress())] = true
-        local names = field_names(obj)
-        table.sort(names)
-        for _, name in ipairs(names) do
-            local path = prefix .. name
-            local value = member(obj, name)
+        if not valid(obj) or objectCount >= 32 or budget.remaining <= 0 then return end
+        local isStruct = reflected_type(obj) == "UScriptStruct"
+        local ok, address = pcall(function()
+            local metadata = obj:GetAddress()
+            if not metadata or metadata == 0 then return nil end
+            if isStruct then
+                local data = obj:GetStructAddress()
+                if not data or data == 0 then return nil end
+                -- A struct's first member may share its data address while
+                -- having a different reflected layout.
+                return "struct:" .. tostring(metadata) .. ":" .. tostring(data)
+            end
+            return "object:" .. tostring(metadata)
+        end)
+        if not ok or not address then return end
+        local key = address
+        if seen[key] then return end
+        seen[key] = true
+        objectCount = objectCount + 1
+        local members = reflected_members(obj, diagnostic, budget)
+        diagnostic("Scan " .. (prefix == "" and "vehicle" or prefix) ..
+            " type=" .. reflected_type(obj) .. " members=" .. #members)
+        for _, entry in ipairs(members) do
+            if memberCount >= 2000 then break end
+            memberCount = memberCount + 1
+            local name = entry.name
+            local signal = entry.getter and name:gsub("^Get", ""):gsub("^Is", ""):gsub("^Has", "") or name
+            local path = prefix .. name .. (entry.getter and "()" or "")
+            -- Do not execute unrelated getters (UObject's GetWorld, etc.).
+            local wanted = relevant(name) or score(signal, "rpm") > 0 or
+                score(signal, "throttle") > 0 or score(signal, "ignition") > 0
+            local value = nil
+            if not entry.getter or wanted then value = path_value(obj, name .. (entry.getter and "()" or ""), diagnostic) end
+            local description = type(value)
+            if description == "number" or description == "boolean" then description = tostring(value)
+            elseif value ~= nil then description = reflected_type(value) end
+            if entry.getter and not wanted then description = "unrelated getter (not queried)" end
+            diagnostic("Member " .. path .. " = " .. description)
             if type(value) == "number" or type(value) == "boolean" then
                 for _, kind in ipairs({"rpm", "throttle", "ignition"}) do
-                    local rank = score(name, kind) - depth * 2
+                    local confidence = score(signal, kind)
+                    local rank = confidence - depth * 2
                     if rank > 0 then
-                        if kind == "rpm" and type(value) == "number" and
-                           (value < 0 or value > 25000) then rank = -1 end
-                        if kind == "throttle" and type(value) == "number" and
-                           (value < -1 or value > 100) then rank = -1 end
+                        if kind == "rpm" and (type(value) ~= "number" or
+                           value ~= value or value < 0 or value > 25000) then rank = -1 end
+                        if kind == "throttle" and (type(value) ~= "number" or
+                           value ~= value or value < 0 or value > 100) then rank = -1 end
                         if kind == "ignition" and type(value) ~= "boolean" then rank = -1 end
                         if rank > 0 then
                             candidates[kind][#candidates[kind] + 1] = {
-                                path = path, rank = rank, value = value
+                                path = path, rank = rank, value = value, confidence = confidence
                             }
-                            diagnostic[#diagnostic + 1] =
-                                string.format("%s: %s = %s", kind, path, tostring(value))
+                            diagnostic(string.format("Candidate %s: %s = %s", kind, path, tostring(value)))
                         end
                     end
                 end
-            elseif depth == 0 and type(value) == "userdata" and valid(value) then
-                -- Only follow relevant UE components, avoiding expensive whole-object traversal.
-                local lower = name:lower()
-                if lower:find("engine") or lower:find("motor") or
-                   lower:find("drive") or lower:find("movement") or
-                   lower:find("vehicle") or lower:find("power") then
-                    scan(value, path .. ".", 1)
+            elseif depth < 3 and value ~= nil and relevant(name) and valid(value) then
+                local classOk, isClass = pcall(function() return value:IsClass() end)
+                if not (classOk and isClass) then
+                    scan(value, path .. ".", depth + 1)
                 end
             end
         end
@@ -162,11 +270,27 @@ local function discover(vehicle)
     chosen.rpm = RPM_PATH or chosen.rpm
     chosen.throttle = THROTTLE_PATH or chosen.throttle
     chosen.ignition = IGNITION_PATH or chosen.ignition
-    log("Player vehicle: " .. tostring(vehicle:GetFullName()))
-    log("Auto/override mapping: RPM=" .. tostring(chosen.rpm) ..
+    local throttleCandidate = candidates.throttle[1]
+    chosen.refresh = not THROTTLE_PATH and throttleCandidate and throttleCandidate.confidence < 140
+    local vehicleLine = "Player vehicle: " .. tostring(vehicle:GetFullName())
+    local mappingLine = "Auto/override mapping: RPM=" .. tostring(chosen.rpm) ..
         " throttle=" .. tostring(chosen.throttle) ..
-        " ignition=" .. tostring(chosen.ignition))
-    for _, entry in ipairs(diagnostic) do log("Candidate " .. entry) end
+        " ignition=" .. tostring(chosen.ignition)
+    local totalsLine = "Discovery totals: objects=" .. objectCount .. " members=" .. memberCount ..
+        " metadata=" .. (2000 - budget.remaining)
+    -- Keep the latest bounded inventory separate from the growing history log.
+    -- Refresh it on retries too, so late-loading components are captured.
+    local snapshot = io.open(DISCOVERY, "w")
+    if snapshot then
+        snapshot:write("Exporter v0.2.9 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+            vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
+            table.concat(inventory, "\n"), "\n")
+        snapshot:close()
+    end
+    log(vehicleLine)
+    if detailed and #inventory > 0 then log("Discovery inventory:\n" .. table.concat(inventory, "\n")) end
+    log(mappingLine)
+    log(totalsLine)
     return chosen
 end
 
@@ -211,27 +335,40 @@ local function tick()
     local addr = vehicle:GetAddress()
     if addr ~= lastVehicle then
         lastVehicle = addr
-        mapping = discover(vehicle)
+        mapping, nextDiscovery, dumpInventory = nil, 0, true
+    end
+    if (not mapping or not mapping.rpm or not mapping.throttle or mapping.refresh) and os.time() >= nextDiscovery then
+        mapping = discover(vehicle, dumpInventory)
+        nextDiscovery, dumpInventory = os.time() + 1, false
     end
     if not mapping or not mapping.rpm then
         write_telemetry(0, 0, false)
         return
     end
-    local rpm = tonumber(path_value(vehicle, mapping.rpm)) or 0
-    if rpm ~= rpm or rpm < 0 or rpm > 25000 then rpm = 0 end
-    local throttle = tonumber(path_value(vehicle, mapping.throttle)) or 0.3
+    local rpm = tonumber(path_value(vehicle, mapping.rpm))
+    if not rpm or rpm ~= rpm or rpm < 0 or rpm > 25000 then
+        mapping = nil
+        write_telemetry(0, 0, false)
+        return
+    end
+    local throttle = tonumber(path_value(vehicle, mapping.throttle))
+    if not throttle or throttle ~= throttle or throttle < 0 or throttle > 100 then
+        mapping.throttle = nil
+        throttle = 0
+    end
     if throttle > 1 then throttle = throttle / 100 end
     throttle = math.max(0, math.min(1, throttle))
     local ignition = path_value(vehicle, mapping.ignition)
     -- If no usable ignition property, infer it from the live RPM.
-    local running = (type(ignition) == "boolean") and ignition or rpm >= 100
+    local running
+    if type(ignition) == "boolean" then running = ignition else running = rpm >= 100 end
     write_telemetry(rpm, throttle, running)
 end
 
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.9 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then log("Sample failed: " .. tostring(err)) end
