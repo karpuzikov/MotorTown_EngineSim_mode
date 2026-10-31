@@ -78,7 +78,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.12', snapshot)
+        self.assertIn('v0.2.13', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
 
@@ -100,6 +100,18 @@ class TelemetryTests(unittest.TestCase):
         _, snapshot = self.sample('audio_inventory', report='discovery')
         self.assertIn('Priority engine/gear/audio fields:', snapshot)
         self.assertIn('EngineSoundComponent', snapshot)
+        self.assertIn('EngineSoundComponent = UObject [DoryWrecker_C test object]', snapshot)
+
+    def test_gear_survives_a_deep_engine_sound_asset_and_autopilot_throttle(self):
+        packet, snapshot = self.sample('deep_sound_and_gear', report='discovery')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.8000', '1'])
+        self.assertIn('gear=TransmissionComponent.CurrentGear', snapshot)
+        self.assertIn('ignition=EngineComponent.NetLC_EngineHotState.bIgnitionOn', snapshot)
+
+    def test_ignition_is_not_inferred_from_rpm_when_actual_hot_state_says_off(self):
+        packet, snapshot = self.sample('engine_hot_state_off', report='discovery')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '0'])
+        self.assertIn('ignition=EngineComponent.NetLC_EngineHotState.bIgnitionOn', snapshot)
 
 
 @unittest.skipUnless(shutil.which('g++') and ctypes.util.find_library('lua5.4'),

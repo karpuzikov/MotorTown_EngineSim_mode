@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.12, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.13, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Does not change vehicle physics or write any game properties.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
@@ -204,7 +204,9 @@ local function score(name, kind)
             scoreValue = -1
         end
     elseif kind == "ignition" then
-        if n == "bisengineon" or n == "engineon" or n == "bengineon" then
+        if n == "bignitionon" or n == "ignitionon" then
+            scoreValue = 150
+        elseif n == "bisengineon" or n == "engineon" or n == "bengineon" then
             scoreValue = 120
         elseif n:find("engine") and (n:find("running") or n:find("started")) then
             scoreValue = 65
@@ -223,6 +225,7 @@ local function discover(vehicle, detailed)
     local seen, objectCount, memberCount, inventory = {}, 0, 0, {}
     local priorityInventory = {}
     local budget = { remaining = 2000 }
+    local pending = {{ object = vehicle, prefix = "", depth = 0 }}
     local function diagnostic(line, priority)
         if #inventory < 300 then inventory[#inventory + 1] = line end
         if priority and #priorityInventory < 180 then
@@ -251,7 +254,8 @@ local function discover(vehicle, detailed)
         objectCount = objectCount + 1
         local members = reflected_members(obj, diagnostic, budget)
         diagnostic("Scan " .. (prefix == "" and "vehicle" or prefix) ..
-            " type=" .. reflected_type(obj) .. " members=" .. #members)
+            " type=" .. reflected_type(obj) .. " members=" .. #members,
+            prefix:lower():find("transmission") or prefix:lower():find("gear"))
         for _, entry in ipairs(members) do
             if memberCount >= 2000 then break end
             memberCount = memberCount + 1
@@ -266,13 +270,26 @@ local function discover(vehicle, detailed)
             if not entry.getter or wanted then value = path_value(obj, name .. (entry.getter and "()" or ""), diagnostic) end
             local description = type(value)
             if description == "number" or description == "boolean" then description = tostring(value)
-            elseif value ~= nil then description = reflected_type(value) end
+            elseif value ~= nil then
+                description = reflected_type(value)
+                if diagnostic_field(name) and valid(value) then
+                    local identityOk, identity = pcall(function() return value:GetFullName() end)
+                    if identityOk and type(identity) == "string" and identity ~= "" then
+                        description = description .. " [" .. identity:sub(1, 220) .. "]"
+                    end
+                end
+            end
             if entry.getter and not wanted then description = "unrelated getter (not queried)" end
             diagnostic("Member " .. path .. " = " .. description, diagnostic_field(name))
             if type(value) == "number" or type(value) == "boolean" then
                 for _, kind in ipairs({"rpm", "throttle", "ignition", "gear"}) do
                     local confidence = score(signal, kind)
                     local rank = confidence - depth * 2
+                    -- The driver's Throttle can be zero under autopilot.
+                    -- EngineComponent's live throttle is the sound input.
+                    if kind == "throttle" and path:match("^EngineComponent%.") then
+                        rank = rank + 15
+                    end
                     if rank > 0 then
                         if kind == "rpm" and (type(value) ~= "number" or
                            value ~= value or value < 0 or value > 25000) then rank = -1 end
@@ -293,12 +310,24 @@ local function discover(vehicle, detailed)
                 name ~= "GetPhysicsVolume" and valid(value) then
                 local classOk, isClass = pcall(function() return value:IsClass() end)
                 if not (classOk and isClass) then
-                    scan(value, path .. ".", depth + 1)
+                    pending[#pending + 1] = {
+                        object = value, prefix = path .. ".", depth = depth + 1
+                    }
                 end
             end
         end
     end
-    scan(vehicle, "", 0)
+    -- Breadth-first traversal lets the gearbox and engine hot-state compete for
+    -- budget before any one deeply nested SoundCue consumes all metadata slots.
+    local head = 1
+    while pending[head] and objectCount < 32 and budget.remaining > 0 do
+        local nextObject = pending[head]
+        scan(nextObject.object, nextObject.prefix, nextObject.depth)
+        head = head + 1
+    end
+    if budget.remaining <= 0 then
+        diagnostic("Reflection metadata budget exhausted; some branches were not examined", true)
+    end
     local chosen = {}
     for _, kind in ipairs({"rpm", "throttle", "ignition", "gear"}) do
         table.sort(candidates[kind], function(a,b)
@@ -323,7 +352,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.12 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.13 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "First 300 inventory lines:\n",
@@ -334,6 +363,9 @@ local function discover(vehicle, detailed)
     if detailed and #inventory > 0 then log("Discovery inventory:\n" .. table.concat(inventory, "\n")) end
     log(mappingLine)
     log(totalsLine)
+    if budget.remaining <= 0 then
+        log("Reflection metadata budget exhausted; some branches were not examined")
+    end
     return chosen
 end
 
@@ -418,7 +450,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.12 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.13 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then log("Sample failed: " .. tostring(err)) end

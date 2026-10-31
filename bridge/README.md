@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.12)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.13)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -17,6 +17,23 @@ is available. The MTES1 packet stays unchanged for compatibility.
 This is diagnostic groundwork, **not** stock engine sound replacement or actual
 gear control. The native in-process mod design and phased implementation plan
 are in `docs/superpowers/`.
+
+## Discovery diagnostics (v0.2.13)
+
+The first v0.2.12 live report confirms nonzero vehicle RPM on the Atlas 4x2
+semi and exposes `EngineComponent.EngineData.EngineProperty` plus the engine
+`EnginesSound`, `EngineSoundComponent`, and `AudioComponent` objects. It also
+confirms the previous depth-first scan exhausted the 2,000-member budget before
+transmission state could be inspected (`gear=nil`). This revision:
+
+- Explores peer engine/transmission components before nested sound assets.
+- Prefers live EngineComponent throttle over player-input throttle (autopilot).
+- Recognizes explicit `bIgnitionOn` and `IsIgnitionOn` engine state.
+- Includes actual reflected object identities for relevant audio fields.
+- Keeps the first lines of long discovery snapshots in the diagnostic collector.
+
+These game fields are read-only; the diagnostic mod still does not mute stock
+engine sounds or supply a compiled native audio replacement.
 
 ## What it does
 - Reads the **local player's** Motor Town vehicle through UE4SS reflection.

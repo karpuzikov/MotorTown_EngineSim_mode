@@ -19,6 +19,10 @@ class DiagnosticPackagingTests(unittest.TestCase):
         self.assertEqual(script, (ROOT / "bridge/collect_diagnostics.ps1").read_text())
         self.assertNotIn("Start-Transcript", script)
 
+    def test_snapshot_header_is_retained_when_discovery_is_large(self):
+        collector = (ROOT / 'bridge/collect_diagnostics.ps1').read_text()
+        self.assertIn("'Latest game discovery snapshot' (Join-Path $directory 'MotorTownEngineSim_discovery.txt') 350 -IncludeHead", collector)
+
 
 @unittest.skipUnless(PWSH, "Requires PowerShell")
 class DiagnosticReportTests(unittest.TestCase):

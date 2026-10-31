@@ -129,6 +129,44 @@ if scenario == 'audio_inventory' then
     })
     vehicle_fields.GetClass = function() return schema(props, {}) end
 end
+if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' then
+    local rpmGetter = getter('GetRPM', function() return state.rpm end)
+    local throttleGetter = getter('GetThrottle', function() return state.throttle end)
+    local hotState, hotStateFields = object({ bIgnitionOn = state.running }, 'UScriptStruct')
+    hotStateFields.ForEachProperty = function(self, visit) each({prop('bIgnitionOn')}, visit) end
+    hotStateFields.ForEachFunction = function() end
+    hotStateFields.GetSuperStruct = function() return nil end
+    local engineProps = {'NetLC_EngineHotState'}
+    local audioAsset = object({ GetClass = function()
+        local huge = {}
+        for i = 1, 2100 do huge[#huge + 1] = 'AssetField' .. i end
+        return schema(huge, {})
+    end })
+    local engineData = object({ EnginesSound = audioAsset,
+        GetClass = function() return schema({'EnginesSound'}, {}) end,
+    })
+    if scenario == 'deep_sound_and_gear' then engineProps[#engineProps + 1] = 'EngineData' end
+    engine_fields.GetRPM = rpmGetter
+    engine_fields.GetThrottle = throttleGetter
+    engine_fields.NetLC_EngineHotState = hotState
+    engine_fields.EngineData = engineData
+    engine_fields.GetClass = function() return schema(engineProps, {rpmGetter, throttleGetter}) end
+    local transmission = object({ CurrentGear = 3,
+        GetClass = function() return schema({'CurrentGear'}, {}) end,
+    })
+    vehicle_fields.VehicleSimulation = nil
+    vehicle_fields.EngineComponent = engine
+    vehicle_fields.TransmissionComponent = transmission
+    vehicle_fields.Throttle = 0 -- driver input can be zero under autopilot
+    vehicle_fields.GetClass = function()
+        return schema({'EngineComponent','TransmissionComponent','Throttle'}, {})
+    end
+    if scenario == 'deep_sound_and_gear' then state.throttle = 0.8 end
+    if scenario == 'engine_hot_state_off' then
+        state.running = false
+        hotStateFields.bIgnitionOn = false
+    end
+end
 if scenario == 'struct' then vehicle_fields.VehicleSimulation = component end
 if scenario == 'struct_alias' then
     struct_members.GetStructAddress = function() return 4242 end
