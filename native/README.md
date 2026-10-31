@@ -50,12 +50,14 @@ For a Windows smoke test without UE4SS or Motor Town installed:
 ```powershell
 cmake -S native -B native/build-windows -DMTES_HEADLESS_SMOKE=ON
 cmake --build native/build-windows --config Release --target mtes-headless-smoke
-native/build-windows/Release/mtes-headless-smoke.exe "<absolute path to engine-sim assets/main.mr>"
+native/build-windows/Release/mtes-headless-smoke.exe "<absolute path to engine-sim assets/main.mr>" "<optional next vehicle profile.mr>"
 ```
 
 This requires Engine Simulator's original Windows build dependencies (including
 Visual Studio, SDL2, Boost, Flex/Bison). The GitHub Windows workflow runs the
-same smoke automatically on the development branch; it does **not** prove the
+same smoke automatically on three distinct physical engine models (Subaru boxer
+four, GM LS V8, and Lexus LFA V10), switching models in the same process; it
+does **not** prove the
 UE4SS DLL has loaded in-game.
 
 Next integration boundaries are the Engine Simulator/UE4SS Windows SDK build,

@@ -35,6 +35,22 @@ jobs:
       - name: Run actual combustion audio smoke
         shell: pwsh
         run: |
-          $profile = Join-Path (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path 'assets/main.mr'
-          & 'native/build-windows/Release/mtes-headless-smoke.exe' $profile
+          $assets = Join-Path (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path 'assets'
+          $original = Get-Content -Raw (Join-Path $assets 'main.mr')
+          $defaultEngine = 'engines/atg-video-2/01_subaru_ej25_eh.mr'
+          if (-not $original.Contains($defaultEngine)) { throw 'Pinned engine test fixture changed' }
+          $profiles = @((Join-Path $assets 'main.mr'))
+          # Boxer 4, American V8, Japanese V10. Each wrapper uses the original
+          # script/compiler/synth, with imports kept relative to the assets dir.
+          foreach ($variant in @(
+              @{ name = 'gm-ls-v8'; engine = 'engines/atg-video-2/07_gm_ls.mr' },
+              @{ name = 'lfa-v10'; engine = 'engines/atg-video-2/10_lfa_v10.mr' }
+            )) {
+            $path = Join-Path $assets ("mtes-" + $variant.name + '.mr')
+            [System.IO.File]::WriteAllText($path,
+              $original.Replace($defaultEngine, $variant.engine),
+              [System.Text.UTF8Encoding]::new($false))
+            $profiles += $path
+          }
+          & 'native/build-windows/Release/mtes-headless-smoke.exe' @profiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
