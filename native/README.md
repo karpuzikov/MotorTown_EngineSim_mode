@@ -99,9 +99,40 @@ On a Windows developer machine with Visual Studio 2022 and a compatible
 `RE-UE4SS` checkout (including its required submodules):
 
 ```powershell
+python native/ue4ss-parent/verify_checkout.py "C:\path\to\RE-UE4SS"
 cmake -S native/ue4ss-parent -B native/build-ue4ss -G "Visual Studio 17 2022" -DMTES_UE4SS_SOURCE="C:\path\to\RE-UE4SS"
 cmake --build native/build-ue4ss --config Game__Shipping__Win64 --target mtes-stage-dev
 ```
+
+### Building the actual UE4SS DLL in GitHub Actions
+
+The separate **Native UE4SS DLL (Windows development build)** workflow now
+compiles the full `RE-UE4SS` source and this native DLL on Windows, using
+revision `f885e8d2d4dd25258082538f1a9fd56a1c3b1bf1` from the observed
+Motor Town UE4SS installation. It runs on pushes to the native development
+branch and can also be started manually once available in GitHub Actions.
+Unlike the portable CMake fixture test, the real build requires UE4SS's
+private `deps/first/Unreal` (`Re-UE4SS/UEPseudo`) submodule.
+
+For a repository maintainer to enable the real build:
+
+1. Link Epic Games and GitHub accounts under the official UE4SS source access
+   procedure, and verify that your GitHub account can read the private
+   `Re-UE4SS/UEPseudo` repository.
+2. In this repository, open **Settings → Secrets and variables → Actions**.
+   Add a repository secret named `UEPSEUDO_PAT` containing a GitHub access
+   token with read permission to that private source repository. Never put
+   the token in source, issues, logs, or chat. Grant no write permission.
+3. Rerun the Windows workflow (or push an update to the development branch).
+   The first step fails explicitly if the secret is absent. The checkout
+   preflight also refuses an uninitialized submodule or a mismatched UE4SS
+   source revision.
+
+A successful run will upload a `MotorTownEngineSim-UE4SS-dev-unverified`
+artifact containing `main.dll`. This is **only a compiled DLL build check**:
+no installer, actual Unreal PCM playback, stock engine muting or in-game load
+verification is supplied by this workflow. It deliberately cannot publish
+a GitHub release.
 
 The output is staged as
 `native/build-ue4ss/dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls/main.dll`.
