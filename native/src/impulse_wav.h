@@ -1,0 +1,14 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace mtes {
+
+// Engine Simulator convolution accepts mono PCM16 at its 44.1 kHz render rate.
+// Its script assets can also be 24-bit PCM; normalize without an audio device.
+std::vector<std::int16_t> parse_impulse_wav(const std::vector<std::uint8_t> &bytes);
+std::vector<std::int16_t> load_impulse_wav(const std::string &path);
+
+} // namespace mtes

@@ -4,7 +4,10 @@ cmake_minimum_required(VERSION 3.18)
 # target at the exact binary-compatible commit used by the game installation.
 project(MotorTownEngineSim LANGUAGES CXX)
 
-add_library(MotorTownEngineSim SHARED src/dllmain.cpp)
+add_library(MotorTownEngineSim SHARED
+    src/dllmain.cpp
+    src/engine_audio.cpp
+    src/impulse_wav.cpp)
 target_compile_features(MotorTownEngineSim PRIVATE cxx_std_20)
 target_include_directories(MotorTownEngineSim PRIVATE src)
 target_link_libraries(MotorTownEngineSim PRIVATE UE4SS)
