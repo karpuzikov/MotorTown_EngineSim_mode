@@ -1,5 +1,20 @@
 -- Unreal boundary double; executes the actual exporter with real Lua/file I/O.
 local exporter, scenario = arg[1], arg[2]
+if scenario == 'iterator_contract' then
+    assert(type(UE4SS_ForEach) == 'function', 'Native iteration boundary required')
+    local count = 0
+    local ok, err = pcall(function()
+        UE4SS_ForEach(function() count = count + 1; return false end, {1,2,3})
+    end)
+    assert(not ok and count == 1 and tostring(err):find('nil value'), 'False must reproduce the reported binding failure')
+    count = 0
+    UE4SS_ForEach(function() count = count + 1 end, {1,2,3})
+    assert(count == 3, 'Nil must continue through every member')
+    count = 0
+    UE4SS_ForEach(function() count = count + 1; return true end, {1,2,3})
+    assert(count == 1, 'True must stop iteration')
+    return
+end
 local native_open, native_time = io.open, os.time
 io.open = function(path, mode) return native_open(path:gsub('\\', '/'), mode) end
 local clock = 1790000000
@@ -27,13 +42,19 @@ end
 
 local function fname(name) return { ToString = function() return name end } end
 local function prop(name) return { GetFName = function() return fname(name) end } end
+local function each(values, callback)
+    if UE4SS_ForEach then return UE4SS_ForEach(callback, values) end
+    for _, value in ipairs(values) do if callback(value) then break end end
+end
 local function schema(properties, functions)
     local result = object({
         ForEachProperty = function(self, callback)
-            for _, name in ipairs(properties or {}) do if callback(prop(name)) then break end end
+            local values = {}
+            for _, name in ipairs(properties or {}) do values[#values + 1] = prop(name) end
+            each(values, callback)
         end,
         ForEachFunction = function(self, callback)
-            for _, fn in ipairs(functions or {}) do if callback(fn) then break end end
+            each(functions or {}, callback)
         end,
         GetSuperStruct = function() return nil end,
     }, 'UClass')
@@ -44,8 +65,10 @@ local function getter(name, callback, inputs)
         GetFName = function() return fname(name) end,
         GetFunctionFlags = function() return 0x50000000 end, -- BlueprintPure + Const
         ForEachProperty = function(self, visit)
-            for _, input in ipairs(inputs or {}) do if visit(prop(input)) then return end end
-            visit(prop('ReturnValue'))
+            local values = {}
+            for _, input in ipairs(inputs or {}) do values[#values + 1] = prop(input) end
+            values[#values + 1] = prop('ReturnValue')
+            each(values, visit)
         end,
         call = callback,
     }, 'UFunction')
@@ -67,7 +90,7 @@ local engine, engine_fields = object({
 local struct_fields = { CurrentRPM = state.rpm, ActualThrottle = state.throttle, bEngineOn = true }
 local struct, struct_members = object(struct_fields, 'UScriptStruct')
 struct_members.ForEachProperty = function(self, visit)
-    for _, name in ipairs({'CurrentRPM','ActualThrottle','bEngineOn'}) do visit(prop(name)) end
+    each({prop('CurrentRPM'),prop('ActualThrottle'),prop('bEngineOn')}, visit)
 end
 struct_members.ForEachFunction = function() end
 struct_members.GetSuperStruct = function() return nil end

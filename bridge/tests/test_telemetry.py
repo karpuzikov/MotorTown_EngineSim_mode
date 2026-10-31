@@ -1,4 +1,5 @@
 import os
+import ctypes.util
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,10 +13,11 @@ LUA = os.environ.get('MTES_TEST_LUA') or shutil.which('lua') or shutil.which('te
 
 @unittest.skipUnless(LUA, 'Requires Lua 5.3+ or texlua')
 class TelemetryTests(unittest.TestCase):
+    lua = LUA
     def sample(self, scenario, report='diagnostics'):
         with tempfile.TemporaryDirectory() as temp:
             env = dict(os.environ, TMP=temp, TEMP=temp)
-            result = subprocess.run([LUA, str(ROOT / 'bridge/tests/telemetry_harness.lua'),
+            result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'),
                                      str(ROOT / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua'), scenario],
                                     env=env, text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -76,9 +78,35 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.9', snapshot)
+        self.assertIn('v0.2.11', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
+
+
+@unittest.skipUnless(shutil.which('g++') and ctypes.util.find_library('lua5.4'),
+                     'Requires a C++ compiler and Lua5.4 shared library')
+class NativeIterationTests(TelemetryTests):
+    __unittest_skip__ = False
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='MTES native Lua ')
+        cls.lua = str(Path(cls.temp.name) / 'ue4ss-lua-test')
+        library = ctypes.util.find_library('lua5.4')
+        result = subprocess.run(['g++', '-std=c++17', str(ROOT / 'bridge/tests/ue4ss_iteration_boundary.cpp'),
+                                 '-Wl,-l:' + library, '-o', cls.lua], capture_output=True, text=True)
+        if result.returncode:
+            cls.temp.cleanup()
+            raise AssertionError(result.stdout + result.stderr)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def test_native_binding_reproduces_false_failure_and_accepts_nil_and_true(self):
+        result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'),
+                                 str(ROOT / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua'),
+                                 'iterator_contract'], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

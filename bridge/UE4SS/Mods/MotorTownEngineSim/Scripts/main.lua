@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.9, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.11, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Does not change vehicle physics or write any game properties.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
@@ -97,10 +97,12 @@ local function reflected_members(obj, diagnostic, budget)
         local klass = reflected_type(obj) == "UScriptStruct" and obj or obj:GetClass()
         for _ = 1, 12 do
             if not valid(klass) or budget.remaining <= 0 then break end
+            -- UE4SS f885e8d2 consumes a returned false twice and loses the
+            -- iterator callback. Return nil to continue; true only to stop.
             klass:ForEachProperty(function(prop)
                 if not take() then return true end
                 add(prop:GetFName():ToString(), false)
-                return budget.remaining <= 0
+                if budget.remaining <= 0 then return true end
             end)
             if budget.remaining <= 0 then break end
             klass:ForEachFunction(function(fn)
@@ -117,7 +119,7 @@ local function reflected_members(obj, diagnostic, budget)
                                 if not take() then return true end
                                 if prop:GetFName():ToString() == "ReturnValue" then returns = returns + 1
                                 else inputs = inputs + 1 end
-                                return budget.remaining <= 0
+                                if budget.remaining <= 0 then return true end
                             end)
                         end
                         -- A truncated parameter list cannot establish that a
@@ -132,7 +134,7 @@ local function reflected_members(obj, diagnostic, budget)
                         diagnostic("Skipped getter " .. name .. ": not reflected Const/BlueprintPure")
                     end
                 end
-                return budget.remaining <= 0
+                if budget.remaining <= 0 then return true end
             end)
             klass = klass:GetSuperStruct()
         end
@@ -282,7 +284,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.9 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.11 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             table.concat(inventory, "\n"), "\n")
         snapshot:close()
@@ -368,7 +370,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.9 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.11 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then log("Sample failed: " .. tostring(err)) end

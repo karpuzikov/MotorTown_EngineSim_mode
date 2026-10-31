@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.10)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.11)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -18,6 +18,20 @@ Runtime rendering, telemetry and audio synchronization remain unverified.
 Synchronization must use the vehicle's live engine state, including RPM and engine
 throttle under autopilot. Keyboard or WASD state is not a substitute for telemetry.
 Autopilot integration remains unverified until game-side values are captured.
+
+## UE4SS iteration compatibility (v0.2.11)
+
+The latest game log identifies `ForEachProperty` failing with "attempt to call a
+nil value" after one property. The installed UE4SS f885e8d2 implementation consumes
+a callback's boolean `false` in `Lua::get_bool`, then removes it again in the
+iterator's continuation branch. This loses the original callback on the Lua stack.
+The exporter now continues with an implicit nil return and stops only with `true`,
+including property, function and function-parameter enumeration.
+
+The regression runs the exporter against the same native Lua5.4 stack operations:
+the old callbacks reproduce the failure, while the new callbacks enumerate all
+members and retain the discovery budget. Unreal objects are still test doubles;
+the actual game's engine field names and sound synchronization remain unverified.
 
 ## Simulator control (v0.2.10)
 

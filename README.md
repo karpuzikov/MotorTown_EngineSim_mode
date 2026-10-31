@@ -2,7 +2,7 @@
 
 Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Version: experimental v0.2.10.** Windows compilation, retail DirectX linkage and Engine Simulator initialization are confirmed by the user's logs. UE4SS detects the Dory Wrecker, but live RPM/throttle/ignition mappings remain unverified. The simulator previously retained its standalone controls until telemetry connected once, so it could run with the game closed. This version replaces those controls with telemetry-only input, starts muted, stays muted without fresh running-engine data, and opens a 960x540 window. Existing installations are upgraded in place. Automated C++/PowerShell/Lua tests cover these changes; synchronized audio still needs testing in Motor Town. Stock-audio replacement remains **unimplemented**.
+**Version: experimental v0.2.11.** The user's latest Windows build launches and receives zero-valued exporter packets. The new game log identifies the blocker: UE4SS reflection fails after one property. In the installed UE4SS f885e8d2 binding, returning `false` from an iteration callback removes its return value twice and corrupts the callback stack. The exporter now returns no value to continue and `true` only to stop. A native Lua5.4 boundary reproduces that failure and tests the workaround. Live RPM/throttle/ignition mapping and synchronized audio still need testing in Motor Town. Stock-audio replacement remains **unimplemented**.
 
 ## Installation
 
