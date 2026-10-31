@@ -4,7 +4,10 @@
 points, a tested fail-open PCM controller, and an initial adapter that loads
 the genuine Engine Simulator engine scripts and drives its synthesizer. The
 controller follows RPM/throttle/gear and clears data on telemetry or render
-failure. Only complete non-silent buffers authorize replacing stock audio.
+failure. Only complete non-silent source buffers authorize replacing stock audio;
+partial buffers are discarded. Its PCM renderer accepts an Engine Volume gain
+(including zero without restoring unwanted stock engine sound), but **reading
+the game's volume slider is not connected yet**.
 The actual Engine Simulator backend **still requires a Windows build and
 real-PCM smoke test**; it is not yet connected to Motor Town's Unreal audio
 output, stock muting, game engine-volume control, or vehicle profile selector.

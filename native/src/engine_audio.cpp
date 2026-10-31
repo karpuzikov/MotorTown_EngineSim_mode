@@ -79,18 +79,31 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
 }
 
 std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
-    std::chrono::steady_clock::time_point when) {
+    std::chrono::steady_clock::time_point when, double engineVolume) {
     if (!dst || frames == 0) return 0;
     std::fill_n(dst, frames, 0);
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_active || when < m_lastUpdate || when - m_lastUpdate > MaxTelemetryAge) {
+    if (!m_active || when < m_lastUpdate || when - m_lastUpdate > MaxTelemetryAge ||
+        !std::isfinite(engineVolume) || engineVolume < 0 || engineVolume > 1) {
         m_replacing.store(false);
         return 0;
     }
     try {
         const std::size_t count = std::min(m_backend->read(dst, frames), frames);
-        m_replacing.store(count == frames &&
-            std::any_of(dst, dst + count, [](std::int16_t sample) { return sample != 0; }));
+        // An incomplete or entirely silent buffer must not leak partial
+        // replacement sound on top of Motor Town's stock engine emitter.
+        if (count != frames ||
+            !std::any_of(dst, dst + count, [](std::int16_t sample) { return sample != 0; })) {
+            std::fill_n(dst, frames, 0);
+            m_replacing.store(false);
+            return 0;
+        }
+        // Engine Volume 0 is an intentional in-game mute. Keep ownership of
+        // the stock emitter if the unscaled simulator audio was valid.
+        for (std::size_t i = 0; i < count; ++i) {
+            dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * engineVolume));
+        }
+        m_replacing.store(true);
         return count;
     }
     catch (...) {

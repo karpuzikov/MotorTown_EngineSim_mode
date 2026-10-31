@@ -39,7 +39,7 @@ public:
     bool update(const std::string &vehicle, const std::string &script,
         EngineState state, std::chrono::steady_clock::time_point when);
     std::size_t render(std::int16_t *dst, std::size_t frames,
-        std::chrono::steady_clock::time_point when);
+        std::chrono::steady_clock::time_point when, double engineVolume = 1.0);
     bool is_replacing_stock() const noexcept { return m_replacing.load(); }
     void stop() noexcept;
 

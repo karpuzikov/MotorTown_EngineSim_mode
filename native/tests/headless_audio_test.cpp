@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -71,6 +72,17 @@ int main() {
     assert(pcm[0] == 2048 && pcm[15] == 2048);
     assert(audio.is_replacing_stock());
 
+    // The game's Engine Volume must control replacement PCM, including zero.
+    assert(audio.render(pcm.data(), pcm.size(), start, 0.25) == 16);
+    assert(pcm[0] == 512 && pcm[15] == 512);
+    assert(audio.is_replacing_stock());
+    assert(audio.render(pcm.data(), pcm.size(), start, 0.0) == 16);
+    for (auto sample : pcm) assert(sample == 0);
+    assert(audio.is_replacing_stock()); // intentional mute, not audio failure
+    assert(audio.render(pcm.data(), pcm.size(), start,
+        std::numeric_limits<double>::quiet_NaN()) == 0);
+    assert(!audio.is_replacing_stock());
+
     // The renderer must preserve the stock sound when telemetry expires.
     pcm.fill(123);
     assert(audio.render(pcm.data(), pcm.size(), start + std::chrono::seconds(1)) == 0);
@@ -88,8 +100,8 @@ int main() {
     // Underflow and silent buffers must fail open: original audio stays on.
     engine->underrun = true;
     pcm.fill(123);
-    assert(audio.render(pcm.data(), pcm.size(), start + std::chrono::seconds(2)) == 8);
-    for (std::size_t i = 8; i < pcm.size(); ++i) assert(pcm[i] == 0);
+    assert(audio.render(pcm.data(), pcm.size(), start + std::chrono::seconds(2)) == 0);
+    for (auto sample : pcm) assert(sample == 0);
     assert(!audio.is_replacing_stock());
     engine->underrun = false;
     engine->produce_audio = false;

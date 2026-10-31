@@ -15,6 +15,13 @@ FILES = {
     "simulator.cpp": "3a014d5dd7e2584250db33605fc51d07d1f7779b811f92c8599d19a654831eb4",
     "piston_engine_simulator.cpp": "0da7b8fd41e2da0074e19f1ed056e56f24c512c67ac828460355c8549eec38ad",
     "compiler.cpp": "71314012594c46ee8b6151abdf8170cec88ed1cb1d5a2dcbc7bf95a17bbeed3e",
+    "piranha_path.cpp": "c1f572d036768b1c049679fb8952c31d7ffb118d76318fce7250ac68ddb14fad",
+}
+PATCHED_HASHES = {
+    "simulator.cpp": "73c2d9b2e2f29ff00a83c43e19a0d81ccd2ca6cfc6cecf20eb3997318e611d24",
+    "piston_engine_simulator.cpp": "a7ac63b9642ed5ea64cc38cd06ac174363e28896ff5225ad130f9b0ae79bb996",
+    "compiler.cpp": "d60cc3f5df0762cafec2f439149490d3235b1954ab31783e14ef2e1f4b0106d7",
+    "piranha_path.cpp": "906ffcfc170abf8d4ff778dfdbf5185d388e4481243fcacb865b8d97cf7f1c53",
 }
 
 
@@ -77,6 +84,14 @@ def transformed(name: str, source: str) -> str:
             raise ValueError("Unsupported Compiler::compile layout")
         return source.replace(old, new, 1)
 
+    if name == "piranha_path.cpp":
+        # Boost 1.80+ removed the old synonym `path::is_complete()`.
+        before = "    return m_path->is_complete();"
+        after = "    return m_path->is_absolute(); // " + MARK
+        if source.count(before) != 1:
+            raise ValueError("Unsupported Piranha absolute-path check")
+        return source.replace(before, after, 1)
+
     raise ValueError("Unsupported source file " + name)
 
 
@@ -85,10 +100,15 @@ def patch(root: Path) -> None:
     updates = {}
     existing = 0
     for name, expected_hash in FILES.items():
-        path = root / ("scripting/src" if name == "compiler.cpp" else "src") / name
+        if name == "piranha_path.cpp":
+            path = root / "dependencies/submodules/piranha/src/path.cpp"
+        else:
+            path = root / ("scripting/src" if name == "compiler.cpp" else "src") / name
         raw = path.read_bytes()
         source = raw.decode("utf-8").replace("\r\n", "\n")
         if MARK in source:
+            if hashlib.sha256(source.encode("utf-8")).hexdigest() != PATCHED_HASHES[name]:
+                raise ValueError("Modified Engine Simulator patch: " + name)
             existing += 1
             continue
         if hashlib.sha256(source.encode("utf-8")).hexdigest() != expected_hash:
