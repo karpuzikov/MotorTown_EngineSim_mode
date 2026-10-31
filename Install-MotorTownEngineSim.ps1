@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.5 experimental installer.
+Motor Town EngineSim Bridge v0.2.6 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -97,6 +97,35 @@ function Ensure-SdlDev([string]$name,[string]$folder,[string]$header,[string]$li
     }
     Ensure ((Test-Path $headerFile) -and (Test-Path $libFile) -and (Test-Path $dllFile)) ('SDK incomplete: ' + $name)
     return @{ Include=(Join-Path $sdk 'include'); Library=$libFile; Runtime=$dllFile }
+}
+function Install-LegacyDirectX {
+    # EngineSim's Windows executable needs legacy D3DX10 (including d3dx10_43.dll).
+    # These optional DirectX SDK components are not part of Windows 10/11.
+    if ($SkipDependencyInstall) {
+        Say 'Skipping legacy DirectX runtime installation (-SkipDependencyInstall).'
+        return
+    }
+    Say 'Installing legacy DirectX runtimes required by Engine Simulator...'
+    $url = 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'
+    $expectedSha = '053f76dcbb28802e23341b6a787e3b0791c0fa5c8d4d011b1044172dbf89c73b'
+    $redistributable = Join-Path $Deps 'directx_Jun2010_redist.exe'
+    if (-not (Test-Path -LiteralPath $redistributable) -or
+        (Get-FileHash -LiteralPath $redistributable -Algorithm SHA256).Hash -ne $expectedSha) {
+        Download $url $redistributable
+    }
+    Ensure ((Get-FileHash -LiteralPath $redistributable -Algorithm SHA256).Hash -eq $expectedSha) `
+        'Microsoft DirectX redistributable checksum mismatch.'
+    $extractDir = Join-Path $Deps 'DirectX-June2010'
+    $setup = Join-Path $extractDir 'DXSETUP.exe'
+    if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+        New-Item -Path $extractDir -ItemType Directory -Force | Out-Null
+        # Self-extracting Microsoft package; quote the destination for paths with spaces.
+        $unpack = Start-Process -FilePath $redistributable -ArgumentList ('/Q /C /T:"' + $extractDir + '"') -Wait -PassThru
+        Ensure ($unpack.ExitCode -eq 0) ('Microsoft DirectX extraction failed (exit ' + $unpack.ExitCode + ').')
+    }
+    Ensure (Test-Path -LiteralPath $setup -PathType Leaf) 'Microsoft DirectX DXSETUP.exe not found after extraction.'
+    # Microsoft's guidance: let DXSETUP determine which side-by-side runtimes are needed.
+    Run $setup @('/silent')
 }
 function Resolve-GameExe([string]$userPath) {
     $relative = 'MotorTown\Binaries\Win64\MotorTown-Win64-Shipping.exe'
@@ -346,6 +375,7 @@ try {
     Write-UTF8 (Join-Path $exeDir 'delta.conf') $conf
     Copy-Item -LiteralPath $sdl.Runtime -Destination $exeDir -Force
     Copy-Item -LiteralPath $sdlImage.Runtime -Destination $exeDir -Force
+    Install-LegacyDirectX
 
     Wait-ForGameExit
     Say 'Installing UE4SS into Motor Town...'

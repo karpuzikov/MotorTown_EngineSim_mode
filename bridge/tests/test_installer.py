@@ -48,6 +48,24 @@ class InstallerTests(unittest.TestCase):
             "Piranha needs the Boost.Filesystem is_complete -> is_absolute migration",
         )
 
+    def test_legacy_directx_runtime_is_installed_before_launch(self):
+        installer = embedded_installer()
+        self.assertIn("function Install-LegacyDirectX {", installer)
+        directx = installer.split("function Install-LegacyDirectX {", 1)[1].split("\nfunction ", 1)[0]
+        for required in (
+            "download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe",
+            "053f76dcbb28802e23341b6a787e3b0791c0fa5c8d4d011b1044172dbf89c73b",
+            "Get-FileHash",
+            "DXSETUP.exe",
+            '/Q /C /T:',
+            "Run $setup @('/silent')",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, directx)
+        install_call = installer.index("    Install-LegacyDirectX\n")
+        launch_call = installer.index("Start-Process -FilePath $engineExe.FullName")
+        self.assertLess(install_call, launch_call)
+
 
 if __name__ == "__main__":
     unittest.main()
