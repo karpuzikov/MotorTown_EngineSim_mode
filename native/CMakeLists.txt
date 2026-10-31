@@ -39,6 +39,7 @@ set(DTV OFF CACHE BOOL "" FORCE)
 add_subdirectory("${mtes_engine_sim_SOURCE_DIR}" "${mtes_engine_sim_BINARY_DIR}" EXCLUDE_FROM_ALL)
 
 set(MTES_AUDIO_SOURCES
+    src/audio_pipeline.cpp
     src/engine_audio.cpp
     src/game_audio.cpp
     src/game_telemetry.cpp

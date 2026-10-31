@@ -18,6 +18,25 @@ the mute/start and stop/restore operation order. No horn, tire, transmission
 or ambient emitter is ever targeted by this contract. The real Unreal adapter
 still has to implement its `StockEngineEmitter`/`ProceduralAudioSink` interfaces
 and discover an actual stock engine emitter before any muting can occur.
+The `NativeAudioPipeline` now joins the MTES2 parser, engine synthesizer and
+sound-ownership controller in one tested path. Each 50-ms telemetry sequence
+advances synthesis once (rather than once per UE4SS frame), yielding nominal
+2205-frame 44.1-kHz PCM blocks. It stops and restores stock audio if vehicle
+metadata cannot resolve a real `.mr` profile, the stock engine emitter is
+unidentified, the volume is invalid, ignition is off or telemetry expires.
+On vehicle switches it restores the old emitter before compiling the new
+engine. The pipeline exposes `VehicleProfileLookup` and `StockEmitterLookup`
+interfaces for adapters; **neither interface has a Motor Town implementation
+yet, and the UE4SS `on_update()` callback still only logs telemetry.** This
+portable integration test is not evidence of sound playback inside the game.
+Newly loaded engines remain on stock sound for at least one 50-ms packet so
+their asynchronous synthesizer can warm up. A temporary PCM underrun restores
+stock audio but preserves the loaded engine to retry on the next new packet,
+avoiding a compile/underrun/reload loop. Duplicated or replayed packets cannot
+generate extra audio blocks; volume and emitter validity are checked on every
+callback. Missing data does not reset the per-session sequence high-water mark.
+The caller must pass `GameTelemetryReader::current(now)` (or `nullopt` after
+expiry), and the pipeline also expires unchanged samples after 250 ms.
 The experimental Lua exporter now also writes `MTES2` telemetry (vehicle
 identity, live gear, RPM, throttle, ignition, engine type and max RPM) to a
 separate temp file. The native DLL polls that file in `on_update()` in the

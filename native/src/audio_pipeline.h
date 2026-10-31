@@ -1,0 +1,74 @@
+#pragma once
+
+#include "game_audio.h"
+#include "game_telemetry.h"
+
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace mtes {
+
+// The game adapter must resolve to a real packaged Engine Simulator profile.
+// Unknown vehicles deliberately remain on their original game audio.
+class VehicleProfileLookup {
+public:
+    virtual ~VehicleProfileLookup() = default;
+    virtual std::optional<std::string> script_for(const GameTelemetrySample& sample) = 0;
+};
+
+// Return only a positively identified local-vehicle engine emitter, never
+// tire, horn, transmission, radio or ambient sound components. Keep wrapper
+// identity stable across packets for the same Unreal emitter.
+class StockEmitterLookup {
+public:
+    virtual ~StockEmitterLookup() = default;
+    virtual std::shared_ptr<StockEngineEmitter> stock_for(
+        const GameTelemetrySample& sample) = 0;
+};
+
+// Game-thread coordinator from validated Lua/UE4SS telemetry packets to
+// genuine Engine Simulator PCM and fail-open stock-emitter ownership.
+// Nominal 2205 frames = 50 ms of 44.1-kHz mono PCM16, matching the MTES2
+// producer cadence; the Unreal sink must be configured to that format.
+class NativeAudioPipeline final {
+public:
+    using Clock = std::chrono::steady_clock;
+    static constexpr std::size_t NominalPacketFrames = 2205;
+
+    NativeAudioPipeline(EngineAudio& engine, GameAudioOutput& output,
+        VehicleProfileLookup& profiles, StockEmitterLookup& emitters,
+        std::size_t framesPerPacket = NominalPacketFrames);
+    ~NativeAudioPipeline();
+
+    NativeAudioPipeline(const NativeAudioPipeline&) = delete;
+    NativeAudioPipeline& operator=(const NativeAudioPipeline&) = delete;
+
+    bool process(const std::optional<GameTelemetrySample>& sample,
+        Clock::time_point now, double gameEngineVolume);
+    void stop() noexcept;
+
+private:
+    void silence() noexcept;
+
+    EngineAudio& m_engine;
+    GameAudioOutput& m_output;
+    VehicleProfileLookup& m_profiles;
+    StockEmitterLookup& m_emitters;
+    std::vector<std::int16_t> m_pcm;
+    std::shared_ptr<StockEngineEmitter> m_activeEmitter;
+    std::string m_activeVehicle;
+    std::string m_activeScript;
+    std::string m_seenSession;
+    std::uint64_t m_seenSequence = 0;
+    Clock::time_point m_seenAt{};
+    bool m_seen = false;
+    bool m_loaded = false;
+    bool m_running = false;
+};
+
+} // namespace mtes
