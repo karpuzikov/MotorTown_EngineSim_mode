@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.6 experimental installer.
+Motor Town EngineSim Bridge v0.2.7 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -32,6 +32,7 @@ $Deps = Join-Path $HomeDir 'dependencies'
 $Sources = Join-Path $HomeDir 'source'
 $Logs = Join-Path $HomeDir 'logs'
 $Repo = Join-Path $Sources 'engine-sim'
+$EngineSimSource = 'https://github.com/karpuzikov/engine-sim.git'
 foreach ($folder in @($HomeDir, $Deps, $Sources, $Logs)) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
 $Log = Join-Path $Logs ('Install_' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss') + '.log')
 Start-Transcript -Path $Log | Out-Null
@@ -77,6 +78,94 @@ function Decode([string]$encoded) {
 }
 function Write-UTF8([string]$path,[string]$contents) {
     [IO.File]::WriteAllText($path,$contents,[Text.UTF8Encoding]::new($false))
+}
+function Ensure-EngineSource([string]$git,[string]$sourceRoot,[string]$sourceUrl) {
+    if (-not (Test-Path (Join-Path $sourceRoot '.git'))) {
+        Ensure (-not (Test-Path $sourceRoot)) ('Existing non-Git directory: ' + $sourceRoot)
+        Run $git @('clone','--recurse-submodules',$sourceUrl,$sourceRoot)
+    } else {
+        # Switching the remote preserves local patches, submodules and build files.
+        Run $git @('-C',$sourceRoot,'remote','set-url','origin',$sourceUrl)
+        Run $git @('-C',$sourceRoot,'submodule','update','--init','--recursive')
+    }
+    Say ('Engine Simulator source: ' + $sourceUrl)
+}
+function Install-RuntimeDiagnostics([string]$sourceRoot) {
+    # Canonical definition: bridge/patch_engine_sim.py. Regenerate with package_installer.py.
+    $runtimePatch = Decode 'H4sIAAAAAAACA91XbW/bNhD+KzcX6OTUkZt9GeC8AG7iZcbqJLDdvWAuBEY6R1xlUiOpOFmX/74jKduSI6fp1n5ZgiASXx7ePXfPHfWxtWDqA6pWD1rdLoymg0k0fncxHY4G0c8HrQ60UmQJqihnJrWLuIizIsHuwqCOVCEMX2CYbhY2A83Ei1yxmwUDKWKktxIGjvAuxtxwKU6qo3NtFLJFbUybxC/eGlVc3NDQTHCRcYFwK3kC1ryxt+6tvAliKbQBQuj1/AZ4uUCt2Q224eNMAP2Q0X1QmDHDbxHmPEPBFggs0xKWUn3QsExRgEkRCo3qWw1nMi4WKIwGSw5wDe8Ej2WCoUd0x8nSFcjIjFlrJI1UU7kUA3FDxk74Yk0iLZgRj24Xl7rXY3nePvRQNAdHR1DabB/dMhRJRiseZsIGgKyIU9QUgd8/tlbx0iruLhgXYZzndhEm3JRLrnEuFdpFazpnrTDsrkKMzsRIk41kSsZjZuMUprOWBWJz46P9uZsr0avtqGeUXdeQkA8dqBpuuVkz2d+cA5UzSwqrVnDBDWcZ/wuDwKXLXvtlOqQUYZSdHbjXp1IYvDOX139gbHq9M7zlMfavhvTIFQ39enDQbsAl64Om8QQpCeS9m/OzCk2hBLw+rFH5KGs+M2MMzcTtMM6kxrUhW1KoIG6ogxISbl+H34Xfz1qrzUbdrwTSiDVcMWk15eGA8AqSkVQbmFJgZ5gZRspxfBQxLdHExJ8FcQp4Z/niBgwylVjrmEiA0UwhNJuTEi1LwGqAOVP2eFgH1PMNlwLmjGeFomgqzKUyQMgWMEMDuZIxKYmO5KYGR6HNmGUDtSwUrTmERIKQhmxYcmsOpCyb72/yJ6nFeQPGCiNhrzIHxyBw2ZisFY4qG/ZPvmSWNieCFddk2h9P311F40H/7Ld6xGrWVHO7EW07+uDSMHkCsiqL1YIEKULYoN+aavzQg/8X27oH1Rq/birwEpWSqv1EDleaAjlRlhr4oT98OzjrUYVqwytwIOEyZSZoV40d+Xr8Rt71A1FkWW5Up7a4A81yoxgqU+QuSS1FHRi9iS5/gr/t/+Hp5cVgPL4ctx+7ftDoehiG7Sdluu1WIT4Ia9HpK3JuRVY9Uo2+NUTZuxDCBBGerlUh+bnBtz9fi5zWw3vXKKpNcEdD+t+2xUXkzwpPqZEYPKfLzC9UwuQy0GgMZbtuP24+jxLHbba1/UaxPOWx7rIi4XQjclCHoFN76dPHsxbJxL9cEemr4HhN3uuB1YRD9zb49+NnGemR+ByC7f3fHK+ge70LKbCmAZMqufTloGQvcsokp87rvtSbR5l2ELhm5dUM1r166jpgI6OyclDOGh5HMdPmiAtzsm1r25YREhjpxJEEiavQUt33YAd3Dzva93lTJKDSkqyOmzOCaaJ1xATpWoWncpGTp0PqISpOmbjBH+g1CMpl1hRnc9e9amt8bN21Ve0gfD3v0OWgwOck0VvJkmoOgUcsPa+ct76yfCVLP02KNXUSo/iME3ax8IWAP5EFJZf0hUD5szP0XofXUmb06MhMSH3lowrLh8AVHg/oPxoW7g73jDLhAGyMvZ5Bx4rnpgeP8CBI0JDCNGWsF1dkWwP9tTf95z+au0XAC/pMovLR3YP+9DwaXJwPLwbRZDiKrobj/sWPfRrqv6G2CHvd1fXcVptbJH4zhGO6ufn+R/WlXuL/HXBJUQ33WXVrSt+eNX6piiTuehq78kkX3HLet+MavZbv64Jnyb6NXrghe1edGdRO2uTXpzlqlJle3Rj2T1yD79vqNSYG0RbQaUoeJMFzcm1id9tUKxHtHdxVQuXAsPLZ8exTd1Aw2XGCv6Ks5Paefv8Bmv6z0EgRAAA='
+    $spec = $runtimePatch | ConvertFrom-Json
+    $pending = @()
+    foreach ($entry in $spec.patches) {
+        $path = Join-Path $sourceRoot $entry.path
+        Ensure (Test-Path -LiteralPath $path -PathType Leaf) ('Runtime source missing: ' + $path)
+        $original = [IO.File]::ReadAllText($path)
+        $usedCRLF = $original.Contains("`r`n")
+        $text = $original.Replace("`r`n", "`n")
+        if ($text.Contains($spec.marker)) {
+            foreach ($edit in $entry.edits) {
+                Ensure ($text.Contains($edit.after)) ('Incomplete or changed runtime patch: ' + $path)
+            }
+            continue
+        }
+        foreach ($edit in $entry.edits) {
+            $count = [regex]::Matches($text, [regex]::Escape($edit.before)).Count
+            Ensure ($count -eq 1) ('Unsupported runtime source layout: ' + $path + '. No runtime files changed.')
+            $text = $text.Replace($edit.before, $edit.after)
+        }
+        if ($usedCRLF) { $text = $text.Replace("`n", "`r`n") }
+        $pending += @{ Path=$path; Text=$text }
+    }
+    # Validate every source before changing any file.
+    foreach ($change in $pending) {
+        Copy-Item -LiteralPath $change.Path -Destination ($change.Path + '.before-mtes-runtime-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss-ffff'))
+        Write-UTF8 $change.Path $change.Text
+    }
+    Write-UTF8 (Join-Path $sourceRoot $spec.header_path) $spec.header
+    Say 'Engine Simulator startup diagnostics installed.'
+}
+function Start-EngineSimulator([IO.FileInfo]$engineExe,[string]$build) {
+    $runtimeLog = Join-Path $build 'MotorTownEngineSim_runtime.log'
+    $scriptLog = Join-Path $build 'error_log.log'
+    $stamp = Get-Date -Format 'yyyy-MM-dd-HH-mm-ss-ffff'
+    foreach ($path in @($runtimeLog,$scriptLog)) {
+        if (Test-Path -LiteralPath $path) {
+            Copy-Item -LiteralPath $path -Destination (Join-Path $Logs ($stamp + '-previous-' + (Split-Path $path -Leaf)))
+            Remove-Item -LiteralPath $path
+        }
+    }
+    Say 'Launching Engine Simulator and checking startup...'
+    $engineProcess = Start-Process -FilePath $engineExe.FullName -WorkingDirectory $build -PassThru
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $ready = $false
+    $failed = $false
+    do {
+        $engineProcess.Refresh()
+        if (Test-Path -LiteralPath $runtimeLog) {
+            $runtimeText = [string](Get-Content -LiteralPath $runtimeLog -Raw -ErrorAction SilentlyContinue)
+            $ready = $runtimeText -match '(?m)^MTES_STARTUP_READY\r?$'
+            $failed = $runtimeText -match '(?m)^RUNTIME FAILED:'
+        }
+        if ($ready -or $failed -or $engineProcess.HasExited) { break }
+        Start-Sleep -Milliseconds 250
+    } while ($timer.Elapsed.TotalSeconds -lt 30)
+    foreach ($path in @($runtimeLog,$scriptLog)) {
+        if (Test-Path -LiteralPath $path) {
+            Say ('Runtime report: ' + $path)
+            Get-Content -LiteralPath $path -Tail 60 | ForEach-Object { Write-Host $_ }
+            Copy-Item -LiteralPath $path -Destination (Join-Path $Logs ($stamp + '-' + (Split-Path $path -Leaf)))
+        }
+    }
+    if ($failed) { throw 'Engine Simulator reported a runtime failure. See the runtime report above.' }
+    if ($engineProcess.HasExited) {
+        $engineProcess.WaitForExit()
+        $code = $engineProcess.ExitCode
+        throw ('Engine Simulator exited during the startup check (exit ' + $code + ', ' + ('0x{0:X8}' -f $code) + '). See the runtime report above.')
+    }
+    if ($ready) {
+        Say 'Engine Simulator initialization completed. Start Motor Town normally in Steam; telemetry/audio synchronization is still unverified.'
+    } else {
+        Write-Host ('[MTES] Engine Simulator is still initializing. Last recorded stage is above. Live runtime log: ' + $runtimeLog) -ForegroundColor Yellow
+    }
 }
 function Ensure-SdlDev([string]$name,[string]$folder,[string]$header,[string]$library,
                        [string]$url,[string]$expectedSha) {
@@ -296,13 +385,8 @@ try {
     $vcpkgToolchain = Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake'
     Ensure (Test-Path $vcpkgToolchain) 'vcpkg CMake toolchain missing.'
 
-    Say 'Downloading Engine Simulator source (including submodules)...'
-    if (-not (Test-Path (Join-Path $Repo '.git'))) {
-        Ensure (-not (Test-Path $Repo)) ('Existing non-Git directory: ' + $Repo)
-        Run $git @('clone','--recurse-submodules','https://github.com/ange-yaghi/engine-sim.git',$Repo)
-    } else {
-        Run $git @('-C',$Repo,'submodule','update','--init','--recursive')
-    }
+    Say 'Checking Engine Simulator source (reusing the existing checkout)...'
+    Ensure-EngineSource $git $Repo $EngineSimSource
     $cpp = Join-Path $Repo 'src\engine_sim_application.cpp'
     Ensure (Test-Path $cpp) 'Original Engine Simulator C++ source missing.'
     $contents = [IO.File]::ReadAllText($cpp)
@@ -316,8 +400,8 @@ try {
         $start = $contents.IndexOf($funcStart,[StringComparison]::Ordinal)
         $end = if ($start -ge 0) { $contents.IndexOf($funcEnd,$start,[StringComparison]::Ordinal) } else { -1 }
         Ensure ($start -ge 0 -and $end -gt $start) 'Unable to find supported Engine Simulator input function boundaries. No source changes made.'
-        $over = Decode 'H4sIAAAAAAAC/51UTW/bMAy951fwVDiHOu1hlxTpgLVZ0UOAogm2Y6DIjC1MH4ZENwiG/vdRsuc5bZA11cHWB/lIPT5xBDwmE1is5sv1t+fH+4f5+sf1FIIWLwhUIYimUA6CMo0W5DyQg4WLk5XbWdhVaIFQo0Hye1ABtHrBfNTBrhigc1XOgkcjlA0Jt0TbKIswt2X8LfsA0plNE6L9pI2NyaLHHESvq31QMoDwCI0l18gKixuG5zxq7ySGAM7qPWyd1m4XQFEA6YX9FSqxJXh+WrSwv9M3jkCcqoSNcxoM/RThzlmLkrCAGWyFDnjT2y5o1d/c0L99tYXMoygG55mh8XgQJo538OSbAXoc0tlAbTJM34xdct9Yq2wJFxdpVRu4ncGXq/zq0NOs+5Jd3pZILc3ZOC0eS6siwQtXNDptmjVasdEpDWdPQPGChCf0qQz50O8NO0dci711+RmhOvvK6ePG8XxZYwcFX1kEXOHplFnJWnLGMIXT3PRRvKOk0r+AA/jT1K5YUMGoENg5cikrYUt8QOGzy+vxeb4B6U43JKsnz+JtPGac/XuMmNQSiaIQYqZcEgZbHm4nRpgGqvhqpPE4FUpiq40UPEGwJsk7nR0GGmTx2s+QS570fijmt1LnZ/tdKM29QKOlrmvEJiAMgtQuID9UP2gkhQqirpnCkJ8lqA9rsNPU/+0/LffzHt1xtA/V+byiHuqpreTr6A81EQt3CAYAAA=='
-        $hdr = Decode 'H4sIAAAAAAAC/3VU204bMRB936+YgEQ3os2t6guBSFQgykNaBFGpVFWR2Z1N3O7aK3vcEEH+veO9ZI2U7sPKnsvxOTNjD4cwX1w/LD/f317dXC+/j6NjmaWYwfLx9uvHCe9UkrsU4XwjVao3drCeRceoUpkFvsySQVHMAlNCssA3hkIQ50ZKFGhLkSC8RJzmEoI5LTDHAsls2Qj8pdo95QimLOACRoPRNLTS2mgiXgSuJ61zME4pqVZsz0RucRrtplE0HMJijYDPpTaEBjZGElrQKt8CaQZDSJwxqAicRfPOAmHBsYLJpNJgQtpsBx7mHn/zDiwJPpsV/EGyUxBs0GWJKaxYGRTOEihNkKP4y8eqlVQIwqVSt/wGUc0WRRooj8MqnGhHfa7F22Z4oclamI7Xz/nlj+Xd5eILnML4Fwt/2dX1uHr8dn8Fii03yLhFecfVv4zb8PcdRL9OkBnEHM4lhddXTpxBG9tnpuSMaovqoy2lZ2eyaTtIFVcG3rK8uINmVkdzzcuF3qjrqhQPslhSq3NAz3QUEOhJ9d/TanCwcqUEBzQuyW1DJXgsUj8OtTHXHFj9sNTJunNUZ8SS1c06IL/hcg/8sDXL/YTxvkX3S4/WP8TQA3eAvQuWzbdqfORr2auLZTOpePLi5qg+u6pU/x0IaSn4uD2987o7e7Yw+TQajUKkN+yD8E4RjL0tbmX1fMdPTiDYjw9KTLTiyRaO74zSG64p3wOSyTIRls73FZ/Vk+Avf6xcnpdk+kGD637MKoTTmolffoDWMTl0dKV3f7dD5rW/yeDHhBOOkfNCcwPUPFq7aAd8l4XSaltoZ2H/HkX/AFj/9ysMBQAA'
+        $over = Decode 'H4sIAAAAAAACA51UTW/bMAy951fwVDiHOu1hlxTpgLVZ0UOAogm2Y6DIjC1MH4ZENwiG/vdRsuc5bZA11cHWB/lIPT5xBDwmE1is5sv1t+fH+4f5+sf1FIIWLwhUIYimUA6CMo0W5DyQg4WLk5XbWdhVaIFQo0Hye1ABtHrBfNTBrhigc1XOgkcjlA0Jt0TbKIswt2X8LfsA0plNE6L9pI2NyaLHHESvq31QMoDwCI0l18gKixuG5zxq7ySGAM7qPWyd1m4XQFEA6YX9FSqxJXh+WrSwv9M3jkCcqoSNcxoM/RThzlmLkrCAGWyFDnjT2y5o1d/c0L99tYXMoygG55mh8XgQJo538OSbAXoc0tlAbTJM34xdct9Yq2wJFxdpVRu4ncGXq/zq0NOs+5Jd3pZILc3ZOC0eS6siwQtXNDptmjVasdEpDWdPQPGChCf0qQz50O8NO0dci711+RmhOvvK6ePG8XxZYwcFX1kEXOHplFnJWnLGMIXT3PRRvKOk0r+AA/jT1K5YUMGoENg5cikrYUt8QOGzy+vxeb4B6U43JKsnz+JtPGac/XuMmNQSiaIQYqZcEgZbHm4nRpgGqvhqpPE4FUpiq40UPEGwJsk7nR0GGmTx2s+QS570fijmt1LnZ/tdKM29QKOlrmvEJiAMgtQuID9UP2gkhQqirpnCkJ8lqA9rsNPU/+0/LffzHt1xtA/V+byiHuqpreTr6A81EQt3CAYAAA=='
+        $hdr = Decode 'H4sIAAAAAAACA3VU204bMRB936+YgEQ3os2t6guBSFQgykNaBFGpVFWR2Z1N3O7aK3vcEEH+veO9ZI2U7sPKnsvxOTNjD4cwX1w/LD/f317dXC+/j6NjmaWYwfLx9uvHCe9UkrsU4XwjVao3drCeRceoUpkFvsySQVHMAlNCssA3hkIQ50ZKFGhLkSC8RJzmEoI5LTDHAsls2Qj8pdo95QimLOACRoPRNLTS2mgiXgSuJ61zME4pqVZsz0RucRrtplE0HMJijYDPpTaEBjZGElrQKt8CaQZDSJwxqAicRfPOAmHBsYLJpNJgQtpsBx7mHn/zDiwJPpsV/EGyUxBs0GWJKaxYGRTOEihNkKP4y8eqlVQIwqVSt/wGUc0WRRooj8MqnGhHfa7F22Z4oclamI7Xz/nlj+Xd5eILnML4Fwt/2dX1uHr8dn8Fii03yLhFecfVv4zb8PcdRL9OkBnEHM4lhddXTpxBG9tnpuSMaovqoy2lZ2eyaTtIFVcG3rK8uINmVkdzzcuF3qjrqhQPslhSq3NAz3QUEOhJ9d/TanCwcqUEBzQuyW1DJXgsUj8OtTHXHFj9sNTJunNUZ8SS1c06IL/hcg/8sDXL/YTxvkX3S4/WP8TQA3eAvQuWzbdqfORr2auLZTOpePLi5qg+u6pU/x0IaSn4uD2987o7e7Yw+TQajUKkN+yD8E4RjL0tbmX1fMdPTiDYjw9KTLTiyRaO74zSG64p3wOSyTIRls73FZ/Vk+Avf6xcnpdk+kGD637MKoTTmolffoDWMTl0dKV3f7dD5rW/yeDHhBOOkfNCcwPUPFq7aAd8l4XSaltoZ2H/HkX/AFj/9ysMBQAA'
         $contents = $contents.Insert($end,$over)
         $start = $contents.IndexOf($funcStart,[StringComparison]::Ordinal)
         $contents = $contents.Insert($start, $hdr + "`n")
@@ -344,6 +428,14 @@ try {
         throw 'Piranha path.cpp changed unexpectedly; refusing source patch.'
     }
 
+    Install-RuntimeDiagnostics $Repo
+    $runningEngine = @(Get-Process -Name 'engine-sim-app' -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and $_.Path.StartsWith($Repo + '\', [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($runningEngine.Count -gt 0) {
+        Write-Host '[MTES] Close the existing Engine Simulator window to update its executable. Setup will continue automatically.' -ForegroundColor Yellow
+        $runningEngine | Wait-Process -ErrorAction SilentlyContinue
+    }
     Say 'Building Engine Simulator (this can take substantial disk space)...'
     $build = Join-Path $Repo 'build-mtes'
     Run $cmake @('-S',$Repo,'-B',$build,'--fresh','-G',$vs.Generator,'-A','x64',
@@ -416,7 +508,7 @@ try {
     $modRoot = Join-Path $modsParent 'Mods\MotorTownEngineSim'
     $modScripts = Join-Path $modRoot 'Scripts'
     New-Item -ItemType Directory -Path $modScripts -Force | Out-Null
-    $lua = Decode 'H4sIAAAAAAAC/8Ua/W/buPV3/xWECgPSTladXHvDeZcCXeu2wZo0qN1uRZoFjETbvMiiJtFOsqL3t+89fomS5aS3HnBGENvk4/v+4pNHI3IipKjIXNwUZPSMTIslLxiZ8fUmp7gRipIVo1psqpSRLatqLoqISJazNZPVHWG3pagkq5LBaES24+QgJjUvljkblTm9Y9XfyIfpk9kM4VjF16yQNCc3XK7IWyHK4+I1XbP5qmI0+ycsvmRwSKF6KVhNCiFJuqLFEkmveJozUq7uap7WBFi7qbhkhBZ3ZAlISFkBq5XkrE4GiOFdKYFXmk/IjEmgT1NJKrbIWSpZRkoqVzWhC2Cd5EJcA8+ESiJXjGScLgtRS57CzlJxM72l6zIHjsSCnD2fvyGzT6fz5/8iosjvSIhsgmr4ggNiT5/wPc9IAczV0QTREPL+7ORSITgigdb1C7EuRQF6SV5sqgreASQY5CIFPXnQBc/N4vzN+3fz+dvp7s7x69Pj+fG7U3/HHpqenMGKqJMlk6zYhsH85CyIUI3+2hQXB3yhNK/OgEKKATAO6uWFDINzJR+Kp9kHT7kgp0IDZ7wC7YrqLgGNoV/ASk2vcpYlnwtAjHgqJjdVMWBF5lh7Oz2Zzt9/Av4UliQhwefPu3Qundcl8lZaHb2c/v3D68u3714/eLyxa+0jyGktPxrv8rW5pmWJXuGvKViabxAyCKxyF5siRV9DdwlzoKYlNZsAykWCYRQ6XmMSUKMPUPai0TK+FhPl2SEYJqPwHgw/jYbr0TAjwzeT4clkOCNBFBMkBHicYvXRNBc1C/UK6vgh0wWoL0Sl9YbI8FhXsi3NeRaKq18d0/CZHCndKO6NXcmC5jVzlDUWcR2TLaihhC95aHGGkT0DqCbH9UdFIsKzvqfAaYjxDBEcEVltWC9/a7a+YhUyGKuAizrkK1Zvcnk/D+d48KKhj0Jet4QzWKx0ZhXdo48nTDGXW/SWsBJCxmrBocYIwwUMQfyMIC1iqNm2HlOdIEAKBFYbCzyN2Y9repPlmsp0Bcb+9zC5+AEiPBPOO4CqQ7FrOZ8evhpqRrlmwVdwRxMGolcbKhleqmTY+JGGUYtA58vXltV6rOWY0zDXEI94EB3oNZMv8KsHhMq5hG2oSQeHviI8E2jHVogirY4rKEbXLU3gS0FMXolqStPVmS41dw1nWHyi1oGGy3qTpqyutd7uE8p/GY0iXhTt1SmcDaPJXMwkRPOy55Tz246UhrwKInlXslCZDz0gqBWuoJ1+/JeyzPkjbaAfyMEFZkP40kd8sEcElREG93Jq7aiVDOLONqBfkHSTSk9SS8SPULRhJ0o1t90gxcVex6xTUWmlxATagKzlmUbeSS5uIAKiybLeXGFw0dF/x6OfLwJIwIF/QCGzFWJ0YLlEvErjVbnuqBtlaLYwnNU3plJ0e82E1y4OfLUoHxyOG62B+pHIZAFMhIpMjCGBuTR6AM/Pe9Fo/nxM6F92ty4Zy76dzJOngz5H8sit6a3uVtwCL9oLOV9zqZZ8OnaXZzlrw0taQdvTXqtYhqUweIhfY9iWT2r1OEPLVSWkBKJ7rN3sO/PaJV6UG7lr9j0Yf4/tHYqHBPzr0x0UihUKqSRnFd4MDJf34/lp/Ecadtd2320mviw4ZoF9ZrritfZ0BOkEZ2vpqln7v81jYkqHUuicclMUmKVbGqhBBXCNCaKHdPDT07706WfGBrw3PUIHnwq43YTmBuZnuxQY5dijqupNILWoKg5BbxzNfLVaVl+JX+W9u1an/teMFd01L2fTQjd7JVzp+G1MMlba5mqnumO7gcpDlOdS6KoXmqbheZZBWwdtQ3TRqiK+vz540HSm7bpv25rezgdfEq9GSQ33pFBfEtudS+w6O15SXtUGqNvIaGKqlTwy6sBefqdMa7it8Yv+htlTn2oVFLTuFYoNHlAe3926EiJntNjTRxhZVMg1snwxhajJSbEXjV93pGxLUdEC28Od0k1G2hHIX8hh73EQTJ19Rsb7u57eou3apx6d0J7ux3vpI+QXoAm60F+ekcOn4/HY9JxGntFBbyPVx1NTDf4IxoCwx9nBd/DVJNQuX791PeXbsX+bydSlxWWkc2Tp4vxRd8W2sV/uxaOuzSak4C22vOJb7IJIvd+L5+u9u032O3/kZULN4YP86XSUQHzBnS8MhvWEDDHfDOtAh0NseHeZS1si2ot5nxn61rtrppbp8ANPGPc65qZmFRiDavfQ6dls99oW53g4Y1uIHFpwyM0521K4lH6YktQOzuBmRbeCZziswTFjUfMtIzcrcLUR5DeWwr26oji7pHmy546m+vtOs993mVJb3XItqtb6GscsO51oQ6+BzCrgtA/BluGk9JtwmLK8i6XEz0G0P2ZUEVXK146iJkAJdu3Rw9b2vnf7Co1Xs4X3o5iMW03DStR+af/++uDV0W60x65nCGl8tVPkaKLiGlLTlf7kdwBm85nd6+rAgSnl/QJg+GHQe8vVQpsMdLSbpiDgMSB61hM3JOJ5S80aZaKbLjcpBsBmw4fzWrL2BLk5YUH8Y17r1h4vN8csiLHxMgzO1OjfzuwnesjYZCGzjGONTZ7ryUYUNcefb6R4jD1nxTNm57ATlPGojamRNIJ1p+zA9Z/98Ha3c8jK0X/I7hpGjdfidfzOc9smi6OHanFeWKNqPagj0c7oTFHp7cDVNLgZfocgbtNhQ2XS9wM/xDDDYnvULhAn8+nsgAyTHxfw7wn8y+DvcxHETgf9mJVnqgZhHOPTAsmVwexsQxM78mbjfW20kYkrB7TzcDf6h9i+CVozHQXZhwg3zIAcKUfNoj/69gf1CNarWLDSdejrrUzNtL9neLd3gtzp+lcsL6HUYK/A/rPh0J8GH6Zv9KI3qTdSGegEYkEHzQsB7gHFzhUgf9jlj/J07dRcmW5Nsd+ZUdtJc+qBvILU8gq8Vb5bgFfYhwJd+kHURaJJlmmnpnT9E7wE/tTYz1NO85Qlbj9aiZ3GvcdDfqLzHiK4xzT7xvhlOvnH4SVqk94U/sOEZlRo5u2m9zCX2j9DIl5/3CvPzkXW5Mzj+nkYPJ6lFS/lY2e65GT+0bUBys6QO0UVBqfNUc+cXaU0jPwJWqBwjcZWuikK7mJteVQgvx21ntS1OG0/wkNwt9Ww1D/I6Li4BTdOYr6qIvv7dbNXZl2zpdDXtNB7ULTtqFLVNtXajS2beBiUgW+wjG/mYokfzbXSZE5FZtwh7jUC38SBq5aajeRHy4hDBDdGTdBHbT8+xuukY8GDgJq0Stb0FnWnP/MiPGjqT+RnZq8NuY9XV6QH5vJwjGYlG/UQukFifipwF0PlXkCjwqHeVEKZmOR4eYBWI/HtZQrhEQnVhcaRaY0/9NzOEbEWOUIFDPqcZl8hV7XKjmD2/kxC36htyvCGL6rpeK+LD9QKcMOUqSvTzu8wrjY8z/SvMfAnFCOpKBAs8KpYMfvkRqGcmp96EAoUtywhcyuJ6fBcOdfq38t5+HTs9eXdAoqJHtKXS4pYpXfyoX3koxibqR9nQPRBF5B1u01AFXVSH375HzkP1DX6IgAA'
+    $lua = Decode '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'
     $luaDst = Join-Path $modScripts 'main.lua'
     if (Test-Path $luaDst) {
         Copy-Item $luaDst ($luaDst + '.backup-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm'))
@@ -436,10 +528,9 @@ try {
     Say ('EngineSim: ' + $engineExe.FullName)
     Say ('Diagnostic file after driving: ' + (Join-Path $env:TEMP 'MotorTownEngineSim_diagnostics.txt'))
     if (-not $NoLaunch) {
-        Say 'Launching Engine Simulator. Then start Motor Town normally in Steam.'
-        Start-Process -FilePath $engineExe.FullName -WorkingDirectory $build
+        Start-EngineSimulator $engineExe $build
     }
-    Write-Host 'INSTALL FINISHED - NOT YET GAME-TESTED' -ForegroundColor Green
+    Write-Host 'SETUP FINISHED - GAME / AUDIO STILL UNVERIFIED' -ForegroundColor Yellow
     exit 0
 } catch {
     Write-Host ('INSTALL FAILED: ' + $_.Exception.Message) -ForegroundColor Red

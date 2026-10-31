@@ -1,8 +1,8 @@
 # Motor Town + Engine Simulator Bridge
 
-Experimental Windows mod project to synchronize [Engine Simulator](https://github.com/ange-yaghi/engine-sim) combustion audio with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
+Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Status: experimental prototype.** The source-level patch and installer packaging have been checked, but successful Windows compilation, telemetry detection on current game builds, and live in-game audio have **not** been verified. Do not treat this as a finished playable mod.
+**Version: experimental v0.2.7.** Windows compilation and the DirectX runtime installation were confirmed in the v0.2.6 installation log. An empty cropped screenshot was subsequently supplied; runtime behavior and cause remain unknown. This version adds startup logging and error checks. Telemetry detection and synchronized live audio have **not** been verified.
 
 ## Installation
 
@@ -10,6 +10,10 @@ Experimental Windows mod project to synchronize [Engine Simulator](https://githu
 2. Double-click the BAT on Windows 11 and accept any required UAC prompt.
 3. The installer locates Motor Town, installs build dependencies if needed, downloads and patches Engine Simulator, builds it, and installs the UE4SS bridge.
 4. Motor Town may need to be closed while its files are updated. The installer will wait rather than force-close it.
+
+Fresh installs clone `karpuzikov/engine-sim`. Existing installs switch their `origin` remote to that fork while preserving the checkout, submodules, local patches, dependencies and build files. Third-party submodules continue to use their own upstream repositories.
+
+If startup fails or remains blank, the installer prints the last startup stage and any engine-script errors into its installation log. The live runtime log is `source/engine-sim/build-mtes/MotorTownEngineSim_runtime.log` under the project directory. It records graphics, asset, engine-script and audio initialization separately. Startup readiness does not verify rendering, sound or game telemetry.
 
 **Known limitation:** No fully native spatial audio replacement yet; the simulator runs as a separate audio source. Motor Town's game telemetry field names are not confirmed for all versions; see `bridge/README.md`.
 
@@ -20,6 +24,8 @@ Experimental Windows mod project to synchronize [Engine Simulator](https://githu
 - `bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua`: UE4SS telemetry producer.
 - `bridge/patch_engine_sim.py`: source patcher for Engine Simulator.
 - `bridge/tests/test_patch.py`: patching tests.
+- `bridge/tests/test_runtime_patch.py`: executable startup failure/success and safe patching checks.
+- `bridge/package_installer.py`: regenerate the embedded source payloads and BAT after edits.
 - `bridge/README.md`: bridge design and diagnostic instructions.
 - `archive/MotorTown_EngineSim_Bridge_Prototype_v0.1.zip`: earlier bridge source package, if included.
 

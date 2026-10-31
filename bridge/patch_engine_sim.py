@@ -13,6 +13,130 @@ INCLUDE_ANCHOR = '#include "../include/engine_sim_application.h"'
 FUNCTION_START = 'void EngineSimApplication::processEngineInput() {'
 FUNCTION_END = '\n}\n\nvoid EngineSimApplication::renderScene() {'
 MARK = '// MTES_BRIDGE_V1'
+RUNTIME_MARK = '// MTES_RUNTIME_V1'
+
+RUNTIME_HEADER = r'''// MTES_RUNTIME_V1
+#pragma once
+#include <exception>
+#include <fstream>
+#include <stdexcept>
+#include <string>
+
+inline void mtesRuntimeLog(const std::string &message) {
+    // A relative filename also works when the user's Documents path is Unicode.
+    std::ofstream log("MotorTownEngineSim_runtime.log", std::ios::app);
+    log << message << std::endl;
+}
+'''
+
+RUNTIME_MAIN_BODY = r'''    std::ofstream("MotorTownEngineSim_runtime.log", std::ios::trunc).close();
+    mtesRuntimeLog("MotorTown EngineSim runtime v0.2.7");
+    try {
+        mtesRuntimeLog("Initializing Engine Simulator");
+        // Delta's destructors require explicit teardown and are unsafe after a
+        // partial initialization. On failure, report it and let process exit
+        // reclaim resources; do not unwind a half-initialized application.
+        auto *application = new EngineSimApplication;
+        application->initialize((void *)&hInstance, ysContextObject::DeviceAPI::DirectX11);
+        mtesRuntimeLog("MTES_STARTUP_READY");
+        application->run();
+        mtesRuntimeLog("Engine Simulator closed");
+        application->destroy();
+        delete application;
+        return 0;
+    }
+    catch (const std::exception &error) {
+        mtesRuntimeLog(std::string("RUNTIME FAILED: ") + error.what());
+        MessageBoxA(nullptr, error.what(), "MotorTown EngineSim startup failed", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    catch (...) {
+        mtesRuntimeLog("RUNTIME FAILED: unknown C++ exception");
+        MessageBoxA(nullptr, "Engine Simulator failed. See MotorTownEngineSim_runtime.log.",
+            "MotorTown EngineSim startup failed", MB_OK | MB_ICONERROR);
+        return 1;
+    }'''
+
+
+def runtime_spec() -> dict:
+    """One patch definition shared by Python and the embedded PowerShell installer."""
+    include = '#include "../include/engine_sim_application.h"'
+    return {
+        "marker": RUNTIME_MARK,
+        "header_path": "include/mtes_runtime.h",
+        "header": RUNTIME_HEADER,
+        "patches": [
+            {"path": "src/main.cpp", "edits": [
+                {"before": include,
+                 "after": include + '\n#include "../include/mtes_runtime.h"\n' + RUNTIME_MARK},
+                {"before": '''    EngineSimApplication application;
+    application.initialize((void *)&hInstance, ysContextObject::DeviceAPI::DirectX11);
+    application.run();
+    application.destroy();
+
+    return 0;''', "after": RUNTIME_MAIN_BODY},
+            ]},
+            {"path": "src/engine_sim_application.cpp", "edits": [
+                {"before": include,
+                 "after": include + '\n#include "../include/mtes_runtime.h"\n' + RUNTIME_MARK},
+                {"before": '    m_engine.CreateGameWindow(settings);', "after": '''    mtesRuntimeLog("Creating graphics/audio window; shaders=" + shaderPath);
+    const ysError mtesWindowError = m_engine.CreateGameWindow(settings);
+    if (mtesWindowError != ysError::None) {
+        throw std::runtime_error("Graphics/audio initialization failed (Delta error " +
+            std::to_string(static_cast<int>(mtesWindowError)) + "). Shader directory: " + shaderPath);
+    }
+    mtesRuntimeLog("Graphics/audio window initialized");'''},
+                {"before": '    m_assetManager.CompileInterchangeFile((m_assetPath + "/assets").c_str(), 1.0f, true);',
+                 "after": '''    mtesRuntimeLog("Loading graphics assets: " + m_assetPath);
+    m_assetManager.CompileInterchangeFile((m_assetPath + "/assets").c_str(), 1.0f, true);'''},
+                {"before": '    m_assetManager.LoadSceneFile((m_assetPath + "/assets").c_str(), true);',
+                 "after": '''    m_assetManager.LoadSceneFile((m_assetPath + "/assets").c_str(), true);
+    mtesRuntimeLog("Graphics assets loaded");'''},
+                {"before": '    const bool compiled = compiler.compile("../assets/main.mr");',
+                 "after": '''    mtesRuntimeLog("Compiling engine script: ../assets/main.mr (details in error_log.log)");
+    const bool compiled = compiler.compile("../assets/main.mr");'''},
+                {"before": '''#endif /* ATG_ENGINE_SIM_PIRANHA_ENABLED */
+
+    if (vehicle == nullptr) {''', "after": '''#endif /* ATG_ENGINE_SIM_PIRANHA_ENABLED */
+
+    if (engine == nullptr) {
+        throw std::runtime_error("The engine script did not create an engine. See error_log.log in build-mtes.");
+    }
+    mtesRuntimeLog("Engine script loaded");
+
+    if (vehicle == nullptr) {'''},
+                {"before": '    m_simulator->startAudioRenderingThread();', "after": '''    mtesRuntimeLog("Starting simulated audio renderer");
+    m_simulator->startAudioRenderingThread();
+    mtesRuntimeLog("Simulated audio renderer started");'''},
+            ]},
+        ],
+    }
+
+
+def patch_runtime(root: Path) -> None:
+    """Add startup logging and guards without changing the telemetry/physics patch."""
+    spec = runtime_spec()
+    pending = []
+    for entry in spec["patches"]:
+        path = root / entry["path"]
+        raw = path.read_bytes()
+        text = raw.decode("utf-8").replace("\r\n", "\n")
+        if spec["marker"] in text:
+            if not all(edit["after"] in text for edit in entry["edits"]):
+                raise RuntimeError(f"Incomplete or changed runtime patch: {path}")
+            continue
+        for edit in entry["edits"]:
+            if text.count(edit["before"]) != 1:
+                raise RuntimeError(f"Unsupported runtime source layout: {path}. No files changed.")
+            text = text.replace(edit["before"], edit["after"], 1)
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        pending.append((path, text.replace("\n", newline).encode("utf-8")))
+    # Validate every source first so an unsupported revision cannot be half-patched.
+    for path, data in pending:
+        backup = path.with_name(path.name + ".before-mtes-runtime-" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f"))
+        shutil.copy2(path, backup)
+        path.write_bytes(data)
+    (root / spec["header_path"]).write_text(spec["header"], encoding="utf-8")
 
 HEADER = r'''// MTES_BRIDGE_V1
 #ifdef _WIN32
@@ -118,4 +242,6 @@ def patch(root: Path) -> Path:
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         raise SystemExit('Usage: python patch_engine_sim.py PATH_TO_ENGINE_SIM_REPO')
-    patch(Path(sys.argv[1]).expanduser().resolve())
+    root = Path(sys.argv[1]).expanduser().resolve()
+    patch(root)
+    patch_runtime(root)

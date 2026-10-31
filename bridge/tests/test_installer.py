@@ -2,6 +2,9 @@
 
 import base64
 import gzip
+import importlib.util
+import json
+import re
 import unittest
 from pathlib import Path
 
@@ -16,6 +19,15 @@ def embedded_installer() -> str:
 
 
 class InstallerTests(unittest.TestCase):
+    def test_bat_runtime_patch_matches_the_tested_source_patch(self):
+        spec = importlib.util.spec_from_file_location("patch_engine_sim", ROOT / "bridge/patch_engine_sim.py")
+        patcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(patcher)
+        match = re.search(r"\$runtimePatch = Decode '([^']+)'", embedded_installer())
+        self.assertIsNotNone(match, "BAT does not deliver startup diagnostics")
+        actual = json.loads(gzip.decompress(base64.b64decode(match.group(1))))
+        self.assertEqual(actual, patcher.runtime_spec())
+
     def test_bat_delivers_the_standalone_powershell_installer(self):
         source = (ROOT / "Install-MotorTownEngineSim.ps1").read_text(encoding="utf-8")
         self.assertEqual(embedded_installer().replace("\r\n", "\n"), source.replace("\r\n", "\n"))
@@ -63,7 +75,7 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, directx)
         install_call = installer.index("    Install-LegacyDirectX\n")
-        launch_call = installer.index("Start-Process -FilePath $engineExe.FullName")
+        launch_call = installer.index("        Start-EngineSimulator $engineExe $build")
         self.assertLess(install_call, launch_call)
 
 

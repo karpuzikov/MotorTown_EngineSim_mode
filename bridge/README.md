@@ -1,10 +1,10 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.1)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.7)
 
-**Status: source-level proof of concept, not game-tested or a ready-to-install audio mod.**
+**Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
 MIT-licensed Engine Simulator desktop application's RPM/dyno and throttle controls.
-It has not been validated against a running Motor Town installation or compiled
-with Engine Simulator's Windows dependencies.
+Windows compilation was confirmed by the user's v0.2.6 installation log.
+Runtime rendering, telemetry and audio synchronization remain unverified.
 
 ## What it does
 - Reads the **local player's** Motor Town vehicle through UE4SS reflection.
@@ -36,11 +36,12 @@ with Engine Simulator's Windows dependencies.
    `Motor Town/MotorTown/Binaries/Win64/ue4ss/Mods`.
 3. Ensure the mod is active in UE4SS (place `MotorTownEngineSim : 1` in
    `ue4ss/Mods/mods.txt` if your UE4SS build uses that file).
-4. Clone `https://github.com/ange-yaghi/engine-sim` **with submodules**:
-   `git clone --recurse-submodules https://github.com/ange-yaghi/engine-sim.git`
+4. Clone the user's fork **with submodules**:
+   `git clone --recurse-submodules https://github.com/karpuzikov/engine-sim.git`
 5. Run `python patch_engine_sim.py "C:\path\to\engine-sim"`.
-6. Build Engine Simulator according to its original README on Windows (CMake,
-   Visual Studio, SDL2, SDL2_image, Boost, Flex/Bison). Launch its built app.
+6. Build Engine Simulator according to its README on Windows (CMake,
+   Visual Studio, SDL2, SDL2_image, Boost, Flex/Bison). Launch with the build
+   directory (`build-mtes`, not `build-mtes/Release`) as its working directory.
 7. Launch Motor Town, enter a vehicle, and inspect
    `%TEMP%\MotorTownEngineSim_telemetry.txt`.
    Expected format: `MTES1 2000.000 0.2500 1 1790000000`.
@@ -49,9 +50,25 @@ with Engine Simulator's Windows dependencies.
 
 To uninstall: remove the UE4SS mod folder and restore Engine Simulator's backup
 `engine_sim_application.cpp.before-mtes-...` from the source directory.
+For the startup diagnostics patch, restore the `*.before-mtes-runtime-*` source
+backups as well, then rebuild.
+
+## Startup diagnostics (v0.2.7)
+
+The installer checks startup for up to 30 seconds. `MotorTownEngineSim_runtime.log`
+in `source/engine-sim/build-mtes` records the last completed initialization stage.
+`error_log.log` in the same directory contains engine-script compilation errors.
+Both reports are copied to the project's `logs` folder and printed into the
+installation transcript. A process still initializing after the check is reported
+as pending; it is not described as working. A readiness marker means initialization
+returned, not that rendering or audible synchronization has been tested.
+
+Regenerate embedded payloads with `python bridge/package_installer.py` and run
+`python -m unittest discover -s bridge/tests -v` after source changes.
 
 ## Relevant sources
-- Original Engine Simulator (MIT): https://github.com/ange-yaghi/engine-sim
+- Simulator source used by the installer: https://github.com/karpuzikov/engine-sim
+- Original Engine Simulator (MIT attribution): https://github.com/ange-yaghi/engine-sim
 - Motor Town UE4SS mod example: https://github.com/drpsyko101/MotorTownMods
 - UE4SS game-thread timers: https://docs.ue4ss.com/dev/lua-api/global-functions/delayedactions.html
 - Motor Town engine sound replacement proof: https://www.nexusmods.com/motortownbehindthewheel/mods/21
