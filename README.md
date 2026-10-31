@@ -19,10 +19,15 @@ If startup fails or remains blank, the installer prints the last startup stage a
 
 **Known limitation:** No fully native spatial audio replacement yet; the simulator runs as a separate audio source. Motor Town's game telemetry field names are not confirmed for all versions; see `bridge/README.md`.
 
+## If the game does not affect Engine Simulator
+
+With Motor Town running and the player seated in a vehicle, download and run `Collect-MotorTownEngineSim-Logs.bat`. Manual driving and autopilot are both valid for collecting diagnostics; no WASD input is required. It observes the telemetry file for three seconds and creates one `Connection_*.txt` report in the project's `logs` folder, then selects it in Explorer. The report includes UE4SS loading information, exporter diagnostics, packet freshness and values, and simulator startup logs. It does not reinstall anything or change game files/settings. An initialized simulator or a fresh packet does not prove synchronized audio or native sound replacement.
+
 ## Files
 
 - `Install-MotorTownEngineSim.bat`: single-file embedded PowerShell installer (latest launcher).
 - `Install-MotorTownEngineSim.ps1`: standalone installer source (for development).
+- `Collect-MotorTownEngineSim-Logs.bat`: single-file, read-only game connection diagnostic collector.
 - `bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua`: UE4SS telemetry producer.
 - `bridge/patch_engine_sim.py`: source patcher for Engine Simulator.
 - `bridge/tests/test_patch.py`: patching tests.

@@ -15,6 +15,10 @@ Runtime rendering, telemetry and audio synchronization remain unverified.
 - Leaves Motor Town's driving physics untouched.
 - Fails silent on telemetry loss and does not alter save files.
 
+Synchronization must use the vehicle's live engine state, including RPM and engine
+throttle under autopilot. Keyboard or WASD state is not a substitute for telemetry.
+Autopilot integration remains unverified until game-side values are captured.
+
 ## Limitations
 - Motor Town RPM/throttle property paths are **not yet verified** on game 0.7.19.
   Auto-discovery may choose the wrong property or none. Inspect
