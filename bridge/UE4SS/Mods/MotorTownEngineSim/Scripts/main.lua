@@ -424,6 +424,7 @@ end
 
 -- Same-game-process native DLL feed. The companion's MTES1 packet is kept
 -- unchanged. A missing gear is -99, never a guessed neutral (0).
+-- MTES3 adds the full EngineData UObject name for exact per-engine matching.
 local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
     nativeSequence = nativeSequence + 1
     local name = ""
@@ -434,17 +435,28 @@ local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
     local encoded = name:gsub(".", function(c) return string.format("%02X", c:byte()) end)
     if encoded == "" then encoded = "-" end
     local engineType, maxRpm = -1, 0
+    local engineAsset = ""
     if valid(vehicle) then
         local kind = path_value(vehicle, "EngineComponent.EngineData.EngineProperty.EngineType")
         local limit = path_value(vehicle, "EngineComponent.EngineData.EngineProperty.MaxRPM")
+        local data = path_value(vehicle, "EngineComponent.EngineData")
+        if valid(data) then
+            local ok, name = pcall(function() return data:GetFullName() end)
+            if ok and type(name) == "string" and #name <= 512 and
+               not name:find("[%c]") then engineAsset = name end
+        end
         if type(kind) == "number" and kind % 1 == 0 and kind >= 0 and kind <= 1000 then
             engineType = kind
         end
         if type(limit) == "number" and limit > 0 and limit <= 25000 then maxRpm = limit end
     end
-    local packet = string.format("MTES2 %s %d %.3f %.4f %d %d %s %d %.3f\n",
+    local encodedAsset = engineAsset:gsub(".", function(c)
+        return string.format("%02X", c:byte())
+    end)
+    if encodedAsset == "" then encodedAsset = "-" end
+    local packet = string.format("MTES3 %s %d %.3f %.4f %d %d %s %d %.3f %s\n",
         nativeSession, nativeSequence, rpm, throttle, running and 1 or 0, gear or -99,
-        encoded, engineType, maxRpm)
+        encoded, engineType, maxRpm, encodedAsset)
     local file = io.open(NATIVE_TELEMETRY, "w")
     if file then file:write(packet); file:close() end
 end

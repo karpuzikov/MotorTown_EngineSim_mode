@@ -156,6 +156,7 @@ if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' or
     enginePropertyFields.ForEachFunction = function() end
     enginePropertyFields.GetSuperStruct = function() return nil end
     local engineData = object({ EnginesSound = audioAsset, EngineProperty = engineProperty,
+        GetFullName = function() return 'MT_EngineData /Game/Engines/Boxer.Boxer' end,
         GetClass = function() return schema({'EnginesSound','EngineProperty'}, {}) end,
     })
     if scenario == 'deep_sound_and_gear' or scenario == 'crowded_audio_and_engine_profile' or

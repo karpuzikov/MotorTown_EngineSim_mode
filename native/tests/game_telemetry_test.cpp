@@ -22,6 +22,31 @@ int main(int argc, char **argv) {
     assert(sample->state.throttle == 0.8);
     assert(sample->state.ignition && sample->state.gear == 3);
     assert(sample->engine_type == 2 && sample->max_rpm == 2900.0);
+    assert(sample->engine_asset.empty()); // Original MTES2 packets stay valid.
+
+    // MTES3 adds a stable engine-data asset identity rather than guessing a
+    // script from the vehicle's transient actor instance name or RPM limit.
+    constexpr auto engineData = "4D545F456E67696E6544617461202F47616D652F456E67696E65732F426F7865722E426F786572";
+    const auto assetPacket = std::string("MTES3 AABBCCDDEEFF0011 2 2400 0.8 1 3 ") +
+        "54757363616E5F43 2 2900 " + engineData;
+    const auto stable = parse_game_telemetry(assetPacket);
+    assert(stable && stable->vehicle == "Tuscan_C");
+    assert(stable->engine_asset == "MT_EngineData /Game/Engines/Boxer.Boxer");
+    const auto missingAsset = parse_game_telemetry(
+        "MTES3 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 -1 0 -");
+    assert(missingAsset && missingAsset->engine_asset.empty());
+    assert(!parse_game_telemetry(
+        "MTES3 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 0Z"));
+    for (const std::string controlHex : {"01", "0B", "0C", "7F"}) {
+        assert(!parse_game_telemetry(
+            "MTES3 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 " +
+            controlHex));
+    }
+    assert(!parse_game_telemetry(
+        "MTES3 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900"));
+    assert(!parse_game_telemetry(
+        "MTES2 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 " +
+        std::string(engineData)));
 
     // Re-reading an unchanged file cannot artificially refresh stale game data.
     assert(!feed.accept(first, start + std::chrono::milliseconds(200)));

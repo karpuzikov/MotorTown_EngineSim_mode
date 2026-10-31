@@ -36,16 +36,25 @@ class TelemetryTests(unittest.TestCase):
 
     def test_native_feed_exposes_real_gear_without_changing_legacy_packet(self):
         native = self.native_sample('deep_sound_and_gear')
-        self.assertEqual(native[0], 'MTES2')
+        self.assertEqual(native[0], 'MTES3')
         self.assertRegex(native[1], r'^[0-9A-F]{16}$')
         self.assertEqual(native[2:7], ['1', '2400.000', '0.8000', '1', '3'])
         self.assertEqual(bytes.fromhex(native[7]).decode(), 'DoryWrecker_C test object')
-        self.assertEqual(native[8:], ['2', '2900.000'])
+        self.assertEqual(native[8:10], ['2', '2900.000'])
+        self.assertEqual(bytes.fromhex(native[10]).decode(),
+                         'MT_EngineData /Game/Engines/Boxer.Boxer')
 
     def test_native_feed_carries_engine_metadata_when_available(self):
         native = self.native_sample('crowded_audio_and_engine_profile')
         self.assertEqual(native[6], '3')
-        self.assertEqual(native[8:], ['2', '2900.000'])
+        self.assertEqual(native[8:10], ['2', '2900.000'])
+        self.assertEqual(bytes.fromhex(native[10]).decode(),
+                         'MT_EngineData /Game/Engines/Boxer.Boxer')
+
+    def test_native_feed_does_not_invent_missing_engine_identity(self):
+        native = self.native_sample('autopilot')
+        self.assertEqual(native[0], 'MTES3')
+        self.assertEqual(native[10], '-')
 
     def test_native_feed_rejects_unknown_gear_instead_of_assuming_neutral(self):
         native = self.native_sample('autopilot')
@@ -53,7 +62,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_native_feed_discovers_transmission_loaded_after_engine(self):
         native = self.native_sample('late_gear')
-        self.assertEqual(native[0], 'MTES2')
+        self.assertEqual(native[0], 'MTES3')
         self.assertEqual(native[2], '2')
         self.assertEqual(native[6], '3')
 

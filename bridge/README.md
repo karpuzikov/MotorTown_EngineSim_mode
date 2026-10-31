@@ -2,14 +2,17 @@
 
 ## Native telemetry bridge (development only)
 
-The same in-game Lua exporter also writes a separate `MTES2` packet to
+The same in-game Lua exporter now writes a separate `MTES3` packet to
 `%TEMP%\MotorTownEngineSim_native_telemetry.txt` every game tick (20 Hz). It
 carries the actual reflected gear, vehicle identity and basic engine metadata
-alongside RPM, throttle and ignition. Unknown gear is `-99`, which the native
+alongside RPM, throttle and ignition. It also includes an exact reflected
+`EngineData` UObject full name when available, for future curated per-engine
+`.mr` profile matching; unknown identities are not guessed. Unknown gear is `-99`, which the native
 DLL rejects rather than pretending the transmission is in neutral. The native
 UE4SS `on_update()` reader consumes this without an external application and
 ignores stale files. Each Lua exporter load has its own session token, so
-reloading the script can restart its packet sequence. The legacy `MTES1` file
+reloading the script can restart its packet sequence. Native `MTES2` parsing
+remains supported, and the legacy `MTES1` file
 remains compatible with v0.2.14.
 
 This is a transitional in-process integration, not procedural audio playback

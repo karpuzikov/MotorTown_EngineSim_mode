@@ -17,7 +17,7 @@ int nibble(char c) {
     return -1;
 }
 
-std::optional<std::string> decode_vehicle(const std::string &hex) {
+std::optional<std::string> decode_name(const std::string &hex) {
     if (hex.empty() || hex.size() > 1024 || hex.size() % 2 != 0) return std::nullopt;
     std::string vehicle;
     vehicle.reserve(hex.size() / 2);
@@ -26,7 +26,8 @@ std::optional<std::string> decode_vehicle(const std::string &hex) {
         const int lo = nibble(hex[i + 1]);
         if (hi < 0 || lo < 0) return std::nullopt;
         const auto c = static_cast<char>((hi << 4) | lo);
-        if (c == '\0' || c == '\r' || c == '\n') return std::nullopt;
+        const auto byte = static_cast<unsigned char>(c);
+        if (byte < 0x20 || byte == 0x7f) return std::nullopt;
         vehicle.push_back(c);
     }
     return vehicle;
@@ -34,15 +35,20 @@ std::optional<std::string> decode_vehicle(const std::string &hex) {
 } // namespace
 
 std::optional<GameTelemetrySample> parse_game_telemetry(std::string_view line) {
-    if (line.size() > 1200) return std::nullopt;
+    if (line.size() > 2400) return std::nullopt;
     std::istringstream input{std::string(line)};
     input.imbue(std::locale::classic());
-    std::string header, session, sequenceText, vehicleHex, extra;
+    std::string header, session, sequenceText, vehicleHex, assetHex, extra;
     GameTelemetrySample sample;
     int ignition = -1;
     if (!(input >> header >> session >> sequenceText >> sample.state.rpm >>
         sample.state.throttle >> ignition >> sample.state.gear >> vehicleHex >>
-        sample.engine_type >> sample.max_rpm) || (input >> extra)) return std::nullopt;
+        sample.engine_type >> sample.max_rpm)) return std::nullopt;
+    if (header == "MTES3") {
+        if (!(input >> assetHex)) return std::nullopt;
+    }
+    else if (header != "MTES2") return std::nullopt;
+    if (input >> extra) return std::nullopt;
     // Extraction into uint64_t accepts a minus sign on some standard
     // implementations, turning -1 into UINT64_MAX and poisoning the feed.
     if (session.size() != 16 ||
@@ -54,8 +60,10 @@ std::optional<GameTelemetrySample> parse_game_telemetry(std::string_view line) {
         sequenceText.data() + sequenceText.size(), sample.sequence);
     if (error != std::errc{} || end != sequenceText.data() + sequenceText.size())
         return std::nullopt;
-    const auto vehicle = decode_vehicle(vehicleHex);
-    if (header != "MTES2" || sample.sequence == 0 || !vehicle ||
+    const auto vehicle = decode_name(vehicleHex);
+    const auto asset = assetHex.empty() || assetHex == "-"
+        ? std::optional<std::string>{std::string{}} : decode_name(assetHex);
+    if (sample.sequence == 0 || !vehicle || !asset ||
         !std::isfinite(sample.state.rpm) || sample.state.rpm < 0 ||
         sample.state.rpm > 25000 || !std::isfinite(sample.state.throttle) ||
         sample.state.throttle < 0 || sample.state.throttle > 1 ||
@@ -67,6 +75,7 @@ std::optional<GameTelemetrySample> parse_game_telemetry(std::string_view line) {
     sample.state.ignition = ignition == 1;
     sample.session = std::move(session);
     sample.vehicle = std::move(*vehicle);
+    sample.engine_asset = std::move(*asset);
     return sample;
 }
 

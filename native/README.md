@@ -18,7 +18,7 @@ the mute/start and stop/restore operation order. No horn, tire, transmission
 or ambient emitter is ever targeted by this contract. The real Unreal adapter
 still has to implement its `StockEngineEmitter`/`ProceduralAudioSink` interfaces
 and discover an actual stock engine emitter before any muting can occur.
-The `NativeAudioPipeline` now joins the MTES2 parser, engine synthesizer and
+The `NativeAudioPipeline` now joins the native telemetry parser, engine synthesizer and
 sound-ownership controller in one tested path. Each 50-ms telemetry sequence
 advances synthesis once (rather than once per UE4SS frame), yielding nominal
 2205-frame 44.1-kHz PCM blocks. It stops and restores stock audio if vehicle
@@ -37,15 +37,30 @@ generate extra audio blocks; volume and emitter validity are checked on every
 callback. Missing data does not reset the per-session sequence high-water mark.
 The caller must pass `GameTelemetryReader::current(now)` (or `nullopt` after
 expiry), and the pipeline also expires unchanged samples after 250 ms.
-The experimental Lua exporter now also writes `MTES2` telemetry (vehicle
-identity, live gear, RPM, throttle, ignition, engine type and max RPM) to a
+The experimental Lua exporter now writes `MTES3` telemetry (vehicle
+identity, live gear, RPM, throttle, ignition, engine type, max RPM and the
+full reflected `EngineData` UObject identity) to a
 separate temp file. The native DLL polls that file in `on_update()` in the
 same game process. It rejects unknown gears, malformed packets and data older
 than 250 ms from the producer's write, tolerates Lua exporter reloads via a
-new session token, and logs observed gear transitions to UE4SS. The original `MTES1`
+new session token, and logs observed gear transitions to UE4SS. The reader
+continues accepting `MTES2` for compatibility, but those older packets lack
+the exact engine asset identity needed for automatic profile selection. The original `MTES1`
 companion packet is unchanged. This file handoff is temporary: direct native
-Motor Town reflection is still needed for the final mod. No automatic vehicle
-profile selection or Unreal audio routing is connected yet.
+Motor Town reflection is still needed for the final mod. No actual Unreal
+audio routing is connected yet.
+
+`ExactVehicleProfiles` adds a fail-closed vehicle-to-engine catalog. It loads
+`engine_profiles.tsv` beside the eventual mod assets, with one exact
+`EngineData` full name and one relative Engine Simulator `.mr` file per row,
+separated by a tab. All referenced scripts must exist inside that mod folder;
+duplicates, broken mappings, absolute paths and symlink escapes invalidate the
+catalog. A different game engine asset is **never** mapped from a similar RPM
+limit or an engine-type number. This is an adapter for installer-curated
+profiles, **not a populated Motor Town vehicle database**; without verified
+game engine identifiers and packaged scripts, the catalog selects nothing and
+the original engine sound remains in control. The user will not need to edit
+the catalog when the eventual native release is complete.
 
 The actual Engine Simulator backend **passed Windows builds and real-PCM smoke
 tests** using boxer-four, V8, and V10 engine profiles, including in-process
