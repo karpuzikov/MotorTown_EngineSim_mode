@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.3 experimental installer.
+Motor Town EngineSim Bridge v0.2.4 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -77,6 +77,26 @@ function Decode([string]$encoded) {
 }
 function Write-UTF8([string]$path,[string]$contents) {
     [IO.File]::WriteAllText($path,$contents,[Text.UTF8Encoding]::new($false))
+}
+function Ensure-SdlDev([string]$name,[string]$folder,[string]$header,[string]$library,
+                       [string]$url,[string]$expectedSha) {
+    $destination = Join-Path $Deps $name
+    $sdk = Join-Path $destination $folder
+    $headerFile = Join-Path $sdk ('include\' + $header)
+    $libFile = Join-Path $sdk ('lib\x64\' + $library)
+    $dllFile = Join-Path $sdk ('lib\x64\' + $library.Replace('.lib','.dll'))
+    if (-not ((Test-Path $headerFile) -and (Test-Path $libFile) -and (Test-Path $dllFile))) {
+        if ($SkipDependencyInstall) { throw ('Missing development SDK: ' + $name) }
+        $zip = Join-Path $Deps ($folder + '-VC.zip')
+        if (-not (Test-Path $zip) -or
+            (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expectedSha) {
+            Download $url $zip
+        }
+        Ensure ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -eq $expectedSha) ('SDK checksum mismatch: ' + $name)
+        Expand-Archive -LiteralPath $zip -DestinationPath $destination -Force
+    }
+    Ensure ((Test-Path $headerFile) -and (Test-Path $libFile) -and (Test-Path $dllFile)) ('SDK incomplete: ' + $name)
+    return @{ Include=(Join-Path $sdk 'include'); Library=$libFile; Runtime=$dllFile }
 }
 function Resolve-GameExe([string]$userPath) {
     $relative = 'MotorTown\Binaries\Win64\MotorTown-Win64-Shipping.exe'
@@ -217,6 +237,36 @@ try {
     }
     Ensure ([bool]$flex -and [bool]$bison) 'WinFlexBison executables missing.'
 
+    Say 'Checking SDL2 and SDL2_image development libraries...'
+    $sdl = Ensure-SdlDev 'SDL2' 'SDL2-2.32.10' 'SDL.h' 'SDL2.lib' `
+        'https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-devel-2.32.10-VC.zip' `
+        'af347939395a58b365846aaea27391e69f9ec9d4dd650d6ac40802159b418a6e'
+    $sdlImage = Ensure-SdlDev 'SDL2_image' 'SDL2_image-2.8.8' 'SDL_image.h' 'SDL2_image.lib' `
+        'https://github.com/libsdl-org/SDL_image/releases/download/release-2.8.8/SDL2_image-devel-2.8.8-VC.zip' `
+        '076cebe070c5762bff0c854d2307078e53348d0225e04748feeb7c944453a86e'
+
+    Say 'Checking Boost.Filesystem (static MSVC library)...'
+    $vcpkgRoot = Join-Path $Deps 'vcpkg'
+    $boostPrefix = Join-Path $vcpkgRoot 'installed\x64-windows-static-md'
+    $boostLibs = @(Get-ChildItem -Path (Join-Path $boostPrefix 'lib') -Filter '*boost_filesystem*.lib' -File -ErrorAction SilentlyContinue)
+    if ($boostLibs.Count -eq 0) {
+        if ($SkipDependencyInstall) { throw 'Boost.Filesystem missing. Remove -SkipDependencyInstall.' }
+        if (-not (Test-Path (Join-Path $vcpkgRoot '.git'))) {
+            Ensure (-not (Test-Path $vcpkgRoot)) ('Existing non-Git vcpkg directory: ' + $vcpkgRoot)
+            Run $git @('clone','--depth','1','https://github.com/microsoft/vcpkg.git',$vcpkgRoot)
+        }
+        $vcpkgExe = Join-Path $vcpkgRoot 'vcpkg.exe'
+        if (-not (Test-Path $vcpkgExe)) {
+            Run (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
+        }
+        Ensure (Test-Path $vcpkgExe) 'vcpkg bootstrap did not produce vcpkg.exe.'
+        Run $vcpkgExe @('install','boost-filesystem:x64-windows-static-md','--disable-metrics')
+        $boostLibs = @(Get-ChildItem -Path (Join-Path $boostPrefix 'lib') -Filter '*boost_filesystem*.lib' -File -ErrorAction SilentlyContinue)
+    }
+    Ensure ($boostLibs.Count -gt 0) 'Boost.Filesystem library missing after vcpkg installation.'
+    $vcpkgToolchain = Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake'
+    Ensure (Test-Path $vcpkgToolchain) 'vcpkg CMake toolchain missing.'
+
     Say 'Downloading Engine Simulator source (including submodules)...'
     if (-not (Test-Path (Join-Path $Repo '.git'))) {
         Ensure (-not (Test-Path $Repo)) ('Existing non-Git directory: ' + $Repo)
@@ -251,8 +301,13 @@ try {
 
     Say 'Building Engine Simulator (this can take substantial disk space)...'
     $build = Join-Path $Repo 'build-mtes'
-    Run $cmake @('-S',$Repo,'-B',$build,'-G',$vs.Generator,'-A','x64',
+    Run $cmake @('-S',$Repo,'-B',$build,'--fresh','-G',$vs.Generator,'-A','x64',
         ('-DFLEX_EXECUTABLE=' + $flex.FullName),('-DBISON_EXECUTABLE=' + $bison.FullName),
+        ('-DSDL2_INCLUDE_DIR=' + $sdl.Include),('-DSDL2_LIBRARY=' + $sdl.Library),
+        ('-DSDL2_IMAGE_INCLUDE_DIR=' + $sdlImage.Include),('-DSDL2_IMAGE_LIBRARY=' + $sdlImage.Library),
+        ('-DCMAKE_TOOLCHAIN_FILE=' + $vcpkgToolchain),
+        '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md',
+        ('-DBOOST_ROOT=' + $boostPrefix),
         '-DDISCORD_ENABLED=OFF','-DDTV=OFF',
         '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
     Run $cmake @('--build',$build,'--config','Release','--target','engine-sim-app','--parallel','6')
@@ -273,6 +328,8 @@ try {
     }
     $conf = (Relative $deltaBasic) + "`n" + (Relative $assetDir) + "`n"
     Write-UTF8 (Join-Path $exeDir 'delta.conf') $conf
+    Copy-Item -LiteralPath $sdl.Runtime -Destination $exeDir -Force
+    Copy-Item -LiteralPath $sdlImage.Runtime -Destination $exeDir -Force
 
     Wait-ForGameExit
     Say 'Installing UE4SS into Motor Town...'

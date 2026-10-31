@@ -25,6 +25,22 @@ class InstallerTests(unittest.TestCase):
         configure = embedded_installer().split("Run $cmake @('-S'", 1)[1].split("Run $cmake @('--build'", 1)[0]
         self.assertIn("'-DCMAKE_POLICY_VERSION_MINIMUM=3.5'", configure)
 
+    def test_build_installs_sdl_development_libraries_and_static_boost(self):
+        installer = embedded_installer()
+        for required in (
+            "SDL2-devel-2.32.10-VC.zip",
+            "SDL2_image-devel-2.8.8-VC.zip",
+            "boost-filesystem:x64-windows-static-md",
+            "-DSDL2_INCLUDE_DIR=",
+            "-DSDL2_LIBRARY=",
+            "-DSDL2_IMAGE_INCLUDE_DIR=",
+            "-DSDL2_IMAGE_LIBRARY=",
+            "-DCMAKE_TOOLCHAIN_FILE=",
+            "-DVCPKG_TARGET_TRIPLET=x64-windows-static-md",
+        ):
+            with self.subTest(required=required):
+                self.assertTrue(required in installer, "Missing installer dependency: " + required)
+
 
 if __name__ == "__main__":
     unittest.main()
