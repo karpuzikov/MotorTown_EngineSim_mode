@@ -23,7 +23,7 @@ $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MTES_TEST_INSTALLER, [ref]$tokens, [ref]$errors)
 if ($errors.Count -gt 0) { throw ($errors | Out-String) }
-$names = @('Say','Ensure','Run','Decode','Write-UTF8','Ensure-EngineSource','Install-RuntimeDiagnostics','Start-EngineSimulator')
+$names = @('Say','Ensure','Run','Decode','Write-UTF8','Ensure-EngineSource','Install-RuntimeDiagnostics','Start-EngineSimulator','Repair-DirectXLinkage','Assert-ReleaseDirectXDependencies')
 foreach ($name in $names) {
     $fn = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if ($fn.Count -ne 1) { throw ('Missing or ambiguous installer function: ' + $name) }

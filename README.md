@@ -2,7 +2,7 @@
 
 Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Version: experimental v0.2.7.** Windows compilation and the DirectX runtime installation were confirmed in the v0.2.6 installation log. An empty cropped screenshot was subsequently supplied; runtime behavior and cause remain unknown. This version adds startup logging and error checks. Telemetry detection and synchronized live audio have **not** been verified.
+**Version: experimental v0.2.8.** Windows compilation and DirectX runtime installation are confirmed by the user's logs. The v0.2.7 executable was then blocked by a missing `d3dx10d_43.dll`: the pinned Delta Studio CMake file linked debug DirectX libraries into Release builds. This version fixes configuration-specific linkage and checks the built executable's DLL imports before launch. Windows rendering, telemetry detection and synchronized live audio remain **unverified**.
 
 ## Installation
 
@@ -12,6 +12,8 @@ Experimental Windows mod project to synchronize combustion audio from [karpuziko
 4. Motor Town may need to be closed while its files are updated. The installer will wait rather than force-close it.
 
 Fresh installs clone `karpuzikov/engine-sim`. Existing installs switch their `origin` remote to that fork while preserving the checkout, submodules, local patches, dependencies and build files. Third-party submodules continue to use their own upstream repositories.
+
+The installer repairs Delta Studio's DirectX link configuration in place and rebuilds with retail libraries for Release. It does not require the DirectX debug runtime. MSVC `dumpbin` checks the resulting executable before launch and records its DLL dependencies in the installation log.
 
 If startup fails or remains blank, the installer prints the last startup stage and any engine-script errors into its installation log. The live runtime log is `source/engine-sim/build-mtes/MotorTownEngineSim_runtime.log` under the project directory. It records graphics, asset, engine-script and audio initialization separately. Startup readiness does not verify rendering, sound or game telemetry.
 

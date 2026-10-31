@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.7 experimental installer.
+Motor Town EngineSim Bridge v0.2.8 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -89,6 +89,49 @@ function Ensure-EngineSource([string]$git,[string]$sourceRoot,[string]$sourceUrl
         Run $git @('-C',$sourceRoot,'submodule','update','--init','--recursive')
     }
     Say ('Engine Simulator source: ' + $sourceUrl)
+}
+function Repair-DirectXLinkage([string]$sourceRoot) {
+    # The pinned Delta CMake file links retail AND debug D3DX import libraries.
+    # Release must use retail DLLs supplied by the DirectX redistributable.
+    $path = Join-Path $sourceRoot 'dependencies/submodules/delta-studio/CMakeLists.txt'
+    Ensure (Test-Path -LiteralPath $path -PathType Leaf) ('Delta Studio CMake source missing: ' + $path)
+    $old = @'
+    ${D3DX_LIBS}/d3dx9.lib
+    ${D3DX_LIBS}/d3dx9d.lib
+    ${D3DX_LIBS}/d3dx10d.lib
+    ${D3DX_LIBS}/d3dx10.lib
+    ${D3DX_LIBS}/d3dx11.lib
+    ${D3DX_LIBS}/d3dx11d.lib
+'@
+    $new = @'
+    optimized ${D3DX_LIBS}/d3dx9.lib
+    debug ${D3DX_LIBS}/d3dx9d.lib
+    optimized ${D3DX_LIBS}/d3dx10.lib
+    debug ${D3DX_LIBS}/d3dx10d.lib
+    optimized ${D3DX_LIBS}/d3dx11.lib
+    debug ${D3DX_LIBS}/d3dx11d.lib
+'@
+    $original = [IO.File]::ReadAllText($path)
+    $text = $original.Replace("`r`n", "`n")
+    $old = $old.Replace("`r`n", "`n")
+    $new = $new.Replace("`r`n", "`n")
+    if ($text.Contains($new)) { Say 'DirectX libraries already selected per build configuration.'; return }
+    Ensure ([regex]::Matches($text, [regex]::Escape($old)).Count -eq 1) `
+        'Unsupported Delta Studio DirectX link layout. No CMake source changes made.'
+    $text = $text.Replace($old, $new)
+    if ($original.Contains("`r`n")) { $text = $text.Replace("`n", "`r`n") }
+    Copy-Item -LiteralPath $path -Destination ($path + '.before-mtes-directx-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss-ffff'))
+    Write-UTF8 $path $text
+    Say 'Fixed DirectX linkage: Release uses retail libraries; Debug uses debug libraries.'
+}
+function Assert-ReleaseDirectXDependencies([string]$dumpbin,[string]$enginePath) {
+    $output = @(& $dumpbin '/nologo' '/dependents' $enginePath)
+    Ensure ($LASTEXITCODE -eq 0) ('MSVC dependency inspection failed (exit ' + $LASTEXITCODE + ').')
+    $text = $output -join "`n"
+    $debugImports = @([regex]::Matches($text, '(?i)\bd3dx(?:9|10|11)d_\d+\.dll\b') | ForEach-Object { $_.Value } | Select-Object -Unique)
+    Ensure ($debugImports.Count -eq 0) ('Debug DirectX dependency in Release executable: ' + ($debugImports -join ', ') + '. Refusing to launch this build.')
+    $imports = @([regex]::Matches($text, '(?i)\b[\w.-]+\.dll\b') | ForEach-Object { $_.Value } | Select-Object -Unique)
+    Say ('Release DLL dependencies: ' + ($imports -join ', '))
 }
 function Install-RuntimeDiagnostics([string]$sourceRoot) {
     # Canonical definition: bridge/patch_engine_sim.py. Regenerate with package_installer.py.
@@ -429,6 +472,7 @@ try {
     }
 
     Install-RuntimeDiagnostics $Repo
+    Repair-DirectXLinkage $Repo
     $runningEngine = @(Get-Process -Name 'engine-sim-app' -ErrorAction SilentlyContinue | Where-Object {
         $_.Path -and $_.Path.StartsWith($Repo + '\', [StringComparison]::OrdinalIgnoreCase)
     })
@@ -451,6 +495,9 @@ try {
     $engineExe = Get-ChildItem -Path $build -Filter 'engine-sim-app.exe' -Recurse -File | Where-Object { $_.FullName -match '\\Release\\' } | Select-Object -First 1
     Ensure ([bool]$engineExe) 'Build ended without engine-sim-app.exe.'
     Say ('Engine Simulator built: ' + $engineExe.FullName)
+    $dumpbinTools = @(Get-ChildItem -Path (Join-Path $vs.Path 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe') -File -ErrorAction SilentlyContinue)
+    Ensure ($dumpbinTools.Count -gt 0) 'MSVC dumpbin.exe missing; cannot verify the Release executable dependencies.'
+    Assert-ReleaseDirectXDependencies $dumpbinTools[0].FullName $engineExe.FullName
 
     # EngineSim resolves shaders/fonts from the executable folder using delta.conf.
     $exeDir = Split-Path -Parent $engineExe.FullName

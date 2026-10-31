@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.7)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.8)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -62,6 +62,20 @@ Both reports are copied to the project's `logs` folder and printed into the
 installation transcript. A process still initializing after the check is reported
 as pending; it is not described as working. A readiness marker means initialization
 returned, not that rendering or audible synchronization has been tested.
+
+## DirectX Release linkage (v0.2.8)
+
+The pinned Delta Studio `CMakeLists.txt` originally linked both retail and debug
+D3DX libraries for every build configuration. In particular, `d3dx10d.lib` preceded
+`d3dx10.lib`, causing the reported `d3dx10d_43.dll` dependency despite a Release build.
+The installer backs up this CMake file and adds `optimized`/`debug` qualifiers for
+the D3DX9, D3DX10 and D3DX11 import libraries. Existing source, submodules and build
+files are reused. No debug DLLs are downloaded or copied.
+
+After rebuilding, `dumpbin /dependents` checks the executable. Any debug D3DX DLL
+import stops installation before launch; the dependency list is recorded in the
+installation log. `bridge/tests/test_directx_linkage.py` reproduces the original
+link configuration and verifies repaired Release/Debug selections with real CMake.
 
 Regenerate embedded payloads with `python bridge/package_installer.py` and run
 `python -m unittest discover -s bridge/tests -v` after source changes.
