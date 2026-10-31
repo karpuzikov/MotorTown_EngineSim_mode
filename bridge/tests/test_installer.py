@@ -39,6 +39,19 @@ class InstallerTests(unittest.TestCase):
         source = (ROOT / "bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua").read_text(encoding="utf-8")
         self.assertEqual(actual, source)
 
+    def test_bat_delivers_the_tested_telemetry_controls_and_legacy_upgrade(self):
+        spec = importlib.util.spec_from_file_location('patch_engine_sim', ROOT / 'bridge/patch_engine_sim.py')
+        patcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(patcher)
+        self.assertIn("$originalInputSha256 = '" + patcher.ORIGINAL_INPUT_SHA256 + "'", embedded_installer())
+        for name, expected in [('over', patcher.OVERRIDE), ('hdr', patcher.HEADER),
+                               ('legacyOver', patcher.LEGACY_OVERRIDE)]:
+            with self.subTest(payload=name):
+                match = re.search(r'\$' + name + r" = Decode '([^']+)'", embedded_installer())
+                self.assertIsNotNone(match)
+                actual = gzip.decompress(base64.b64decode(match.group(1))).decode('utf-8')
+                self.assertEqual(actual, expected)
+
     def test_cmake_configure_passes_legacy_googletest_policy_flag(self):
         # This is the actual command in the BAT, not a separate mock command.
         configure = embedded_installer().split("Run $cmake @('-S'", 1)[1].split("Run $cmake @('--build'", 1)[0]

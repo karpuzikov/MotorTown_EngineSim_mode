@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.9 experimental installer.
+Motor Town EngineSim Bridge v0.2.10 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -133,9 +133,46 @@ function Assert-ReleaseDirectXDependencies([string]$dumpbin,[string]$enginePath)
     $imports = @([regex]::Matches($text, '(?i)\b[\w.-]+\.dll\b') | ForEach-Object { $_.Value } | Select-Object -Unique)
     Say ('Release DLL dependencies: ' + ($imports -join ', '))
 }
+function Install-TelemetryBridge([string]$sourceRoot) {
+    # Canonical payloads: bridge/patch_engine_sim.py.
+    $originalInputSha256 = '1912b063d7da3adcb1de660eb095e9f63306a4439552d427cbfa5d6710c0b188'
+    $over = Decode 'H4sIAAAAAAACA41UwW7iMBC98xXTHqpwANrDXqig0narqtIiVQX1itxkklhre5A9XoS2++87cQIJWg7NAWT7vTfzxjMegXyzGaw2T+vt97eXH89P2/e7OaCrtEPIybEnI/8WA5AzByg9WfnBUEOlLAKjQYvsD9PRUYuYPGxo72BXH4LOAyiPEB1TzGss7iGwcoUyJBF+4eGDlC+OoVpsoYP6MFi0mrqEzG51jk9tVosFuGjMjj18foLdBm2jUU3Q/mQMHjl6d58UVrw5pgmW2z0JGBg+KNlzDnPGAhZCU8UAnlke/4cnJ8CedHMjolMfndOuOq52FpYL+HY7vW3pgzQnywq59ZKN0+Klcpo1uRUV0aRNu0WXSiCRyF2QkAUrz+hTuadDfKlMwIuU4uBo+gXpDleTOQc1++sddlR4kEvVHOZzcZu1pscwh8ueT6qeWDVmj0ID2cul2njlgtUhCKmpTV4rV+EzKp9N7sZf4wTkRxM5r1+ldUP0mEmWPbcJvkbm5gKbjKS0IrI+306OxSbXYoENnls99WcKlqiPbU9n5wG6qM2kxKQs10UQtEGXy5TlpAJPChmfmYzdrklXPIAjHRD2tcCa8Th133BEVCw0rSn6HOFqMApnJ5Ol5PFOJlrMkqO76W3ZWim71LqBcyVJzYL02Jnan4TpTPeYZPsnVStJWFWYXfUD8gDXqUubN2EOe6WT7VIG9vR6XJ9Em2/e1nrIMvo3Hp+lniXIIag7p7KEmVQM3l5X152nv6N/fCKFiuwEAAA='
+    $hdr = Decode 'H4sIAAAAAAACA3VU204bMRB936+YgEQ3os2t6guBSFQgykNaBFGpVFWR2Z1N3O7aK3vcEEH+veO9ZI2U7sPKnsvxOTNjD4cwX1w/LD/f317dXC+/j6NjmaWYwfLx9uvHCe9UkrsU4XwjVao3drCeRceoUpkFvsySQVHMAlNCssA3hkIQ50ZKFGhLkSC8RJzmEoI5LTDHAsls2Qj8pdo95QimLOACRoPRNLTS2mgiXgSuJ61zME4pqVZsz0RucRrtplE0HMJijYDPpTaEBjZGElrQKt8CaQZDSJwxqAicRfPOAmHBsYLJpNJgQtpsBx7mHn/zDiwJPpsV/EGyUxBs0GWJKaxYGRTOEihNkKP4y8eqlVQIwqVSt/wGUc0WRRooj8MqnGhHfa7F22Z4oclamI7Xz/nlj+Xd5eILnML4Fwt/2dX1uHr8dn8Fii03yLhFecfVv4zb8PcdRL9OkBnEHM4lhddXTpxBG9tnpuSMaovqoy2lZ2eyaTtIFVcG3rK8uINmVkdzzcuF3qjrqhQPslhSq3NAz3QUEOhJ9d/TanCwcqUEBzQuyW1DJXgsUj8OtTHXHFj9sNTJunNUZ8SS1c06IL/hcg/8sDXL/YTxvkX3S4/WP8TQA3eAvQuWzbdqfORr2auLZTOpePLi5qg+u6pU/x0IaSn4uD2987o7e7Yw+TQajUKkN+yD8E4RjL0tbmX1fMdPTiDYjw9KTLTiyRaO74zSG64p3wOSyTIRls73FZ/Vk+Avf6xcnpdk+kGD637MKoTTmolffoDWMTl0dKV3f7dD5rW/yeDHhBOOkfNCcwPUPFq7aAd8l4XSaltoZ2H/HkX/AFj/9ysMBQAA'
+    $legacyOver = Decode 'H4sIAAAAAAACA51UTW/bMAy951fwVDiHOu1hlxTpgLVZ0UOAogm2Y6DIjC1MH4ZENwiG/vdRsuc5bZA11cHWB/lIPT5xBDwmE1is5sv1t+fH+4f5+sf1FIIWLwhUIYimUA6CMo0W5DyQg4WLk5XbWdhVaIFQo0Hye1ABtHrBfNTBrhigc1XOgkcjlA0Jt0TbKIswt2X8LfsA0plNE6L9pI2NyaLHHESvq31QMoDwCI0l18gKixuG5zxq7ySGAM7qPWyd1m4XQFEA6YX9FSqxJXh+WrSwv9M3jkCcqoSNcxoM/RThzlmLkrCAGWyFDnjT2y5o1d/c0L99tYXMoygG55mh8XgQJo538OSbAXoc0tlAbTJM34xdct9Yq2wJFxdpVRu4ncGXq/zq0NOs+5Jd3pZILc3ZOC0eS6siwQtXNDptmjVasdEpDWdPQPGChCf0qQz50O8NO0dci711+RmhOvvK6ePG8XxZYwcFX1kEXOHplFnJWnLGMIXT3PRRvKOk0r+AA/jT1K5YUMGoENg5cikrYUt8QOGzy+vxeb4B6U43JKsnz+JtPGac/XuMmNQSiaIQYqZcEgZbHm4nRpgGqvhqpPE4FUpiq40UPEGwJsk7nR0GGmTx2s+QS570fijmt1LnZ/tdKM29QKOlrmvEJiAMgtQuID9UP2gkhQqirpnCkJ8lqA9rsNPU/+0/LffzHt1xtA/V+byiHuqpreTr6A81EQt3CAYAAA=='
+    $cpp = Join-Path $sourceRoot 'src/engine_sim_application.cpp'
+    Ensure (Test-Path -LiteralPath $cpp -PathType Leaf) 'Original Engine Simulator C++ source missing.'
+    $original = [IO.File]::ReadAllText($cpp)
+    $contents = $original.Replace("`r`n", "`n")
+    $funcStart = 'void EngineSimApplication::processEngineInput() {'
+    $funcEnd = "`n}`n`nvoid EngineSimApplication::renderScene() {"
+    $start = $contents.IndexOf($funcStart,[StringComparison]::Ordinal)
+    $end = if ($start -ge 0) { $contents.IndexOf($funcEnd,$start,[StringComparison]::Ordinal) } else { -1 }
+    Ensure ($start -ge 0 -and $end -gt $start) 'Unable to find supported Engine Simulator input function boundaries. No source changes made.'
+    $installed = $contents.Contains('// MTES_BRIDGE_V1')
+    $body = $contents.Substring($start + $funcStart.Length, $end - $start - $funcStart.Length)
+    $originalBody = $body
+    if ($installed) {
+        Ensure ([regex]::Matches($contents, [regex]::Escape($hdr)).Count -eq 1) 'Incomplete or changed telemetry header. No source changes made.'
+        if ($body -eq $over) { Say 'Telemetry-only engine controls already installed.'; return }
+        Ensure ($body.EndsWith($legacyOver,[StringComparison]::Ordinal)) 'Unknown existing telemetry patch. No source changes made.'
+        $originalBody = $body.Substring(0,$body.Length - $legacyOver.Length)
+    }
+    $inputHasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $inputHash = [BitConverter]::ToString($inputHasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($originalBody))).Replace('-','').ToLowerInvariant()
+    } finally { $inputHasher.Dispose() }
+    Ensure ($inputHash -eq $originalInputSha256) 'Unsupported or modified Engine Simulator input controls. No source changes made.'
+    $contents = $contents.Substring(0,$start + $funcStart.Length) + $over + $contents.Substring($end)
+    if (-not $installed) { $contents = $contents.Insert($start, $hdr + "`n") }
+    if ($original.Contains("`r`n")) { $contents = $contents.Replace("`n", "`r`n") }
+    $backup = $cpp + '.before-mtes-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss-ffff')
+    Copy-Item -LiteralPath $cpp -Destination $backup
+    Write-UTF8 $cpp $contents
+    Say ('Installed telemetry-only engine controls (backup: ' + $backup + ')')
+}
 function Install-RuntimeDiagnostics([string]$sourceRoot) {
     # Canonical definition: bridge/patch_engine_sim.py. Regenerate with package_installer.py.
-    $runtimePatch = Decode 'H4sIAAAAAAACA91XbW/bNhD+KzcX6OTUkZt9GeC8AG7iZcbqJLDdvWAuBEY6R1xlUiOpOFmX/74jKduSI6fp1n5ZgiASXx7ePXfPHfWxtWDqA6pWD1rdLoymg0k0fncxHY4G0c8HrQ60UmQJqihnJrWLuIizIsHuwqCOVCEMX2CYbhY2A83Ei1yxmwUDKWKktxIGjvAuxtxwKU6qo3NtFLJFbUybxC/eGlVc3NDQTHCRcYFwK3kC1ryxt+6tvAliKbQBQuj1/AZ4uUCt2Q224eNMAP2Q0X1QmDHDbxHmPEPBFggs0xKWUn3QsExRgEkRCo3qWw1nMi4WKIwGSw5wDe8Ej2WCoUd0x8nSFcjIjFlrJI1UU7kUA3FDxk74Yk0iLZgRj24Xl7rXY3nePvRQNAdHR1DabB/dMhRJRiseZsIGgKyIU9QUgd8/tlbx0iruLhgXYZzndhEm3JRLrnEuFdpFazpnrTDsrkKMzsRIk41kSsZjZuMUprOWBWJz46P9uZsr0avtqGeUXdeQkA8dqBpuuVkz2d+cA5UzSwqrVnDBDWcZ/wuDwKXLXvtlOqQUYZSdHbjXp1IYvDOX139gbHq9M7zlMfavhvTIFQ39enDQbsAl64Om8QQpCeS9m/OzCk2hBLw+rFH5KGs+M2MMzcTtMM6kxrUhW1KoIG6ogxISbl+H34Xfz1qrzUbdrwTSiDVcMWk15eGA8AqSkVQbmFJgZ5gZRspxfBQxLdHExJ8FcQp4Z/niBgwylVjrmEiA0UwhNJuTEi1LwGqAOVP2eFgH1PMNlwLmjGeFomgqzKUyQMgWMEMDuZIxKYmO5KYGR6HNmGUDtSwUrTmERIKQhmxYcmsOpCyb72/yJ6nFeQPGCiNhrzIHxyBw2ZisFY4qG/ZPvmSWNieCFddk2h9P311F40H/7Ld6xGrWVHO7EW07+uDSMHkCsiqL1YIEKULYoN+aavzQg/8X27oH1Rq/birwEpWSqv1EDleaAjlRlhr4oT98OzjrUYVqwytwIOEyZSZoV40d+Xr8Rt71A1FkWW5Up7a4A81yoxgqU+QuSS1FHRi9iS5/gr/t/+Hp5cVgPL4ctx+7ftDoehiG7Sdluu1WIT4Ia9HpK3JuRVY9Uo2+NUTZuxDCBBGerlUh+bnBtz9fi5zWw3vXKKpNcEdD+t+2xUXkzwpPqZEYPKfLzC9UwuQy0GgMZbtuP24+jxLHbba1/UaxPOWx7rIi4XQjclCHoFN76dPHsxbJxL9cEemr4HhN3uuB1YRD9zb49+NnGemR+ByC7f3fHK+ge70LKbCmAZMqufTloGQvcsokp87rvtSbR5l2ELhm5dUM1r166jpgI6OyclDOGh5HMdPmiAtzsm1r25YREhjpxJEEiavQUt33YAd3Dzva93lTJKDSkqyOmzOCaaJ1xATpWoWncpGTp0PqISpOmbjBH+g1CMpl1hRnc9e9amt8bN21Ve0gfD3v0OWgwOck0VvJkmoOgUcsPa+ct76yfCVLP02KNXUSo/iME3ax8IWAP5EFJZf0hUD5szP0XofXUmb06MhMSH3lowrLh8AVHg/oPxoW7g73jDLhAGyMvZ5Bx4rnpgeP8CBI0JDCNGWsF1dkWwP9tTf95z+au0XAC/pMovLR3YP+9DwaXJwPLwbRZDiKrobj/sWPfRrqv6G2CHvd1fXcVptbJH4zhGO6ufn+R/WlXuL/HXBJUQ33WXVrSt+eNX6piiTuehq78kkX3HLet+MavZbv64Jnyb6NXrghe1edGdRO2uTXpzlqlJle3Rj2T1yD79vqNSYG0RbQaUoeJMFzcm1id9tUKxHtHdxVQuXAsPLZ8exTd1Aw2XGCv6Ks5Paefv8Bmv6z0EgRAAA='
+    $runtimePatch = Decode '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'
     $spec = $runtimePatch | ConvertFrom-Json
     $pending = @()
     foreach ($entry in $spec.patches) {
@@ -144,17 +181,13 @@ function Install-RuntimeDiagnostics([string]$sourceRoot) {
         $original = [IO.File]::ReadAllText($path)
         $usedCRLF = $original.Contains("`r`n")
         $text = $original.Replace("`r`n", "`n")
-        if ($text.Contains($spec.marker)) {
-            foreach ($edit in $entry.edits) {
-                Ensure ($text.Contains($edit.after)) ('Incomplete or changed runtime patch: ' + $path)
-            }
-            continue
-        }
         foreach ($edit in $entry.edits) {
+            if ([regex]::Matches($text, [regex]::Escape($edit.after)).Count -eq 1) { continue }
             $count = [regex]::Matches($text, [regex]::Escape($edit.before)).Count
             Ensure ($count -eq 1) ('Unsupported runtime source layout: ' + $path + '. No runtime files changed.')
             $text = $text.Replace($edit.before, $edit.after)
         }
+        if ($text -eq $original.Replace("`r`n", "`n")) { continue }
         if ($usedCRLF) { $text = $text.Replace("`n", "`r`n") }
         $pending += @{ Path=$path; Text=$text }
     }
@@ -364,7 +397,7 @@ function Install-Compiler {
 }
 
 try {
-    Say 'MotorTown EngineSim Bridge v0.2.9'
+    Say 'MotorTown EngineSim Bridge v0.2.10'
     Say 'Checking game location...'
     $gameExe = Resolve-GameExe $GamePath
     $win64 = Split-Path -Parent $gameExe
@@ -431,30 +464,7 @@ try {
 
     Say 'Checking Engine Simulator source (reusing the existing checkout)...'
     Ensure-EngineSource $git $Repo $EngineSimSource
-    $cpp = Join-Path $Repo 'src\engine_sim_application.cpp'
-    Ensure (Test-Path $cpp) 'Original Engine Simulator C++ source missing.'
-    $contents = [IO.File]::ReadAllText($cpp)
-    if (-not $contents.Contains('// MTES_BRIDGE_V1')) {
-        # Git on Windows may check out C++ files with CRLF instead of LF.
-        # Normalize only for anchor matching, then restore the original line endings.
-        $usedCRLF = $contents.Contains("`r`n")
-        $contents = $contents.Replace("`r`n", "`n")
-        $funcStart = 'void EngineSimApplication::processEngineInput() {'
-        $funcEnd = "`n}`n`nvoid EngineSimApplication::renderScene() {"
-        $start = $contents.IndexOf($funcStart,[StringComparison]::Ordinal)
-        $end = if ($start -ge 0) { $contents.IndexOf($funcEnd,$start,[StringComparison]::Ordinal) } else { -1 }
-        Ensure ($start -ge 0 -and $end -gt $start) 'Unable to find supported Engine Simulator input function boundaries. No source changes made.'
-        $over = Decode 'H4sIAAAAAAACA51UTW/bMAy951fwVDiHOu1hlxTpgLVZ0UOAogm2Y6DIjC1MH4ZENwiG/vdRsuc5bZA11cHWB/lIPT5xBDwmE1is5sv1t+fH+4f5+sf1FIIWLwhUIYimUA6CMo0W5DyQg4WLk5XbWdhVaIFQo0Hye1ABtHrBfNTBrhigc1XOgkcjlA0Jt0TbKIswt2X8LfsA0plNE6L9pI2NyaLHHESvq31QMoDwCI0l18gKixuG5zxq7ySGAM7qPWyd1m4XQFEA6YX9FSqxJXh+WrSwv9M3jkCcqoSNcxoM/RThzlmLkrCAGWyFDnjT2y5o1d/c0L99tYXMoygG55mh8XgQJo538OSbAXoc0tlAbTJM34xdct9Yq2wJFxdpVRu4ncGXq/zq0NOs+5Jd3pZILc3ZOC0eS6siwQtXNDptmjVasdEpDWdPQPGChCf0qQz50O8NO0dci711+RmhOvvK6ePG8XxZYwcFX1kEXOHplFnJWnLGMIXT3PRRvKOk0r+AA/jT1K5YUMGoENg5cikrYUt8QOGzy+vxeb4B6U43JKsnz+JtPGac/XuMmNQSiaIQYqZcEgZbHm4nRpgGqvhqpPE4FUpiq40UPEGwJsk7nR0GGmTx2s+QS570fijmt1LnZ/tdKM29QKOlrmvEJiAMgtQuID9UP2gkhQqirpnCkJ8lqA9rsNPU/+0/LffzHt1xtA/V+byiHuqpreTr6A81EQt3CAYAAA=='
-        $hdr = Decode 'H4sIAAAAAAACA3VU204bMRB936+YgEQ3os2t6guBSFQgykNaBFGpVFWR2Z1N3O7aK3vcEEH+veO9ZI2U7sPKnsvxOTNjD4cwX1w/LD/f317dXC+/j6NjmaWYwfLx9uvHCe9UkrsU4XwjVao3drCeRceoUpkFvsySQVHMAlNCssA3hkIQ50ZKFGhLkSC8RJzmEoI5LTDHAsls2Qj8pdo95QimLOACRoPRNLTS2mgiXgSuJ61zME4pqVZsz0RucRrtplE0HMJijYDPpTaEBjZGElrQKt8CaQZDSJwxqAicRfPOAmHBsYLJpNJgQtpsBx7mHn/zDiwJPpsV/EGyUxBs0GWJKaxYGRTOEihNkKP4y8eqlVQIwqVSt/wGUc0WRRooj8MqnGhHfa7F22Z4oclamI7Xz/nlj+Xd5eILnML4Fwt/2dX1uHr8dn8Fii03yLhFecfVv4zb8PcdRL9OkBnEHM4lhddXTpxBG9tnpuSMaovqoy2lZ2eyaTtIFVcG3rK8uINmVkdzzcuF3qjrqhQPslhSq3NAz3QUEOhJ9d/TanCwcqUEBzQuyW1DJXgsUj8OtTHXHFj9sNTJunNUZ8SS1c06IL/hcg/8sDXL/YTxvkX3S4/WP8TQA3eAvQuWzbdqfORr2auLZTOpePLi5qg+u6pU/x0IaSn4uD2987o7e7Yw+TQajUKkN+yD8E4RjL0tbmX1fMdPTiDYjw9KTLTiyRaO74zSG64p3wOSyTIRls73FZ/Vk+Avf6xcnpdk+kGD637MKoTTmolffoDWMTl0dKV3f7dD5rW/yeDHhBOOkfNCcwPUPFq7aAd8l4XSaltoZ2H/HkX/AFj/9ysMBQAA'
-        $contents = $contents.Insert($end,$over)
-        $start = $contents.IndexOf($funcStart,[StringComparison]::Ordinal)
-        $contents = $contents.Insert($start, $hdr + "`n")
-        if ($usedCRLF) { $contents = $contents.Replace("`n", "`r`n") }
-        $backup = $cpp + '.before-mtes-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss')
-        Copy-Item -LiteralPath $cpp -Destination $backup
-        Write-UTF8 $cpp $contents
-        Say ('Patched source (backup: ' + $backup + ')')
-    } else { Say 'Engine Simulator source already patched.' }
+    Install-TelemetryBridge $Repo
 
     # Piranha's pinned source calls a Boost.Filesystem method removed in modern Boost.
     $piranhaSource = Join-Path $Repo 'dependencies\submodules\piranha\src\path.cpp'

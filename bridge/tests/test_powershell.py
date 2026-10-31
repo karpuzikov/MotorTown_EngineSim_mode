@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from test_runtime_patch import fixture, patcher, ORIGINAL_APP
+from test_patch import ORIGINAL_SOURCE
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,7 +24,7 @@ $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MTES_TEST_INSTALLER, [ref]$tokens, [ref]$errors)
 if ($errors.Count -gt 0) { throw ($errors | Out-String) }
-$names = @('Say','Ensure','Run','Decode','Write-UTF8','Ensure-EngineSource','Install-RuntimeDiagnostics','Start-EngineSimulator','Repair-DirectXLinkage','Assert-ReleaseDirectXDependencies')
+$names = @('Say','Ensure','Run','Decode','Write-UTF8','Ensure-EngineSource','Install-TelemetryBridge','Install-RuntimeDiagnostics','Start-EngineSimulator','Repair-DirectXLinkage','Assert-ReleaseDirectXDependencies')
 foreach ($name in $names) {
     $fn = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if ($fn.Count -ne 1) { throw ('Missing or ambiguous installer function: ' + $name) }
@@ -40,6 +41,67 @@ New-Item -ItemType Directory -Path $Logs -Force | Out-Null
 
 @unittest.skipUnless(PWSH, "Requires PowerShell (or MTES_TEST_PWSH)")
 class PowerShellTests(unittest.TestCase):
+    def test_fresh_and_legacy_bridge_installations_match_python_and_upgrade_once(self):
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy), tempfile.TemporaryDirectory(prefix='MTES telemetry spaces ') as temp:
+                root = Path(temp)
+                original = ORIGINAL_SOURCE
+                if legacy:
+                    override = (Path(__file__).parent / 'fixtures/legacy_bridge_override.cpp').read_text()
+                    original = patcher.HEADER + '\n' + original.replace(patcher.FUNCTION_END, override + patcher.FUNCTION_END)
+                for name in ('python', 'powershell'):
+                    source = root / name / 'src'
+                    source.mkdir(parents=True)
+                    (source / 'engine_sim_application.cpp').write_bytes(original.replace('\n', '\r\n').encode())
+                patcher.patch(root / 'python')
+                result = run_powershell(root, 'Install-TelemetryBridge $env:MTES_TEST_SOURCE\nInstall-TelemetryBridge $env:MTES_TEST_SOURCE', MTES_TEST_SOURCE=str(root / 'powershell'))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((root / 'python/src/engine_sim_application.cpp').read_bytes(),
+                                 (root / 'powershell/src/engine_sim_application.cpp').read_bytes())
+                self.assertEqual(len(list((root / 'powershell/src').glob('*.before-mtes-*'))), 1)
+
+    def test_changed_legacy_bridge_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'src').mkdir()
+            override = (Path(__file__).parent / 'fixtures/legacy_bridge_override.cpp').read_text()
+            original = patcher.HEADER + '\n' + patcher.FUNCTION_START + override.replace('mtWasConnected = true;', 'mtWasConnected = false;') + patcher.FUNCTION_END + '\n}\n'
+            app = root / 'src/engine_sim_application.cpp'
+            app.write_text(original)
+            result = run_powershell(root, 'Install-TelemetryBridge $env:MTES_TEST_SOURCE', MTES_TEST_SOURCE=str(root))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Unknown existing telemetry patch', result.stderr)
+            self.assertEqual(app.read_text(), original)
+
+    def test_changed_original_controls_are_not_discarded_during_upgrade(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'src').mkdir()
+            override = (Path(__file__).parent / 'fixtures/legacy_bridge_override.cpp').read_text()
+            original = ORIGINAL_SOURCE.replace('m_targetSpeedSetting = 0.1;', 'm_targetSpeedSetting = 0.35;')
+            old = patcher.HEADER + '\n' + original.replace(patcher.FUNCTION_END, override + patcher.FUNCTION_END)
+            app = root / 'src/engine_sim_application.cpp'
+            app.write_text(old)
+            result = run_powershell(root, 'Install-TelemetryBridge $env:MTES_TEST_SOURCE', MTES_TEST_SOURCE=str(root))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Unsupported or modified Engine Simulator input controls', result.stderr)
+            self.assertEqual(app.read_text(), old)
+
+    def test_previous_runtime_patch_upgrades_the_same_way_in_both_installers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name in ('python', 'powershell'):
+                target = root / name
+                target.mkdir()
+                fixture(target)
+                (target / 'src/engine_sim_application.cpp').write_bytes(
+                    (Path(__file__).parent / 'fixtures/runtime_v027_app.cpp').read_bytes())
+            patcher.patch_runtime(root / 'python')
+            result = run_powershell(root, 'Install-RuntimeDiagnostics $env:MTES_TEST_SOURCE\nInstall-RuntimeDiagnostics $env:MTES_TEST_SOURCE', MTES_TEST_SOURCE=str(root / 'powershell'))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((root / 'python/src/engine_sim_application.cpp').read_bytes(),
+                             (root / 'powershell/src/engine_sim_application.cpp').read_bytes())
+
     def test_runtime_patch_matches_python_and_is_idempotent(self):
         with tempfile.TemporaryDirectory(prefix="MTES spaces ") as temp:
             root = Path(temp)

@@ -24,6 +24,7 @@ def package():
     payloads = {
         "over": patcher.OVERRIDE,
         "hdr": patcher.HEADER,
+        "legacyOver": patcher.LEGACY_OVERRIDE,
         "lua": (ROOT / "bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua").read_text(encoding="utf-8"),
         "runtimePatch": json.dumps(patcher.runtime_spec(), ensure_ascii=True),
     }
@@ -32,6 +33,10 @@ def package():
                               lambda _: "$" + name + " = Decode '" + encoded(value) + "'", text)
         if count != 1:
             raise RuntimeError(f"Expected one installer payload: {name}")
+    text, count = re.subn(r"\$originalInputSha256 = '[^']+'",
+                          lambda _: "$originalInputSha256 = '" + patcher.ORIGINAL_INPUT_SHA256 + "'", text)
+    if count != 1:
+        raise RuntimeError('Expected one supported EngineSim input hash')
     source.write_text(text, encoding="utf-8")
     bat = ROOT / "Install-MotorTownEngineSim.bat"
     launcher = bat.read_text(encoding="utf-8").split(":MTES_PAYLOAD_BEGIN", 1)[0]

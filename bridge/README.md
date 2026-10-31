@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.9)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.10)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -18,6 +18,25 @@ Runtime rendering, telemetry and audio synchronization remain unverified.
 Synchronization must use the vehicle's live engine state, including RPM and engine
 throttle under autopilot. Keyboard or WASD state is not a substitute for telemetry.
 Autopilot integration remains unverified until game-side values are captured.
+
+## Simulator control (v0.2.10)
+
+The previous native bridge only shut down after it had received its first valid
+telemetry packet. Before that, Engine Simulator's standalone keyboard controls
+remained active. The bridge now replaces that input function: ignition, throttle,
+starter, dyno and audio volume are controlled exclusively by fresh telemetry.
+Missing, malformed, stale or ignition-off packets keep audio muted from startup.
+The existing information panel shows whether it is waiting, receiving running-engine
+data, or receiving zero RPM / an engine-off state.
+
+The companion starts in a 960x540 window and overrides script-requested fullscreen.
+Its fullscreen, reload and exit shortcuts require focus, so Motor Town keystrokes
+do not control the companion in the background. The installer recognizes the old
+native patch and upgrades it with a backup, preserving the source checkout.
+
+Native boundary tests reproduce startup without telemetry, live values, disconnect,
+invalid/stale packets and keyboard interference. Windows rendering, actual game
+property discovery and end-to-end sound synchronization remain unverified.
 
 ## Telemetry discovery (v0.2.9)
 
