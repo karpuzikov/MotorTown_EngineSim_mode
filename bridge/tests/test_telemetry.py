@@ -78,7 +78,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.13', snapshot)
+        self.assertIn('v0.2.14', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
 
@@ -107,6 +107,19 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.8000', '1'])
         self.assertIn('gear=TransmissionComponent.CurrentGear', snapshot)
         self.assertIn('ignition=EngineComponent.NetLC_EngineHotState.bIgnitionOn', snapshot)
+
+    def test_engine_profile_is_discovered_before_unrelated_audio_components(self):
+        packet, snapshot = self.sample('crowded_audio_and_engine_profile', report='discovery')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+        self.assertIn('gear=TransmissionComponent.CurrentGear', snapshot)
+        self.assertIn('EngineComponent.EngineData.EngineProperty.EngineType = 2', snapshot)
+        self.assertIn('EngineComponent.EngineData.EngineProperty.MaxRPM = 2900', snapshot)
+        self.assertIn('EngineComponent.EngineData.EnginesSound', snapshot)
+
+    def test_stable_engine_component_throttle_does_not_trigger_constant_reflection(self):
+        packet, snapshot = self.sample('stable_engine_mapping', report='discovery')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+        self.assertIn('throttle=EngineComponent.GetThrottle()', snapshot)
 
     def test_ignition_is_not_inferred_from_rpm_when_actual_hot_state_says_off(self):
         packet, snapshot = self.sample('engine_hot_state_off', report='discovery')

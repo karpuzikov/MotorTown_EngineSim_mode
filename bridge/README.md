@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.13)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.14)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -34,6 +34,20 @@ transmission state could be inspected (`gear=nil`). This revision:
 
 These game fields are read-only; the diagnostic mod still does not mute stock
 engine sounds or supply a compiled native audio replacement.
+
+## Discovery diagnostics (v0.2.14)
+
+The user's new Tuscan report confirms the exporter reads real gear changes (5, 4,
+2 and 0) through `NetLC_TransmissionColdState.CurrentGear`. It also confirms
+that `EngineComponent.GetThrottle()` was triggering a full 2,000-metadata scan
+once per second. The revised scanner prioritizes nested engine specifications
+and audio objects over unrelated vehicle horns and effects, records engine
+component scans in the focused snapshot, and caches a verified engine throttle
+mapping until the player changes vehicles or the mapping becomes invalid.
+
+**Gear changes are observable in diagnostics but not transmitted to Engine
+Simulator yet**; its current bridge still forces neutral. The native audio mod
+and stock-engine replacement remain unfinished.
 
 ## What it does
 - Reads the **local player's** Motor Town vehicle through UE4SS reflection.
@@ -107,8 +121,9 @@ input is zero, late component availability, and ignition-off behavior. These tes
 do not verify the live game's field names, sound synchronization, or stock muting.
 
 ## Limitations
-- Motor Town RPM/throttle property paths are **not yet verified** on game 0.7.19.
-  Auto-discovery may choose the wrong property or none. Inspect
+- Motor Town RPM/throttle paths have been observed on Atlas and Tuscan vehicles,
+  but are not verified across all vehicle types. Auto-discovery may still choose
+  the wrong property or none. Inspect
   `%TEMP%\MotorTownEngineSim_diagnostics.txt` and set `RPM_PATH`, `THROTTLE_PATH`,
   `IGNITION_PATH` in `main.lua` if necessary.
 - Only the player's vehicle, not AI traffic, has Engine Simulator sound.

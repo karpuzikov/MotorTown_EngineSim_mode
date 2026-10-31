@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.13, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.14, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Does not change vehicle physics or write any game properties.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
@@ -101,6 +101,27 @@ local function diagnostic_field(name)
         n:find("displacement") or n:find("stroke") or n:find("firing") or
         n:find("exhaust") or n:find("sound") or n:find("audio") or
         n:find("volume") or n:find("boost") or n:find("turbo")
+end
+
+-- Explore the engine's actual configuration and the gearbox before diving into
+-- large, unrelated vehicle sounds (horns, door effects, SoundCue internals).
+-- Sorting *members* is insufficient: a breadth-first object queue can still
+-- fill the budget before the EngineData branch is reached.
+local function object_priority(prefix)
+    local path = prefix:lower():gsub("%.$", "")
+    if path == "enginecomponent" then return 0 end
+    if path == "transmissioncomponent" or path == "transmission" or
+       path == "netlc_transmissioncoldstate" then return 1 end
+    if path == "netlc_enginehotstate" or path == "enginecomponent.netlc_enginehotstate" then return 2 end
+    if path == "enginecomponent.enginedata" then return 3 end
+    if path == "enginecomponent.enginedata.engineproperty" then return 4 end
+    if path == "enginecomponent.enginesoundcomponent" then return 5 end
+    if path == "enginecomponent.enginedata.enginesounddata" then return 6 end
+    if path == "enginecomponent.enginedata.enginessound" then return 7 end
+    if path:find("sound") or path:find("audio") then return 50 end
+    if path:find("engine") or path:find("motor") then return 10 end
+    if path:find("transmission") or path:find("gear") then return 11 end
+    return 25
 end
 
 local function reflected_members(obj, diagnostic, budget)
@@ -255,7 +276,8 @@ local function discover(vehicle, detailed)
         local members = reflected_members(obj, diagnostic, budget)
         diagnostic("Scan " .. (prefix == "" and "vehicle" or prefix) ..
             " type=" .. reflected_type(obj) .. " members=" .. #members,
-            prefix:lower():find("transmission") or prefix:lower():find("gear"))
+            prefix:lower():find("transmission") or prefix:lower():find("gear") or
+            prefix:lower():find("engine"))
         for _, entry in ipairs(members) do
             if memberCount >= 2000 then break end
             memberCount = memberCount + 1
@@ -317,10 +339,17 @@ local function discover(vehicle, detailed)
             end
         end
     end
-    -- Breadth-first traversal lets the gearbox and engine hot-state compete for
-    -- budget before any one deeply nested SoundCue consumes all metadata slots.
+    -- A bounded priority queue keeps engine data/gearbox ahead of sound assets.
+    -- It preserves breadth-first order for objects of equal priority.
     local head = 1
     while pending[head] and objectCount < 32 and budget.remaining > 0 do
+        local best = head
+        for index = head + 1, #pending do
+            if object_priority(pending[index].prefix) < object_priority(pending[best].prefix) then
+                best = index
+            end
+        end
+        pending[head], pending[best] = pending[best], pending[head]
         local nextObject = pending[head]
         scan(nextObject.object, nextObject.prefix, nextObject.depth)
         head = head + 1
@@ -340,7 +369,13 @@ local function discover(vehicle, detailed)
     chosen.throttle = THROTTLE_PATH or chosen.throttle
     chosen.ignition = IGNITION_PATH or chosen.ignition
     local throttleCandidate = candidates.throttle[1]
-    chosen.refresh = not THROTTLE_PATH and throttleCandidate and throttleCandidate.confidence < 140
+    -- EngineComponent.GetThrottle() is a real engine signal even though its
+    -- generic name scores below GetActualThrottle(). Don't rescan every second.
+    local authoritativeThrottle = throttleCandidate and
+        (throttleCandidate.path:match("^EngineComponent%.") or
+         throttleCandidate.path:match("^VehicleSimulation%."))
+    chosen.refresh = not THROTTLE_PATH and throttleCandidate and
+        throttleCandidate.confidence < 140 and not authoritativeThrottle
     local vehicleLine = "Player vehicle: " .. tostring(vehicle:GetFullName())
     local mappingLine = "Auto/override mapping: RPM=" .. tostring(chosen.rpm) ..
         " throttle=" .. tostring(chosen.throttle) ..
@@ -352,7 +387,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.13 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.14 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "First 300 inventory lines:\n",
@@ -450,7 +485,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.13 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.14 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then log("Sample failed: " .. tostring(err)) end

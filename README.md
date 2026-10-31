@@ -2,7 +2,7 @@
 
 Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Version: experimental v0.2.13.** A new Windows report confirms live idle RPM from the player's Atlas semi and reveals engine parameters, audio assets and components. The improved diagnostic exporter visits engine and gearbox components before deeply nested sound assets, reads explicit ignition state, prefers engine throttle to driver input, and records audio object identities. The MTES1 packet remains backward compatible. In-process audio replacement, in-game volume routing and automatic engine profiles remain **unimplemented**. This is a diagnostic prototype, **not** the downloadable native audio mod.
+**Version: experimental v0.2.14.** The latest Windows report confirms live gear changes on the Tuscan (5, 4, 2, neutral) and discovers engine RPM, throttle and ignition, but the separate Engine Simulator still cannot follow gears: the MTES1 packet has no gear field. The discovery scan now prioritizes the engine's own configuration and sound data ahead of unrelated vehicle audio and avoids repeated full scans when live engine throttle is known. In-process audio replacement, in-game volume routing, gear playback, and automatic engine profiles remain **unimplemented**. This is a diagnostic prototype, **not** the downloadable native audio mod.
 
 ## Installation
 

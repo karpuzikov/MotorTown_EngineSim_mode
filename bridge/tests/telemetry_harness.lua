@@ -129,7 +129,8 @@ if scenario == 'audio_inventory' then
     })
     vehicle_fields.GetClass = function() return schema(props, {}) end
 end
-if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' then
+if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' or
+   scenario == 'crowded_audio_and_engine_profile' or scenario == 'stable_engine_mapping' then
     local rpmGetter = getter('GetRPM', function() return state.rpm end)
     local throttleGetter = getter('GetThrottle', function() return state.throttle end)
     local hotState, hotStateFields = object({ bIgnitionOn = state.running }, 'UScriptStruct')
@@ -142,10 +143,17 @@ if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' then
         for i = 1, 2100 do huge[#huge + 1] = 'AssetField' .. i end
         return schema(huge, {})
     end })
-    local engineData = object({ EnginesSound = audioAsset,
-        GetClass = function() return schema({'EnginesSound'}, {}) end,
+    local engineProperty, enginePropertyFields = object({ EngineType = 2, MaxRPM = 2900 }, 'UScriptStruct')
+    enginePropertyFields.ForEachProperty = function(self, visit)
+        each({prop('EngineType'),prop('MaxRPM')}, visit)
+    end
+    enginePropertyFields.ForEachFunction = function() end
+    enginePropertyFields.GetSuperStruct = function() return nil end
+    local engineData = object({ EnginesSound = audioAsset, EngineProperty = engineProperty,
+        GetClass = function() return schema({'EnginesSound','EngineProperty'}, {}) end,
     })
-    if scenario == 'deep_sound_and_gear' then engineProps[#engineProps + 1] = 'EngineData' end
+    if scenario == 'deep_sound_and_gear' or scenario == 'crowded_audio_and_engine_profile' or
+       scenario == 'stable_engine_mapping' then engineProps[#engineProps + 1] = 'EngineData' end
     engine_fields.GetRPM = rpmGetter
     engine_fields.GetThrottle = throttleGetter
     engine_fields.NetLC_EngineHotState = hotState
@@ -162,6 +170,26 @@ if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' then
         return schema({'EngineComponent','TransmissionComponent','Throttle'}, {})
     end
     if scenario == 'deep_sound_and_gear' then state.throttle = 0.8 end
+    if scenario == 'crowded_audio_and_engine_profile' then
+        local rootFields = {'EngineComponent', 'TransmissionComponent', 'Throttle'}
+        for i = 1, 14 do
+            local field = 'ExtraSoundComponent' .. i
+            vehicle_fields[field] = object({ GetClass = function()
+                local clutter = {}
+                for j = 1, 180 do clutter[#clutter + 1] = 'UnrelatedField' .. j end
+                return schema(clutter, {})
+            end })
+            rootFields[#rootFields + 1] = field
+        end
+        vehicle_fields.GetClass = function() return schema(rootFields, {}) end
+    end
+    if scenario == 'stable_engine_mapping' then
+        state.engine_scans = 0
+        engine_fields.GetClass = function()
+            state.engine_scans = state.engine_scans + 1
+            return schema(engineProps, {rpmGetter, throttleGetter})
+        end
+    end
     if scenario == 'engine_hot_state_off' then
         state.running = false
         hotStateFields.bIgnitionOn = false
@@ -253,6 +281,10 @@ elseif scenario == 'gear_probe' then
     state.transmission_fields.CurrentGear = 4
     clock = clock + 1
     tick()
+elseif scenario == 'stable_engine_mapping' then
+    clock = clock + 3
+    tick()
+    assert(state.engine_scans == 1, 'Stable engine mapping must not be rediscovered every second')
 end
 assert(state.unsafe_calls == 0, 'A getter with input parameters was called')
 assert(reflected_count <= 2000, 'Metadata enumeration exceeded budget: ' .. reflected_count)
