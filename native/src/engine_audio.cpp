@@ -79,11 +79,13 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
 }
 
 std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
-    std::chrono::steady_clock::time_point when, double engineVolume) {
+    std::chrono::steady_clock::time_point when, double engineVolume,
+    const std::string &expectedVehicle) {
     if (!dst || frames == 0) return 0;
     std::fill_n(dst, frames, 0);
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_active || when < m_lastUpdate || when - m_lastUpdate > MaxTelemetryAge ||
+    if (!m_active || (!expectedVehicle.empty() && m_vehicle != expectedVehicle) ||
+        when < m_lastUpdate || when - m_lastUpdate > MaxTelemetryAge ||
         !std::isfinite(engineVolume) || engineVolume < 0 || engineVolume > 1) {
         m_replacing.store(false);
         return 0;

@@ -40,6 +40,7 @@ add_subdirectory("${mtes_engine_sim_SOURCE_DIR}" "${mtes_engine_sim_BINARY_DIR}"
 
 set(MTES_AUDIO_SOURCES
     src/engine_audio.cpp
+    src/game_audio.cpp
     src/game_telemetry.cpp
     src/impulse_wav.cpp
     src/engine_sim_backend.cpp)

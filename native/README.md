@@ -9,6 +9,15 @@ failure. Only complete non-silent source buffers authorize replacing stock audio
 partial buffers are discarded. Its PCM renderer accepts an Engine Volume gain
 (including zero without restoring unwanted stock engine sound), but **reading
 the game's volume slider is not connected yet**.
+The portable `GameAudioOutput` handoff now additionally tracks ownership of
+one identified stock-engine emitter and one procedural PCM sink. It queues
+validated PCM for the **matching vehicle** before muting its stock emitter;
+it stops the sink and restores the emitter on stale telemetry, buffer underrun,
+vehicle change, queue/start failure or loss of emitter identity. Tests verify
+the mute/start and stop/restore operation order. No horn, tire, transmission
+or ambient emitter is ever targeted by this contract. The real Unreal adapter
+still has to implement its `StockEngineEmitter`/`ProceduralAudioSink` interfaces
+and discover an actual stock engine emitter before any muting can occur.
 The experimental Lua exporter now also writes `MTES2` telemetry (vehicle
 identity, live gear, RPM, throttle, ignition, engine type and max RPM) to a
 separate temp file. The native DLL polls that file in `on_update()` in the
