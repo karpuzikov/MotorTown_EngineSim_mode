@@ -1,6 +1,6 @@
 #requires -version 5.1
 <#
-Motor Town EngineSim Bridge v0.2.2 experimental installer.
+Motor Town EngineSim Bridge v0.2.3 experimental installer.
 Single-file automated setup. Downloads open-source dependencies from official sources.
 Not game-tested; gameplay/audio correctness is not guaranteed.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-MotorTownEngineSim.ps1
@@ -253,7 +253,8 @@ try {
     $build = Join-Path $Repo 'build-mtes'
     Run $cmake @('-S',$Repo,'-B',$build,'-G',$vs.Generator,'-A','x64',
         ('-DFLEX_EXECUTABLE=' + $flex.FullName),('-DBISON_EXECUTABLE=' + $bison.FullName),
-        '-DDISCORD_ENABLED=OFF','-DDTV=OFF')
+        '-DDISCORD_ENABLED=OFF','-DDTV=OFF',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
     Run $cmake @('--build',$build,'--config','Release','--target','engine-sim-app','--parallel','6')
     $engineExe = Get-ChildItem -Path $build -Filter 'engine-sim-app.exe' -Recurse -File | Where-Object { $_.FullName -match '\\Release\\' } | Select-Object -First 1
     Ensure ([bool]$engineExe) 'Build ended without engine-sim-app.exe.'
