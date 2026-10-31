@@ -19,13 +19,18 @@ local TELEMETRY = TEMP .. "\\MotorTownEngineSim_telemetry.txt"
 local NATIVE_TELEMETRY = TEMP .. "\\MotorTownEngineSim_native_telemetry.txt"
 local DEBUG_LOG = TEMP .. "\\MotorTownEngineSim_diagnostics.txt"
 local DISCOVERY = TEMP .. "\\MotorTownEngineSim_discovery.txt"
+local AUDIO_TARGETS = TEMP .. "\\MotorTownEngineSim_audio_targets.txt"
 local lastVehicle = nil
 local mapping = nil
 local lastValue = ""
 local nextDiscovery = 0
+local nextAudioProbe = 0
 local dumpInventory = true
 local lastGear = nil
 local nativeSequence = 0
+local cachedUserSettings = nil
+local nextSettingsProbe = 0
+local lastReportedVolume = nil
 -- A new token on Lua hot reload lets the persistent native DLL safely accept
 -- a sequence restart without trusting decreasing counters in one session.
 local nativeSession = string.format("%08X%08X",
@@ -248,7 +253,67 @@ local function score(name, kind)
     return scoreValue
 end
 
+-- Explicit SDK-backed probe. The generic reflection budget can be exhausted
+-- by thousands of unrelated properties before the audio arrays are visited.
+-- Only read EngineComponent.EngineSoundComponent; horns and tires are excluded.
+local function sdk_audio_targets(vehicle)
+    local lines = {}
+    local owner = path_value(vehicle, "EngineComponent.EngineSoundComponent")
+    if not valid(owner) then
+        return {"EngineSoundComponent: unavailable"}
+    end
+    local function identity(obj)
+        if not valid(obj) then return "unavailable" end
+        local ok, name = pcall(function() return obj:GetFullName() end)
+        if not ok or type(name) ~= "string" or name == "" then return "unavailable" end
+        return name:sub(1, 220):gsub("[%c]", " ")
+    end
+    for _, field in ipairs({"EngineAudioComponents", "ExhaustAudioComponents"}) do
+        local array = member(owner, field)
+        local ok, count = pcall(function() return array:GetArrayNum() end)
+        if not ok or type(count) ~= "number" or count < 0 or count > 4096 then
+            lines[#lines + 1] = field .. ": unavailable"
+        else
+            lines[#lines + 1] = field .. ": count=" .. tostring(count)
+            local observed = 0
+            local iterated = pcall(function()
+                array:ForEach(function(index, element)
+                    if observed >= 16 then return true end
+                    observed = observed + 1
+                    local got, channel = pcall(function() return element:get() end)
+                    if not got or not valid(channel) then
+                        lines[#lines + 1] = field .. "[" .. tostring(index) .. "]: unavailable"
+                    else
+                        local sound = identity(member(channel, "Sound"))
+                        local gain = member(channel, "VolumeMultiplier")
+                        if type(gain) ~= "number" or gain ~= gain then gain = "unavailable" end
+                        lines[#lines + 1] = field .. "[" .. tostring(index) .. "]: " ..
+                            identity(channel) .. " Sound=" .. sound ..
+                            " VolumeMultiplier=" .. tostring(gain)
+                    end
+                end)
+            end)
+            if not iterated then lines[#lines + 1] = field .. ": iteration unavailable" end
+            if count > 16 then lines[#lines + 1] = field .. ": truncated to 16" end
+        end
+    end
+    return lines
+end
+
+local function write_audio_targets(vehicle)
+    if not valid(vehicle) then return end
+    local ok, name = pcall(function() return vehicle:GetFullName() end)
+    if not ok or type(name) ~= "string" then name = "unavailable" end
+    local report = io.open(AUDIO_TARGETS, "w")
+    if report then
+        report:write("Player vehicle: ", name:sub(1, 220), "\n",
+            "SDK engine audio targets:\n", table.concat(sdk_audio_targets(vehicle), "\n"), "\n")
+        report:close()
+    end
+end
+
 local function discover(vehicle, detailed)
+    local audioTargets = sdk_audio_targets(vehicle)
     local candidates = { rpm = {}, throttle = {}, ignition = {}, gear = {} }
     local seen, objectCount, memberCount, inventory = {}, 0, 0, {}
     local priorityInventory = {}
@@ -397,6 +462,7 @@ local function discover(vehicle, detailed)
         snapshot:write("Exporter v0.2.14 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
+            "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
             "First 300 inventory lines:\n",
             table.concat(inventory, "\n"), "\n")
         snapshot:close()
@@ -422,9 +488,44 @@ local function write_telemetry(rpm, throttle, running)
     lastValue = data
 end
 
+-- SDK: UMotorTownUserSettings.Values maps EMTUserSettingType ->
+-- FMTUserSettingValue. Sound_EngineVolume = 28; ValueType::Float = 0.
+-- Return no gain unless the *live* engine-volume entry is usable. Never
+-- substitute master/effects volume or a class-default setting.
+local function engine_volume()
+    if not valid(cachedUserSettings) then
+        cachedUserSettings = nil
+        if os.time() < nextSettingsProbe then return nil end
+        nextSettingsProbe = os.time() + 1
+        local ok, found = pcall(function() return FindFirstOf("MotorTownUserSettings") end)
+        if not ok or not valid(found) then return nil end
+        local named, identity = pcall(function() return found:GetFullName() end)
+        if not named or type(identity) ~= "string" or
+            identity:find("Default__", 1, true) then return nil end
+        cachedUserSettings = found
+    end
+    local settingsMap = member(cachedUserSettings, "Values")
+    local selected
+    local ok = pcall(function()
+        settingsMap:ForEach(function(key, value)
+            if key:get() == 28 then
+                local setting = value:get()
+                if member(setting, "ValueType") == 0 then
+                    selected = member(setting, "FloatValue")
+                end
+                return true
+            end
+        end)
+    end)
+    if not ok or type(selected) ~= "number" or selected ~= selected or
+        selected < 0 or selected > 1 then return nil end
+    return selected
+end
+
 -- Same-game-process native DLL feed. The companion's MTES1 packet is kept
 -- unchanged. A missing gear is -99, never a guessed neutral (0).
 -- MTES3 adds the full EngineData UObject name for exact per-engine matching.
+-- MTES4 adds the read-only engine-volume setting. -1 means unknown.
 local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
     nativeSequence = nativeSequence + 1
     local name = ""
@@ -454,9 +555,16 @@ local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
         return string.format("%02X", c:byte())
     end)
     if encodedAsset == "" then encodedAsset = "-" end
-    local packet = string.format("MTES3 %s %d %.3f %.4f %d %d %s %d %.3f %s\n",
+    local volume = engine_volume()
+    local volumeField = volume and string.format("%.4f", volume) or "-1"
+    -- Lua considers 0 truthy, preserving an intentional engine mute.
+    if volumeField ~= lastReportedVolume then
+        log("Engine Volume: " .. volumeField)
+        lastReportedVolume = volumeField
+    end
+    local packet = string.format("MTES4 %s %d %.3f %.4f %d %d %s %d %.3f %s %s\n",
         nativeSession, nativeSequence, rpm, throttle, running and 1 or 0, gear or -99,
-        encoded, engineType, maxRpm, encodedAsset)
+        encoded, engineType, maxRpm, encodedAsset, volumeField)
     local file = io.open(NATIVE_TELEMETRY, "w")
     if file then file:write(packet); file:close() end
 end
@@ -495,6 +603,13 @@ local function tick()
     if addr ~= lastVehicle then
         lastVehicle = addr
         mapping, nextDiscovery, dumpInventory, lastGear = nil, 0, true, nil
+        nextAudioProbe = 0
+    end
+    -- Sound arrays can be populated after RPM/gear discovery has stabilized.
+    -- Refresh these two exact fields without re-scanning thousands of properties.
+    if os.time() >= nextAudioProbe then
+        write_audio_targets(vehicle)
+        nextAudioProbe = os.time() + 5
     end
     local retryMissingGear = mapping and mapping.rpm and mapping.throttle and not mapping.gear
     if (not mapping or not mapping.rpm or not mapping.throttle or

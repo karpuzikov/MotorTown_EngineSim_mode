@@ -1,6 +1,7 @@
 #include "audio_pipeline.h"
 
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace mtes {
@@ -28,6 +29,12 @@ void NativeAudioPipeline::stop() noexcept {
     if (m_loaded || m_running) silence();
     // Do not clear the session/sequence high-water mark: a temporary missing
     // packet must not cause an older sample to restart a muted engine.
+}
+
+bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
+    Clock::time_point now) {
+    return process(sample, now, sample && sample->engine_volume
+        ? *sample->engine_volume : std::numeric_limits<double>::quiet_NaN());
 }
 
 bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,

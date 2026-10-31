@@ -181,6 +181,7 @@ try {
     foreach ($path in $telemetryPaths) { Add-ReportFile $report 'Telemetry packet' $path 5 }
     foreach ($directory in $TempDirectories) {
         Add-ReportFile $report 'Latest game discovery snapshot' (Join-Path $directory 'MotorTownEngineSim_discovery.txt') 350 -IncludeHead
+        Add-ReportFile $report 'Latest SDK engine audio targets' (Join-Path $directory 'MotorTownEngineSim_audio_targets.txt') 100 -IncludeHead
         Add-ReportFile $report 'Game exporter diagnostics' (Join-Path $directory 'MotorTownEngineSim_diagnostics.txt') 450 -IncludeHead
     }
     if ($gameExe) {

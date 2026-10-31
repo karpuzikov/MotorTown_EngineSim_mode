@@ -253,9 +253,91 @@ end
 if scenario == 'reflection_error' then
     vehicle_fields.GetClass = function() error('Synthetic reflection failure') end
 end
+if scenario == 'sdk_audio_targets' or scenario == 'sdk_audio_missing' or
+   scenario == 'sdk_audio_crowded' or scenario == 'sdk_audio_late' then
+    -- These mock the exact UE4SS SDK property ownership, not its file layout:
+    -- MTVehicle -> MTEngineComponent -> MTEngineSoundComponent -> TArray.
+    vehicle_fields.VehicleSimulation = nil
+    vehicle_fields.EngineComponent = engine
+    vehicle_fields.HornAudioComponent = object({ VolumeMultiplier = 0.8 })
+    engine_fields.GetClass = function()
+        return schema({'EngineSoundComponent'}, {rpm, throttle, ignition})
+    end
+    if scenario ~= 'sdk_audio_missing' then
+        local function sound(name)
+            return object({ GetFullName = function() return 'SoundCue /Game/Audio.' .. name end })
+        end
+        local function channel(name, volume)
+            return object({
+                Sound = sound(name), VolumeMultiplier = volume,
+                GetFullName = function() return 'AudioComponent /Game/Vehicle.' .. name end,
+            })
+        end
+        local function audio_array(items)
+            return object({
+                GetArrayNum = function() return #items end,
+                ForEach = function(self, callback)
+                    for i, item in ipairs(items) do
+                        local element = { get = function() return item end }
+                        if callback(i - 1, element) then break end
+                    end
+                end,
+            }, 'TArray')
+        end
+        local engineAudio = {channel('EngineA', 0.75)}
+        if scenario == 'sdk_audio_crowded' then
+            engineAudio[2] = false -- invalid null element
+        end
+        local owner = object({
+            EngineAudioComponents = audio_array(engineAudio),
+            ExhaustAudioComponents = audio_array({channel('ExhaustA', 0.4)}),
+            GetClass = function() return schema({'EngineAudioComponents', 'ExhaustAudioComponents'}, {}) end,
+        })
+        if scenario == 'sdk_audio_late' then state.late_audio_owner = owner
+        else engine_fields.EngineSoundComponent = owner end
+    end
+    if scenario == 'sdk_audio_crowded' then
+        local props = {'EngineComponent', 'HornAudioComponent'}
+        for i = 1, 2400 do props[#props + 1] = 'Unrelated' .. i end
+        vehicle_fields.GetClass = function() return schema(props, {}) end
+    else
+        vehicle_fields.GetClass = function()
+            return schema({'EngineComponent', 'HornAudioComponent'}, {})
+        end
+    end
+end
 local controller = object({ K2_GetPawn = function() return vehicle end })
 package.preload['UEHelpers'] = function() return { GetPlayerController = function() return controller end } end
 FindFirstOf = function() error('Must use the local player controller') end
+if scenario:match('^settings_') then
+    state.engine_volume = 0.65
+    local valueType = 0 -- EMTUserSettingValueType::Float
+    if scenario == 'settings_zero' then state.engine_volume = 0 end
+    if scenario == 'settings_change' then state.engine_volume = 0.4 end
+    if scenario == 'settings_bad_type' then valueType = 1 end
+    if scenario == 'settings_bad_range' then state.engine_volume = 1.5 end
+    local map = object({
+        ForEach = function(self, callback)
+            for _, key in ipairs({25, 28}) do
+                local setting = key == 28 and
+                    {ValueType = valueType, FloatValue = state.engine_volume} or
+                    {ValueType = 0, FloatValue = 0.25}
+                local keyRef = {get = function() return key end}
+                local valueRef = {get = function() return setting end}
+                if callback(keyRef, valueRef) then break end
+            end
+        end,
+    }, 'TMap')
+    local settings = object({
+        Values = map,
+        GetFullName = function() return 'MotorTownUserSettings /Engine/Transient.GameUserSettings' end,
+    })
+    FindFirstOf = function(name)
+        assert(name == 'MotorTownUserSettings', 'Unexpected lookup: ' .. tostring(name))
+        if scenario == 'settings_missing' then return nil end
+        return settings
+    end
+end
 local tick = nil
 LoopInGameThreadWithDelay = function(delay, callback) assert(delay == 50); tick = callback end
 dofile(exporter)
@@ -299,6 +381,14 @@ elseif scenario == 'stable_engine_mapping' then
     clock = clock + 3
     tick()
     assert(state.engine_scans == 1, 'Stable engine mapping must not be rediscovered every second')
+elseif scenario == 'sdk_audio_late' then
+    engine_fields.EngineSoundComponent = state.late_audio_owner
+    clock = clock + 6
+    tick() -- RPM/throttle remain stable; targeted sound inventory must refresh
+elseif scenario == 'settings_change' then
+    state.engine_volume = 0.95
+    clock = clock + 1
+    tick()
 end
 assert(state.unsafe_calls == 0, 'A getter with input parameters was called')
 assert(reflected_count <= 2000, 'Metadata enumeration exceeded budget: ' .. reflected_count)

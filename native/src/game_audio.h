@@ -17,7 +17,9 @@ class StockEngineEmitter {
 public:
     virtual ~StockEngineEmitter() = default;
     virtual bool mute() = 0;
-    virtual void restore() noexcept = 0;
+    // False means restoring a still-owned channel failed temporarily. The
+    // game adapter must retain this owner and retry on later game ticks.
+    virtual bool restore() noexcept = 0;
 };
 
 // queue() must not make PCM audible before start() succeeds; stop() must

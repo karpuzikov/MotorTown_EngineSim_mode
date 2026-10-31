@@ -11,8 +11,9 @@ void GameAudioOutput::stop() noexcept {
     // Stop playback before bringing original sound back. The emitter wrapper
     // is responsible for checking its Unreal object is still valid.
     m_sink.stop();
-    if (m_stock) m_stock->restore();
-    m_stock.reset();
+    // Keep ownership across a transient failure: losing the original gain
+    // would otherwise strand this vehicle's engine/exhaust at zero volume.
+    if (!m_stock || m_stock->restore()) m_stock.reset();
     m_vehicle.clear();
     m_playing = false;
 }
@@ -21,11 +22,18 @@ bool GameAudioOutput::submit(const std::string& vehicle,
     std::shared_ptr<StockEngineEmitter> stock, std::int16_t* scratch,
     std::size_t frames, std::chrono::steady_clock::time_point when,
     double engineVolume) {
+    if (m_stock && !m_playing) {
+        stop();
+        if (m_stock) return false; // previous vehicle's restoration is pending
+    }
     if (vehicle.empty() || !stock || !scratch || frames == 0) {
         stop();
         return false;
     }
-    if (m_vehicle != vehicle || m_stock != stock) stop();
+    if (m_vehicle != vehicle || m_stock != stock) {
+        stop();
+        if (m_stock) return false;
+    }
 
     // Validate the PCM's vehicle identity under EngineAudio's render lock.
     // A vehicle switch must never overlay synthesis from the previous car.
@@ -35,6 +43,13 @@ bool GameAudioOutput::submit(const std::string& vehicle,
         return false;
     }
     try {
+        // Motor Town can update active audio component volumes on its own
+        // ticks. Keep stock engine/exhaust muted without recapturing its
+        // original gain; if the target is gone, immediately fail open.
+        if (m_playing && (!m_stock || !m_stock->mute())) {
+            stop();
+            return false;
+        }
         if (!m_sink.queue(scratch, frames)) {
             stop();
             return false;

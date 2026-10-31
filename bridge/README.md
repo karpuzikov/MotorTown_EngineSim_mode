@@ -2,7 +2,7 @@
 
 ## Native telemetry bridge (development only)
 
-The same in-game Lua exporter now writes a separate `MTES3` packet to
+The same in-game Lua exporter now writes a separate `MTES4` packet to
 `%TEMP%\MotorTownEngineSim_native_telemetry.txt` every game tick (20 Hz). It
 carries the actual reflected gear, vehicle identity and basic engine metadata
 alongside RPM, throttle and ignition. It also includes an exact reflected
@@ -11,12 +11,28 @@ alongside RPM, throttle and ignition. It also includes an exact reflected
 DLL rejects rather than pretending the transmission is in neutral. The native
 UE4SS `on_update()` reader consumes this without an external application and
 ignores stale files. Each Lua exporter load has its own session token, so
-reloading the script can restart its packet sequence. Native `MTES2` parsing
-remains supported, and the legacy `MTES1` file
+reloading the script can restart its packet sequence. The final field carries
+`UMotorTownUserSettings.Values[Sound_EngineVolume].FloatValue` when the live
+setting has a verified float type and a value between 0 and 1, including zero.
+Unavailable, non-float and out-of-range values are `-1` (unknown), never an
+assumed maximum or the master volume. The SDK confirms the field layout, but
+the value and lookup still require a Windows in-game check. Native `MTES2` and
+`MTES3` parsing remain supported, and the legacy `MTES1` file
 remains compatible with v0.2.14.
 
 This is a transitional in-process integration, not procedural audio playback
 or stock engine-sound replacement.
+
+The November 1 SDK-backed diagnostic probe reads
+`EngineComponent.EngineSoundComponent.EngineAudioComponents` and
+`EngineComponent.EngineSoundComponent.ExhaustAudioComponents` directly, showing
+up to 16 component identities, assigned sounds and current volume multipliers
+under `SDK engine audio targets:` in the discovery snapshot. This check is
+independent of the general reflection budget and never modifies game audio.
+The latest component list is also refreshed independently every five seconds
+in `%TEMP%\MotorTownEngineSim_audio_targets.txt` and included in the read-only
+diagnostic collector, so late-loaded engine/exhaust loops can be inspected
+without repeating the expensive general reflection scan.
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original

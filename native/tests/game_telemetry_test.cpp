@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
     assert(sample->state.ignition && sample->state.gear == 3);
     assert(sample->engine_type == 2 && sample->max_rpm == 2900.0);
     assert(sample->engine_asset.empty()); // Original MTES2 packets stay valid.
+    assert(!sample->engine_volume);
 
     // MTES3 adds a stable engine-data asset identity rather than guessing a
     // script from the vehicle's transient actor instance name or RPM limit.
@@ -32,6 +33,25 @@ int main(int argc, char **argv) {
     const auto stable = parse_game_telemetry(assetPacket);
     assert(stable && stable->vehicle == "Tuscan_C");
     assert(stable->engine_asset == "MT_EngineData /Game/Engines/Boxer.Boxer");
+    assert(!stable->engine_volume); // MTES3 did not include game settings.
+    const auto gained = parse_game_telemetry(
+        "MTES4 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.6500");
+    assert(gained && gained->engine_volume && *gained->engine_volume == 0.65);
+    const auto muted = parse_game_telemetry(
+        "MTES4 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.0000");
+    assert(muted && muted->engine_volume && *muted->engine_volume == 0.0);
+    const auto unavailable = parse_game_telemetry(
+        "MTES4 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 - -1");
+    assert(unavailable && !unavailable->engine_volume);
+    for (const std::string volume : {"-0.01", "1.01", "101", "nan", "inf", "junk"}) {
+        assert(!parse_game_telemetry(
+            "MTES4 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 - " +
+            volume));
+    }
+    assert(!parse_game_telemetry(
+        "MTES4 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 -"));
+    assert(!parse_game_telemetry(
+        "MTES4 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.4 extra"));
     const auto missingAsset = parse_game_telemetry(
         "MTES3 AABBCCDDEEFF0011 2 2400 0.8 1 3 54757363616E5F43 -1 0 -");
     assert(missingAsset && missingAsset->engine_asset.empty());

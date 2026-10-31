@@ -42,6 +42,7 @@ set(MTES_AUDIO_SOURCES
     src/audio_pipeline.cpp
     src/engine_audio.cpp
     src/game_audio.cpp
+    src/stock_engine_emitters.cpp
     src/game_telemetry.cpp
     src/vehicle_profile.cpp
     src/impulse_wav.cpp

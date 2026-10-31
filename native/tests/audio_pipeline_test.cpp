@@ -60,9 +60,10 @@ public:
     std::string name;
     bool muted = false;
     bool mute() override { events.push_back("mute:" + name); muted = true; return true; }
-    void restore() noexcept override {
+    bool restore() noexcept override {
         events.push_back("restore:" + name);
         muted = false;
+        return true;
     }
 };
 
@@ -253,4 +254,29 @@ int main() {
         "MTES2 A1B2C3D4E5F60708 15 0 0 0 0 43617241 2 6500");
     assert(off && !pipeline.process(off, t + std::chrono::seconds(2), 1.0));
     assert(!first->muted && !sink.started);
+
+    // Production callers read gain from MTES4 rather than supplying a
+    // constant. Unknown settings must restore the original game emitter.
+    std::vector<std::string> volumeEvents;
+    EngineAudio volumeEngine(std::make_unique<TraceBackend>(volumeEvents));
+    TraceSink volumeSink(volumeEvents);
+    GameAudioOutput volumeOutput(volumeEngine, volumeSink);
+    Profiles volumeProfiles;
+    Emitters volumeEmitters;
+    auto volumeEmitter = std::make_shared<TraceEmitter>(volumeEvents, "A-volume");
+    volumeEmitters.car_a = volumeEmitter;
+    NativeAudioPipeline volumePipeline(volumeEngine, volumeOutput, volumeProfiles, volumeEmitters);
+    const auto v1 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 1 2000 0.4 1 3 43617241 2 6500 - 0.6");
+    const auto v2 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 2 2000 0.4 1 3 43617241 2 6500 - 0.0");
+    const auto v3 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 3 2000 0.4 1 3 43617241 2 6500 - -1");
+    assert(v1 && v2 && v3);
+    assert(!volumePipeline.process(v1, t));
+    assert(volumePipeline.process(v2, t + std::chrono::milliseconds(50)));
+    assert(volumeEmitter->muted && volumeSink.started && volumeSink.last.size() == 2205);
+    for (auto pcm : volumeSink.last) assert(pcm == 0);
+    assert(!volumePipeline.process(v3, t + std::chrono::milliseconds(100)));
+    assert(!volumeEmitter->muted && !volumeSink.started);
 }

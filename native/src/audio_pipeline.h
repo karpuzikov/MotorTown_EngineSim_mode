@@ -50,6 +50,10 @@ public:
 
     bool process(const std::optional<GameTelemetrySample>& sample,
         Clock::time_point now, double gameEngineVolume);
+    // Runtime entry point: trust only the game setting carried by MTES4.
+    // MTES2/3 and missing settings always leave stock audio in control.
+    bool process(const std::optional<GameTelemetrySample>& sample,
+        Clock::time_point now);
     void stop() noexcept;
 
 private:

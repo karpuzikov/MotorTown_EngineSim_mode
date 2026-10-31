@@ -7,8 +7,13 @@ the genuine Engine Simulator engine scripts and drives its synthesizer. The
 controller follows RPM/throttle/gear and clears data on telemetry or render
 failure. Only complete non-silent source buffers authorize replacing stock audio;
 partial buffers are discarded. Its PCM renderer accepts an Engine Volume gain
-(including zero without restoring unwanted stock engine sound), but **reading
-the game's volume slider is not connected yet**.
+(including zero without restoring unwanted stock engine sound). The UE4SS Lua
+exporter now reads the SDK `UMotorTownUserSettings.Values` entry for
+`Sound_EngineVolume`, sending a new MTES4 gain field between 0 and 1 or `-1`
+when absent/invalid. The native reader stores a validated optional gain and
+`NativeAudioPipeline::process(sample, now)` uses it directly, falling back to
+stock audio if unknown. **This setting lookup is not yet verified in-game;
+the live DLL still does not play PCM or replace stock audio.**
 The portable `GameAudioOutput` handoff now additionally tracks ownership of
 one identified stock-engine emitter and one procedural PCM sink. It queues
 validated PCM for the **matching vehicle** before muting its stock emitter;
@@ -18,6 +23,19 @@ the mute/start and stop/restore operation order. No horn, tire, transmission
 or ambient emitter is ever targeted by this contract. The real Unreal adapter
 still has to implement its `StockEngineEmitter`/`ProceduralAudioSink` interfaces
 and discover an actual stock engine emitter before any muting can occur.
+The user's November 1 Motor Town SDK dump identifies stock engine/exhaust
+loops in `MTEngineComponent.EngineSoundComponent.EngineAudioComponents` and
+`MTEngineComponent.EngineSoundComponent.ExhaustAudioComponents`. The tested
+`MotorTownStockEngineEmitters` treats these as one reversible group: it preserves
+each original gain, rolls back partial mute failures, and reasserts muting if
+the game overwrites a multiplier between PCM blocks. The read-only Lua probe
+now reports these exact live arrays. **Neither a live UE4SS endpoint adapter
+nor an Unreal PCM sink has been implemented yet.**
+If a game component cannot be restored immediately, the portable audio output
+stops PCM playback and retains its original gain snapshot for retries on later
+updates; it never starts a different vehicle while restoration is pending.
+The real adapter still must prove continuous stock-emitter suppression against
+Motor Town's sound-update frequency before enabling muting in-game.
 The `NativeAudioPipeline` now joins the native telemetry parser, engine synthesizer and
 sound-ownership controller in one tested path. Each 50-ms telemetry sequence
 advances synthesis once (rather than once per UE4SS frame), yielding nominal
@@ -37,15 +55,16 @@ generate extra audio blocks; volume and emitter validity are checked on every
 callback. Missing data does not reset the per-session sequence high-water mark.
 The caller must pass `GameTelemetryReader::current(now)` (or `nullopt` after
 expiry), and the pipeline also expires unchanged samples after 250 ms.
-The experimental Lua exporter now writes `MTES3` telemetry (vehicle
+The experimental Lua exporter now writes `MTES4` telemetry (vehicle
 identity, live gear, RPM, throttle, ignition, engine type, max RPM and the
-full reflected `EngineData` UObject identity) to a
+full reflected `EngineData` UObject identity and read-only engine volume) to a
 separate temp file. The native DLL polls that file in `on_update()` in the
 same game process. It rejects unknown gears, malformed packets and data older
 than 250 ms from the producer's write, tolerates Lua exporter reloads via a
 new session token, and logs observed gear transitions to UE4SS. The reader
-continues accepting `MTES2` for compatibility, but those older packets lack
-the exact engine asset identity needed for automatic profile selection. The original `MTES1`
+continues accepting `MTES2` and `MTES3` for compatibility, but those older packets
+lack a validated engine volume, and MTES2 also lacks the exact engine asset
+identity needed for automatic profile selection. The original `MTES1`
 companion packet is unchanged. This file handoff is temporary: direct native
 Motor Town reflection is still needed for the final mod. No actual Unreal
 audio routing is connected yet.

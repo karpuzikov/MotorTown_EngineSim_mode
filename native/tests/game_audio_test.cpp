@@ -30,6 +30,7 @@ public:
     std::vector<std::string>* events = nullptr;
     bool muted = false;
     bool allow_mute = true;
+    bool allow_restore = true;
     int restores = 0;
     bool mute() override {
         if (events) events->push_back("mute");
@@ -37,10 +38,12 @@ public:
         muted = true;
         return true;
     }
-    void restore() noexcept override {
+    bool restore() noexcept override {
         if (events) events->push_back("restore");
+        if (!allow_restore) return false;
         muted = false;
         ++restores;
+        return true;
     }
 };
 
@@ -107,6 +110,24 @@ int main() {
     for (auto sample : sink.last) assert(sample == 0);
     assert(first->muted && sink.starts == 1);
 
+    // The game can rewrite its component multiplier while PCM is playing.
+    // Reasserting mute on subsequent packets must not restart playback.
+    first->muted = false;
+    events.clear();
+    assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
+    assert(first->muted && sink.starts == 1);
+    assert((events == std::vector<std::string>{"mute", "queue"}));
+
+    // Losing permission to mute during playback is a fail-open stop.
+    first->allow_mute = false;
+    events.clear();
+    assert(!game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
+    assert((events == std::vector<std::string>{"mute", "stop", "restore"}));
+    assert(!first->muted && !sink.started);
+    first->allow_mute = true;
+    assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
+    assert(sink.starts == 2);
+
     // Underflow cannot leave the stock engine muted or overlay stale PCM.
     source->underrun = true;
     events.clear();
@@ -119,11 +140,20 @@ int main() {
     assert(engine.update("Atlas", "atlas.mr", {950, 0.5, 1, true}, t));
     assert(game.submit("Atlas", second, scratch.data(), scratch.size(), t, 0.8));
     assert(!first->muted && second->muted);
-    assert(sink.starts == 2 && !unrelated_horn_muted);
+    assert(sink.starts == 3 && !unrelated_horn_muted);
 
     // Invalid telemetry and a failed backend both restore stock immediately.
+    second->allow_restore = false;
     assert(!game.submit("Atlas", second, scratch.data(), scratch.size(),
         t + std::chrono::seconds(1), 1.0));
+    assert(second->muted && !sink.started);
+    assert(engine.update("Tuscan", "tuscan.mr", {1200, 0.25, 1, true},
+        t + std::chrono::seconds(1)));
+    assert(!game.submit("Tuscan", first, scratch.data(), scratch.size(),
+        t + std::chrono::seconds(1), 1.0));
+    assert(!first->muted && !sink.started); // block vehicle switch until restored
+    second->allow_restore = true;
+    game.stop(); // failed restore must retain ownership and retry
     assert(!second->muted && !sink.started);
 
     // A sink that cannot queue playback must never mute the stock engine.

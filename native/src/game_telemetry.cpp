@@ -38,13 +38,23 @@ std::optional<GameTelemetrySample> parse_game_telemetry(std::string_view line) {
     if (line.size() > 2400) return std::nullopt;
     std::istringstream input{std::string(line)};
     input.imbue(std::locale::classic());
-    std::string header, session, sequenceText, vehicleHex, assetHex, extra;
+    std::string header, session, sequenceText, vehicleHex, assetHex, volumeText, extra;
     GameTelemetrySample sample;
     int ignition = -1;
     if (!(input >> header >> session >> sequenceText >> sample.state.rpm >>
         sample.state.throttle >> ignition >> sample.state.gear >> vehicleHex >>
         sample.engine_type >> sample.max_rpm)) return std::nullopt;
-    if (header == "MTES3") {
+    if (header == "MTES4") {
+        if (!(input >> assetHex >> volumeText)) return std::nullopt;
+        double volume = 0;
+        const auto [end, error] = std::from_chars(volumeText.data(),
+            volumeText.data() + volumeText.size(), volume, std::chars_format::general);
+        if (error != std::errc{} || end != volumeText.data() + volumeText.size() ||
+            !std::isfinite(volume) || (volume != -1 && (volume < 0 || volume > 1)))
+            return std::nullopt;
+        if (volume != -1) sample.engine_volume = volume;
+    }
+    else if (header == "MTES3") {
         if (!(input >> assetHex)) return std::nullopt;
     }
     else if (header != "MTES2") return std::nullopt;
