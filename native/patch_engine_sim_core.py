@@ -12,20 +12,36 @@ import sys
 
 MARK = "// MTES_HEADLESS_CORE_LIFETIME_V1"
 FILES = {
+    "engine.cpp": "b8a5d4c21bccd65ae684654ec280a45de93cef8d8f16b47b2ded6a2d7761bfbe",
+    "jitter_filter.cpp": "b09a6b6e2406bc78161aba276ad551c3c2e4c8d1a3b5e8fc7d3cfa16aff1c439",
     "simulator.cpp": "3a014d5dd7e2584250db33605fc51d07d1f7779b811f92c8599d19a654831eb4",
+    "synthesizer.cpp": "8ec3421e98b32f811cb3fcc8453ed30de77fef1fe4fc6a2fcb69421175ae34e8",
     "piston_engine_simulator.cpp": "0da7b8fd41e2da0074e19f1ed056e56f24c512c67ac828460355c8549eec38ad",
     "compiler.cpp": "71314012594c46ee8b6151abdf8170cec88ed1cb1d5a2dcbc7bf95a17bbeed3e",
     "piranha_path.cpp": "c1f572d036768b1c049679fb8952c31d7ffb118d76318fce7250ac68ddb14fad",
 }
 PATCHED_HASHES = {
+    "engine.cpp": "939ee10e9d80ea2c075a91ee49be110889d9be25d71513c5d7ab0f4c27567932",
+    "jitter_filter.cpp": "fca57c9efa6745a007eaf8582cb6923aac49de0c589cfa77a30128c3175781a5",
     "simulator.cpp": "73c2d9b2e2f29ff00a83c43e19a0d81ccd2ca6cfc6cecf20eb3997318e611d24",
-    "piston_engine_simulator.cpp": "a7ac63b9642ed5ea64cc38cd06ac174363e28896ff5225ad130f9b0ae79bb996",
+    "synthesizer.cpp": "d04cae09d0da700a77561426d53a843fb498d33e735b78f3681cf74ac70d2c45",
+    "piston_engine_simulator.cpp": "1ef3ae113cdf14ddbb33b21cd3948f3bafd6dce25e775812db74044550ba2a0b",
     "compiler.cpp": "d60cc3f5df0762cafec2f439149490d3235b1954ab31783e14ef2e1f4b0106d7",
     "piranha_path.cpp": "906ffcfc170abf8d4ff778dfdbf5185d388e4481243fcacb865b8d97cf7f1c53",
 }
 
 
 def transformed(name: str, source: str) -> str:
+    if name == "engine.cpp":
+        old = "    m_displacement = displacement;\n}"
+        new = ("    delete[] min_s;\n"
+               "    delete[] max_s;\n"
+               "    m_displacement = displacement;\n"
+               "    " + MARK + "\n}")
+        if source.count(old) != 1:
+            raise ValueError("Unsupported engine displacement cleanup")
+        return source.replace(old, new, 1)
+
     if name == "simulator.cpp":
         before = "void Simulator::destroy() {\n    m_synthesizer.destroy();\n}"
         after = ("void Simulator::destroy() {\n"
@@ -37,9 +53,54 @@ def transformed(name: str, source: str) -> str:
             raise ValueError("Unsupported Simulator::destroy layout")
         return source.replace(before, after, 1)
 
+    if name == "jitter_filter.cpp":
+        before = "JitterFilter::~JitterFilter() {\n    /* void */\n}"
+        after = ("JitterFilter::~JitterFilter() {\n"
+                 "    delete[] m_history;\n"
+                 "    m_history = nullptr;\n"
+                 "    " + MARK + "\n}")
+        if source.count(before) != 1:
+            raise ValueError("Unsupported JitterFilter destructor")
+        return source.replace(before, after, 1)
+
+    if name == "synthesizer.cpp":
+        replacements = (
+            ("#include <cassert>\n", "#include <cassert>\n#include <array>\n"),
+            ("    m_inputSamplesRead = 0;\n\n    m_audioBufferSize = 0;",
+             "    m_inputSamplesRead = 0;\n    m_latency = 0;\n\n    m_audioBufferSize = 0;"),
+            ("        m_inputChannels[i].data.destroy();\n",
+             "        delete[] m_inputChannels[i].transferBuffer;\n"
+             "        m_inputChannels[i].transferBuffer = nullptr;\n"
+             "        m_inputChannels[i].data.destroy();\n"),
+            ("void Synthesizer::writeInput(const double *data) {\n",
+             "void Synthesizer::writeInput(const double *data) {\n"
+             "    std::lock_guard<std::mutex> lock(m_lock0);\n"),
+            ("    std::unique_lock<std::mutex> lk(m_inputLock);",
+             "    std::unique_lock<std::mutex> lk(m_lock0);"),
+            ("    for (int i = 0; i < n; ++i) {\n"
+             "        m_audioBuffer.write(renderAudio(i));\n"
+             "    }",
+             "    std::array<int16_t, 2000> rendered;\n"
+             "    for (int i = 0; i < n; ++i) {\n"
+             "        rendered[i] = renderAudio(i);\n"
+             "    }\n"
+             "    {\n"
+             "        std::lock_guard<std::mutex> lock(m_lock0);\n"
+             "        for (int i = 0; i < n; ++i) m_audioBuffer.write(rendered[i]);\n"
+             "    }\n"
+             "    " + MARK),
+        )
+        for before, after in replacements:
+            if source.count(before) != 1:
+                raise ValueError("Unsupported synthesizer layout: " + before.strip())
+            source = source.replace(before, after, 1)
+        return source
+
     if name == "piston_engine_simulator.cpp":
         replacements = (
             ("    assert(m_antialiasingFilters == nullptr);\n", ""),
+            ("    static double lastValveLift[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };\n", ""),
+            ("        lastValveLift[i] = head->exhaustValveLift(piston->getCylinderIndex());\n", ""),
             ("    if (m_linkConstraints != nullptr) delete[] m_linkConstraints;\n",
              "    if (m_linkConstraints != nullptr) delete[] m_linkConstraints;\n"
              "    if (m_crankshaftLinks != nullptr) delete[] m_crankshaftLinks;\n"),

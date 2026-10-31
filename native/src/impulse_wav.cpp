@@ -83,4 +83,12 @@ std::vector<std::int16_t> load_impulse_wav(const std::string &path) {
     return parse_impulse_wav(bytes);
 }
 
+bool usable_impulse_for_engine_sim(const std::vector<std::int16_t> &samples) {
+    // The pinned synthesizer trims every sample <=100; a zero-length
+    // convolution then divides by zero in its filter loop.
+    return std::any_of(samples.begin(), samples.end(), [](std::int16_t sample) {
+        return int(sample) < -100 || int(sample) > 100;
+    });
+}
+
 } // namespace mtes

@@ -81,7 +81,8 @@ public:
                     return false;
                 }
                 const auto samples = load_impulse_wav(response->getFilename());
-                if (samples.empty() || samples.size() > std::numeric_limits<unsigned int>::max()) {
+                if (!usable_impulse_for_engine_sim(samples) ||
+                    samples.size() > std::numeric_limits<unsigned int>::max()) {
                     stop();
                     return false;
                 }

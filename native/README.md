@@ -8,8 +8,9 @@ failure. Only complete non-silent source buffers authorize replacing stock audio
 partial buffers are discarded. Its PCM renderer accepts an Engine Volume gain
 (including zero without restoring unwanted stock engine sound), but **reading
 the game's volume slider is not connected yet**.
-The actual Engine Simulator backend **still requires a Windows build and
-real-PCM smoke test**; it is not yet connected to Motor Town's Unreal audio
+The actual Engine Simulator backend **passed Windows builds and real-PCM smoke
+tests** using boxer-four, V8, and V10 engine profiles, including in-process
+engine switching. It is not yet connected to Motor Town's Unreal audio
 output, stock muting, game engine-volume control, or vehicle profile selector.
 Do not install it as a replacement for the current experimental companion.
 
@@ -40,7 +41,8 @@ when `MTES_ENGINE_SIM_SOURCE` points to an engine-sim checkout.
 
 The CMake project fetches the pinned Engine Simulator fork into its **build
 directory**, then patches known upstream cleanup defects so repeated vehicle
-switches can release physics and audio allocations. It also resolves `.mr`
+switches can release physics and audio allocations, repairs the upstream
+more-than-eight-cylinder write, and synchronizes PCM ring-buffer access. It also resolves `.mr`
 imports relative to the script, and avoids writing `error_log.log` into the
 game directory (opt in with `MTES_SCRIPT_LOG_PATH`). The desktop application
 target is not built or launched.

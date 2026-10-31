@@ -22,7 +22,8 @@ class CorePatchTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="mtes-headless-core-")
         self.root = Path(self.temp.name)
         (self.root / "src").mkdir()
-        for name in ("simulator.cpp", "piston_engine_simulator.cpp"):
+        for name in ("simulator.cpp", "piston_engine_simulator.cpp", "engine.cpp",
+                     "synthesizer.cpp", "jitter_filter.cpp"):
             shutil.copyfile(Path(os.environ["MTES_ENGINE_SIM_SOURCE"]) / "src" / name,
                             self.root / "src" / name)
         (self.root / "scripting/src").mkdir(parents=True)
@@ -41,6 +42,9 @@ class CorePatchTests(unittest.TestCase):
         patcher.patch(self.root)
         simulator = (self.root / "src/simulator.cpp").read_text()
         piston = (self.root / "src/piston_engine_simulator.cpp").read_text()
+        engine = (self.root / "src/engine.cpp").read_text()
+        synth = (self.root / "src/synthesizer.cpp").read_text()
+        jitter = (self.root / "src/jitter_filter.cpp").read_text()
         compiler = (self.root / "scripting/src/compiler.cpp").read_text()
         piranha_path = (self.root / "dependencies/submodules/piranha/src/path.cpp").read_text()
         self.assertIn("delete[] m_dynoTorqueSamples;", simulator)
@@ -48,6 +52,15 @@ class CorePatchTests(unittest.TestCase):
         self.assertIn("delete[] m_crankshaftLinks;", piston)
         self.assertIn("m_crankshaftLinks = nullptr;", piston)
         self.assertIn("Simulator::destroy();", piston)
+        self.assertNotIn("static double lastValveLift[8]", piston)
+        self.assertNotIn("lastValveLift[i]", piston)
+        self.assertIn("delete[] min_s;", engine)
+        self.assertIn("delete[] max_s;", engine)
+        self.assertIn("delete[] m_inputChannels[i].transferBuffer;", synth)
+        self.assertIn("std::lock_guard<std::mutex> lock(m_lock0);", synth)
+        self.assertNotIn("std::unique_lock<std::mutex> lk(m_inputLock);", synth)
+        self.assertIn("std::array<int16_t, 2000> rendered", synth)
+        self.assertIn("delete[] m_history;", jitter)
         self.assertNotIn("assert(m_antialiasingFilters == nullptr);", piston)
         self.assertIn("m_compiler->addSearchPath(scriptLibrary.toString());", compiler)
         self.assertIn('std::getenv("MTES_SCRIPT_LOG_PATH")', compiler)
@@ -56,6 +69,9 @@ class CorePatchTests(unittest.TestCase):
         patcher.patch(self.root)
         self.assertEqual((self.root / "src/simulator.cpp").read_text(), simulator)
         self.assertEqual((self.root / "src/piston_engine_simulator.cpp").read_text(), piston)
+        self.assertEqual((self.root / "src/engine.cpp").read_text(), engine)
+        self.assertEqual((self.root / "src/synthesizer.cpp").read_text(), synth)
+        self.assertEqual((self.root / "src/jitter_filter.cpp").read_text(), jitter)
         self.assertEqual((self.root / "scripting/src/compiler.cpp").read_text(), compiler)
         self.assertEqual((self.root / "dependencies/submodules/piranha/src/path.cpp").read_text(),
                          piranha_path)

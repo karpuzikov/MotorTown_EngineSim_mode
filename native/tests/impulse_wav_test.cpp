@@ -18,6 +18,12 @@ int main(int argc, char **argv) {
     const auto decoded = parse_impulse_wav(pcm16);
     assert(decoded.size() == 3);
     assert(decoded[0] == -32768 && decoded[1] == 0 && decoded[2] == 32767);
+    // Upstream convolution treats amplitudes <=100 as a zero-length impulse,
+    // which its DSP must never attempt to process.
+    assert(!usable_impulse_for_engine_sim({0, 0, 0}));
+    assert(!usable_impulse_for_engine_sim({-100, 0, 100}));
+    assert(usable_impulse_for_engine_sim({101}));
+    assert(usable_impulse_for_engine_sim({-32768}));
 
     // A real engine-sim asset may have 24-bit samples; convert to PCM16.
     auto pcm24 = pcm16;
