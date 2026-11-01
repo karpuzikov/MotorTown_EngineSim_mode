@@ -48,9 +48,10 @@ public:
             (output / "DynamicOutput.hpp").write_text('''
 #pragma once
 namespace RC {
-enum class LogLevel { Verbose };
+enum class LogLevel { Verbose, Normal };
 struct Output {
-    template<LogLevel L> static void send(const wchar_t*, int) {}
+    template<LogLevel L, typename... Args>
+    static void send(const wchar_t*, Args...) {}
 };
 }
 ''')
@@ -99,12 +100,19 @@ public:
             (dynamic / 'DynamicOutput.hpp').write_text('''
 #pragma once
 #include <vector>
+#include <string>
 namespace RC {
-enum class LogLevel { Verbose };
-extern std::vector<int> observed_gears;
+enum class LogLevel { Verbose, Normal };
+struct LogRecord {
+    LogLevel level;
+    std::wstring message;
+    std::vector<double> values;
+};
+extern std::vector<LogRecord> observed_logs;
 struct Output {
-    template<LogLevel L> static void send(const wchar_t*, int gear) {
-        observed_gears.push_back(gear);
+    template<LogLevel L, typename... Args>
+    static void send(const wchar_t* format, Args... args) {
+        observed_logs.push_back({L, format, {static_cast<double>(args)...}});
     }
 };
 }

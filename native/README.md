@@ -2,9 +2,19 @@
 
 **Not a playable release.** This source exports the native UE4SS module entry
 points, a tested read-only game-telemetry receiver, a fail-open PCM controller,
-and an initial adapter that loads
-the genuine Engine Simulator engine scripts and drives its synthesizer. The
-controller follows RPM/throttle/gear and clears data on telemetry or render
+and an initial adapter that loads the genuine Engine Simulator engine scripts
+and drives its synthesizer.
+
+The development DLL writes normal-level `[MTES]` messages to `UE4SS.log` when
+Unreal initialization completes, the first native update callback runs, valid
+native telemetry arrives or changes gear/Engine Volume, or the feed goes stale.
+The telemetry line reports actual RPM, throttle, gear and engine-volume gain;
+`-1` indicates an unavailable/unknown engine-volume setting. Repeated frames
+do not generate repeated messages. These diagnostics **do not** activate
+replacement audio or mute any stock game sound, and successful portable tests
+are not proof that the user's current Windows DLL has been rebuilt or tested.
+
+The controller follows RPM/throttle/gear and clears data on telemetry or render
 failure. Only complete non-silent source buffers authorize replacing stock audio;
 partial buffers are discarded. Its PCM renderer accepts an Engine Volume gain
 (including zero without restoring unwanted stock engine sound). The UE4SS Lua
