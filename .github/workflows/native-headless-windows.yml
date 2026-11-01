@@ -30,6 +30,10 @@ jobs:
         shell: pwsh
         run: python -m unittest native.tests.test_ue4ss_build_parent -v
 
+      - name: Verify native loader dependency audit
+        shell: pwsh
+        run: python -m unittest native.tests.test_native_load_diagnostics -v
+
       - name: Verify development installer scope, backup and PowerShell syntax
         shell: pwsh
         run: |
