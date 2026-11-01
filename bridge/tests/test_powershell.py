@@ -42,13 +42,17 @@ New-Item -ItemType Directory -Path $Logs -Force | Out-Null
 @unittest.skipUnless(PWSH, "Requires PowerShell (or MTES_TEST_PWSH)")
 class PowerShellTests(unittest.TestCase):
     def test_fresh_and_legacy_bridge_installations_match_python_and_upgrade_once(self):
-        for legacy in (False, True):
+        for legacy in ('fresh', 'v1', 'v0.2.10'):
             with self.subTest(legacy=legacy), tempfile.TemporaryDirectory(prefix='MTES telemetry spaces ') as temp:
                 root = Path(temp)
                 original = ORIGINAL_SOURCE
-                if legacy:
+                if legacy == 'v1':
                     override = (Path(__file__).parent / 'fixtures/legacy_bridge_override.cpp').read_text()
                     original = patcher.HEADER + '\n' + original.replace(patcher.FUNCTION_END, override + patcher.FUNCTION_END)
+                elif legacy == 'v0.2.10':
+                    start = original.index(patcher.FUNCTION_START) + len(patcher.FUNCTION_START)
+                    end = original.index(patcher.FUNCTION_END)
+                    original = patcher.HEADER + '\n' + original[:start] + patcher.PREVIOUS_OVERRIDE + original[end:]
                 for name in ('python', 'powershell'):
                     source = root / name / 'src'
                     source.mkdir(parents=True)

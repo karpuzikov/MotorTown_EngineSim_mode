@@ -2,7 +2,7 @@
 
 Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Version: experimental v0.2.11.** The user's latest Windows build launches and receives zero-valued exporter packets. The new game log identifies the blocker: UE4SS reflection fails after one property. In the installed UE4SS f885e8d2 binding, returning `false` from an iteration callback removes its return value twice and corrupts the callback stack. The exporter now returns no value to continue and `true` only to stop. A native Lua5.4 boundary reproduces that failure and tests the workaround. Live RPM/throttle/ignition mapping and synchronized audio still need testing in Motor Town. Stock-audio replacement remains **unimplemented**.
+**Version: experimental v0.3.0.** The exporter now reads Motor Town's own engine state directly: `NetLC_EngineHotState.CurrentRPM`, `NetLC_EngineHotState.bIgnitionOn` and `Throttle` on the player's `MTVehicle`. These are the values the game replicates so other players hear each engine, taken from published vehicle dumps (MotorTownMods). Earlier versions searched for them by reflection and always failed: UE4SS struct values have no `ForEachProperty`, so the scan died at `NetLC_EngineHotState`, where RPM lives. Sampling starts 30 s after the game loads the mod. The simulator now rides out brief packet misses and eases between 20 Hz samples. In-game audio sync still needs a drive test. Stock-audio replacement remains **unimplemented**.
 
 ## Installation
 
