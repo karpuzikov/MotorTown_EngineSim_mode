@@ -71,6 +71,14 @@ class LocalWindowsBuilderTests(unittest.TestCase):
         self.assertLess(script.index("@('--fresh') + $cmakeArgs"),
                         script.index("Invoke-Checked 'Configure native UE4SS"))
 
+    def test_machine_vcpkg_root_is_preferred_and_session_is_restored(self):
+        script = self.builder()
+        self.assertIn("GetEnvironmentVariable('VCPKG_ROOT', $scope)", script)
+        self.assertIn('$preferredVcpkg = Get-PreferredVcpkgRoot', script)
+        self.assertIn('$originalVcpkgRoot = $env:VCPKG_ROOT', script)
+        finally_block = script[script.rindex('finally {'):]
+        self.assertIn('$env:VCPKG_ROOT = $originalVcpkgRoot', finally_block)
+
     def test_build_never_calls_a_vcpkg_exe_after_linking(self):
         # Reported again after --fresh: vcpkg.cmake still resolved its root to the
         # removed C:\Users\666\AppData\Local\vcpkg, and z-applocal exited 9009.
@@ -100,7 +108,7 @@ LOCAL_ROOT = r'F:\Documents\Karpuzikov Tools\MotorTown EngineSim Mod\dependencie
 class StaleVcpkgCacheTests(unittest.TestCase):
     """Runs the builder's own cache check against CMakeCache.txt fixtures."""
 
-    def check(self, cache_lines, command=None, projects=None):
+    def check(self, cache_lines, command=None, projects=None, vcpkg_root=LOCAL_ROOT, extra_env=None):
         command = command or '''
 $reason = Get-StaleVcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG
 if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
@@ -118,13 +126,15 @@ if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MTES_BUILDER, [ref]$null, [ref]$null)
-foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'Get-StaleVcpkgConfiguration', 'Assert-VcpkgConfiguration')) {
+foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'Get-StaleVcpkgConfiguration',
+                   'Assert-VcpkgConfiguration', 'Select-VcpkgRoot', 'Get-PreferredVcpkgRoot')) {
     $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
     if ($fn.Count -ne 1) { throw "Missing builder function $name" }
     . ([scriptblock]::Create($fn[0].Extent.Text))
 }
 ''' + command)
-            env = dict(os.environ, MTES_BUILDER=str(BUILDER), MTES_BUILD=str(build), MTES_VCPKG=LOCAL_ROOT)
+            env = dict(os.environ, MTES_BUILDER=str(BUILDER), MTES_BUILD=str(build), MTES_VCPKG=vcpkg_root,
+                       **(extra_env or {}))
             return subprocess.run([PWSH, '-NoLogo', '-NoProfile', '-File', str(script)],
                                   env=env, capture_output=True, text=True, timeout=60)
 
@@ -222,14 +232,53 @@ foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'G
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn('Note:', result.stdout)
 
-    def test_configured_build_with_applocal_is_refused(self):
-        local = LOCAL_ROOT.replace('\\', '/')
+    def test_applocal_calling_a_missing_vcpkg_exe_is_refused(self):
+        # The user's cache after bb6079a: applocal reverted to ON, root without vcpkg.exe.
         result = self.assert_configuration([
-            f'VCPKG_INSTALLED_DIR:PATH={local}/installed',
+            f'VCPKG_INSTALLED_DIR:PATH={STALE_ROOT}/installed',
             'VCPKG_APPLOCAL_DEPS:BOOL=ON',
+            f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
         ])
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('applocal is still enabled', result.stdout + result.stderr)
+        self.assertIn('applocal is enabled but', result.stdout + result.stderr)
+
+    def test_applocal_with_the_selected_working_vcpkg_is_accepted(self):
+        with tempfile.TemporaryDirectory(prefix='MTES vcpkg ') as root:
+            (Path(root) / 'vcpkg.exe').write_text('')
+            posix = Path(root).as_posix()
+            result = self.check([
+                f'VCPKG_INSTALLED_DIR:PATH={posix}/installed',
+                'VCPKG_APPLOCAL_DEPS:BOOL=ON',
+                f'Z_VCPKG_ROOT_DIR:INTERNAL={posix}',
+            ], 'Assert-VcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG', vcpkg_root=root)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn('Note:', result.stdout)
+
+    def select(self, preferred, local):
+        result = self.check(None, '''
+$s = Select-VcpkgRoot $env:MTES_PREFERRED $env:MTES_LOCAL $env:MTES_SYSTEM
+Write-Output "$($s.Root)|clone=$($s.Clone)|bootstrap=$($s.Bootstrap)"
+''', extra_env={'MTES_PREFERRED': preferred, 'MTES_LOCAL': local,
+                     # CI runners really have C:\\vcpkg; keep the test independent of it.
+                     'MTES_SYSTEM': str(Path(local) / 'no-system-vcpkg')})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout.strip()
+
+    def test_vcpkg_root_checkout_without_exe_is_used_and_bootstrapped(self):
+        # The user's VCPKG_ROOT: a complete vcpkg checkout whose vcpkg.exe is missing.
+        with tempfile.TemporaryDirectory(prefix='MTES user vcpkg ') as user, \
+             tempfile.TemporaryDirectory(prefix='MTES local vcpkg ') as local:
+            (Path(user) / '.vcpkg-root').write_text('')
+            self.assertEqual(self.select(user, local), f'{user}|clone=False|bootstrap=True')
+            (Path(user) / 'vcpkg.exe').write_text('')
+            self.assertEqual(self.select(user, local), f'{user}|clone=False|bootstrap=False')
+
+    def test_without_a_vcpkg_root_checkout_the_project_vcpkg_is_used(self):
+        with tempfile.TemporaryDirectory(prefix='MTES not vcpkg ') as other, \
+             tempfile.TemporaryDirectory(prefix='MTES local vcpkg ') as local:
+            missing = str(Path(local) / 'vcpkg')
+            self.assertEqual(self.select(other, missing), f'{missing}|clone=True|bootstrap=True')
+            self.assertEqual(self.select('', missing), f'{missing}|clone=True|bootstrap=True')
 
 
 if __name__ == '__main__':

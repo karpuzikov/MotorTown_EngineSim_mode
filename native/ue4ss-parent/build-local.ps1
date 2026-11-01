@@ -33,6 +33,30 @@ if ($PlanOnly) {
     exit 0
 }
 
+function Get-PreferredVcpkgRoot {
+    # The persistent setting, not this process's copy (a previous build in the
+    # same PowerShell session may have changed $env:VCPKG_ROOT).
+    foreach ($scope in @('User', 'Machine')) {
+        $value = [Environment]::GetEnvironmentVariable('VCPKG_ROOT', $scope)
+        if ($value) { return $value }
+    }
+    return $env:VCPKG_ROOT
+}
+
+function Select-VcpkgRoot([string]$Preferred, [string]$LocalRoot, [string]$SystemRoot = 'C:\vcpkg') {
+    if ($Preferred -and (Test-Path -LiteralPath ([IO.Path]::Combine($Preferred, '.vcpkg-root')) -PathType Leaf)) {
+        $missing = -not (Test-Path -LiteralPath ([IO.Path]::Combine($Preferred, 'vcpkg.exe')) -PathType Leaf)
+        return [pscustomobject]@{ Root = $Preferred.TrimEnd('\', '/'); Clone = $false; Bootstrap = $missing
+            Reason = $(if ($missing) { 'VCPKG_ROOT; vcpkg.exe missing, bootstrapping it' } else { 'VCPKG_ROOT' }) }
+    }
+    if ($SystemRoot -and (Test-Path -LiteralPath ([IO.Path]::Combine($SystemRoot, 'vcpkg.exe')) -PathType Leaf)) {
+        return [pscustomobject]@{ Root = $SystemRoot; Clone = $false; Bootstrap = $false; Reason = $SystemRoot }
+    }
+    $hasGit = Test-Path -LiteralPath ([IO.Path]::Combine($LocalRoot, '.git'))
+    $hasExe = Test-Path -LiteralPath ([IO.Path]::Combine($LocalRoot, 'vcpkg.exe')) -PathType Leaf
+    return [pscustomobject]@{ Root = $LocalRoot; Clone = -not $hasGit; Bootstrap = -not $hasExe; Reason = 'project-local' }
+}
+
 function Get-CMakeCacheValue([string]$CachePath, [string]$Name) {
     if (-not (Test-Path -LiteralPath $CachePath -PathType Leaf)) { return $null }
     foreach ($line in [IO.File]::ReadLines($CachePath)) {
@@ -71,17 +95,20 @@ function Test-PathUnder([string]$Path, [string]$Root) {
         $p.StartsWith($r + '/', [StringComparison]::OrdinalIgnoreCase)
 }
 
-# On the user's PC something outside this repository keeps supplying
-# C:\Users\...\AppData\Local\vcpkg (no vcpkg.exe): first as vcpkg.cmake's root, so
-# post-build z-applocal failed (MSB3073, exit 9009); then as the final cached
-# VCPKG_INSTALLED_DIR, although vcpkg.cmake used the pinned packages. The build
-# disables applocal (mtes-stage-dev copies the runtime DLLs itself) and refuses
-# generated projects that reference any other vcpkg.
+# On the user's PC the VCPKG_ROOT vcpkg (C:\Users\...\AppData\Local\vcpkg, then
+# without vcpkg.exe) was pulled into the configure even when another vcpkg was
+# selected: post-build z-applocal called its missing vcpkg.exe (MSB3073, exit
+# 9009) and the final cache reverted to its root, packages and applocal=ON.
+# Refuse any configuration whose post-build step needs a missing vcpkg.exe, and
+# any generated project that references a vcpkg other than the selected one.
 function Assert-VcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
     $cache = [IO.Path]::Combine($BuildDir, 'CMakeCache.txt')
     $root = $VcpkgRoot.TrimEnd('\', '/')
     if ((Get-CMakeCacheValue $cache 'VCPKG_APPLOCAL_DEPS') -notmatch '^(OFF|FALSE|0|NO)$') {
-        throw 'vcpkg post-build applocal is still enabled; it would call another vcpkg.exe.'
+        $applocalRoot = Get-CMakeCacheValue $cache 'Z_VCPKG_ROOT_DIR'
+        if (-not $applocalRoot -or -not (Test-Path -LiteralPath ([IO.Path]::Combine($applocalRoot, 'vcpkg.exe')) -PathType Leaf)) {
+            throw "vcpkg post-build applocal is enabled but '$applocalRoot\vcpkg.exe' does not exist."
+        }
     }
     $foreign = [Collections.Generic.List[string]]::new()
     foreach ($name in @('Z_VCPKG_ROOT_DIR', 'VCPKG_INSTALLED_DIR', '_VCPKG_INSTALLED_DIR')) {
@@ -127,6 +154,7 @@ foreach ($name in @('git', 'cmake')) {
 New-Item -ItemType Directory -Force -Path (Join-Path $WorkDir 'logs') | Out-Null
 $logPath = Join-Path $WorkDir ('logs\build-' + (Get-Date -Format 'yyyy-MM-dd-HH-mm-ss') + '.log')
 Start-Transcript -Path $logPath | Out-Null
+$originalVcpkgRoot = $env:VCPKG_ROOT
 
 try {
     Write-Host 'Motor Town EngineSim - native DLL development build' -ForegroundColor Yellow
@@ -167,22 +195,21 @@ try {
         throw 'Python 3 is required by the Engine Simulator build. Install Python 3 and retry.'
     }
 
-    # Use vcpkg locally, never a system-wide package-manager installation.
-    $vcpkgRoot = Join-Path $WorkDir 'dependencies\vcpkg'
-    if ($env:VCPKG_ROOT -and (Test-Path (Join-Path $env:VCPKG_ROOT 'vcpkg.exe'))) {
-        $vcpkgRoot = $env:VCPKG_ROOT
-    } elseif (Test-Path 'C:\vcpkg\vcpkg.exe') {
-        $vcpkgRoot = 'C:\vcpkg'
-    } else {
-        if (-not (Test-Path (Join-Path $vcpkgRoot '.git'))) {
-            if (Test-Path $vcpkgRoot) { throw "Refusing non-Git vcpkg directory: $vcpkgRoot" }
-            New-Item -ItemType Directory -Force -Path (Split-Path $vcpkgRoot -Parent) | Out-Null
-            Invoke-Checked 'Download Microsoft vcpkg' 'git' @(
-                'clone', 'https://github.com/microsoft/vcpkg.git', $vcpkgRoot)
-        }
-        if (-not (Test-Path (Join-Path $vcpkgRoot 'vcpkg.exe'))) {
-            Invoke-Checked 'Bootstrap local vcpkg' (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
-        }
+    # The machine's own VCPKG_ROOT (user/system setting) wins: on the user's PC its
+    # vcpkg.cmake was pulled into the configure even when another vcpkg was
+    # selected, so any second vcpkg produced a mixed, broken build.
+    $preferredVcpkg = Get-PreferredVcpkgRoot
+    $vcpkg = Select-VcpkgRoot $preferredVcpkg (Join-Path $WorkDir 'dependencies\vcpkg')
+    $vcpkgRoot = $vcpkg.Root
+    Write-Host "vcpkg: $vcpkgRoot ($($vcpkg.Reason))"
+    if ($vcpkg.Clone) {
+        if (Test-Path $vcpkgRoot) { throw "Refusing non-Git vcpkg directory: $vcpkgRoot" }
+        New-Item -ItemType Directory -Force -Path (Split-Path $vcpkgRoot -Parent) | Out-Null
+        Invoke-Checked 'Download Microsoft vcpkg' 'git' @(
+            'clone', 'https://github.com/microsoft/vcpkg.git', $vcpkgRoot)
+    }
+    if ($vcpkg.Bootstrap) {
+        Invoke-Checked "Bootstrap vcpkg.exe in $vcpkgRoot" (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
     }
     # Every vcpkg/CMake step below must see the vcpkg selected above, not an
     # inherited VCPKG_ROOT that may point at a removed installation.
@@ -250,6 +277,8 @@ try {
     Write-Host 'This DLL is NOT YET a working engine sound replacement. Do not install it as one.' -ForegroundColor Yellow
 }
 finally {
+    # Leave the caller's PowerShell session as it was.
+    $env:VCPKG_ROOT = $originalVcpkgRoot
     Stop-Transcript | Out-Null
     Write-Host "Build log: $logPath"
 }
