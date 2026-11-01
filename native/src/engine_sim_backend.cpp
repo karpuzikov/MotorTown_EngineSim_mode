@@ -60,8 +60,19 @@ public:
                 stop();
                 return false;
             }
-            m_simulator->setSimulationFrequency(
-                static_cast<int>(m_engine->getSimulationFrequency()));
+            const int authoredHz = static_cast<int>(m_engine->getSimulationFrequency());
+            // Development-only GM LS Dory proxy experiment: the 10-kHz V8
+            // can spend 144ms integrating a 150ms frame, leaving too little
+            // time for genuine PCM. Reduce physical integration to 8 kHz
+            // without replacing the combustion renderer or editing scripts.
+            // This changes exhaust delay/filter timing and must be assessed
+            // by ear before any user-facing quality/performance decision.
+            // All other engines retain the script author's exact frequency.
+            const bool experimentalGmLs = m_engine->getName() == "GM LS" &&
+                m_engine->getCylinderCount() == 8 && authoredHz == 10000;
+            const int runtimeHz = experimentalGmLs
+                ? std::min(authoredHz, 8000) : authoredHz;
+            m_simulator->setSimulationFrequency(runtimeHz);
 
             auto audio = m_simulator->synthesizer().getAudioParameters();
             audio.inputSampleNoise = static_cast<float>(m_engine->getInitialJitter());
