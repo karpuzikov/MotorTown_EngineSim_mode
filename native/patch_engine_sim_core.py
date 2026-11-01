@@ -24,7 +24,7 @@ PATCHED_HASHES = {
     "engine.cpp": "939ee10e9d80ea2c075a91ee49be110889d9be25d71513c5d7ab0f4c27567932",
     "jitter_filter.cpp": "fca57c9efa6745a007eaf8582cb6923aac49de0c589cfa77a30128c3175781a5",
     "simulator.cpp": "73c2d9b2e2f29ff00a83c43e19a0d81ccd2ca6cfc6cecf20eb3997318e611d24",
-    "synthesizer.cpp": "89a99c1c0cce2e038a2708da5831a2e4a629c28bd2efd473a6b8e0bda71b6768",
+    "synthesizer.cpp": "efcf9bb3f7a3d26c646e0238f3ead1b4ec20b4906fea2f8fd09f7a35d8ff081e",
     "piston_engine_simulator.cpp": "1ef3ae113cdf14ddbb33b21cd3948f3bafd6dce25e775812db74044550ba2a0b",
     "compiler.cpp": "d60cc3f5df0762cafec2f439149490d3235b1954ab31783e14ef2e1f4b0106d7",
     "piranha_path.cpp": "906ffcfc170abf8d4ff778dfdbf5185d388e4481243fcacb865b8d97cf7f1c53",
@@ -36,6 +36,38 @@ PATCHED_HASHES = {
 LEGACY_SYNTHESIZER_PATCHED_SHA = "d04cae09d0da700a77561426d53a843fb498d33e735b78f3681cf74ac70d2c45"
 PREVIOUS_SYNTHESIZER_PATCHED_SHA = "c7482d8cb0a8f40bff8db53ead2ed3cb0e991f1c16126229c55a90b7a129d41f"
 SINGLE_PACKET_SYNTHESIZER_PATCHED_SHA = "a0b6942cc93910e86b6f336fff73a82e546a36a1d8b37550ddf072a59abc1199"
+MONOLITHIC_TWO_PACKET_SYNTHESIZER_PATCHED_SHA = "89a99c1c0cce2e038a2708da5831a2e4a629c28bd2efd473a6b8e0bda71b6768"
+
+# Preserve exact known historical bytes for safe upgrades. Computing 16k PCM
+# samples before publishing ANY of them can exceed the 30-ms consumer deadline.
+# Stream 1024-sample chunks into the output FIFO under short locks instead.
+MONOLITHIC_BATCH = (
+    "    std::array<int16_t, 16384> rendered;\n"
+    "    for (int i = 0; i < n; ++i) {\n"
+    "        rendered[i] = renderAudio(i);\n"
+    "    }\n"
+    "    {\n"
+    "        std::lock_guard<std::mutex> lock(m_lock0);\n"
+    "        for (int i = 0; i < n; ++i) m_audioBuffer.write(rendered[i]);\n"
+    "    }")
+STREAMED_BATCH = (
+    "    std::array<int16_t, 1024> rendered;\n"
+    "    for (int offset = 0; offset < n; offset += 1024) {\n"
+    "        const int chunk = std::min(1024, n - offset);\n"
+    "        for (int i = 0; i < chunk; ++i) {\n"
+    "            rendered[i] = renderAudio(offset + i);\n"
+    "        }\n"
+    "        {\n"
+    "            std::lock_guard<std::mutex> lock(m_lock0);\n"
+    "            for (int i = 0; i < chunk; ++i) m_audioBuffer.write(rendered[i]);\n"
+    "        }\n"
+    "    }")
+
+
+def upgrade_monolithic_synthesizer(source: str) -> str:
+    if source.count(MONOLITHIC_BATCH) != 1:
+        raise ValueError("Unsupported Engine Simulator synth output batching")
+    return source.replace(MONOLITHIC_BATCH, STREAMED_BATCH, 1)
 
 
 def upgrade_legacy_synthesizer(source: str, old_capacity: int = 2000) -> str:
@@ -105,7 +137,7 @@ def transformed(name: str, source: str) -> str:
             # (m_processed waits for endInputBlock). A 150-ms game frame
             # needs 6615 samples; reserve two entire game-frame packets so
             # a late render batch need not immediately starve the consumer.
-            # Keep wake, render quota and stack in agreement.
+            # Keep wake and render quota in agreement; publish small chunks.
             ("m_audioBuffer.size() < 2000;",
              "m_audioBuffer.size() < 16384;"),
             ("std::max(0, 2000 - (int)m_audioBuffer.size()),",
@@ -113,21 +145,14 @@ def transformed(name: str, source: str) -> str:
             ("    for (int i = 0; i < n; ++i) {\n"
              "        m_audioBuffer.write(renderAudio(i));\n"
              "    }",
-             "    std::array<int16_t, 16384> rendered;\n"
-             "    for (int i = 0; i < n; ++i) {\n"
-             "        rendered[i] = renderAudio(i);\n"
-             "    }\n"
-             "    {\n"
-             "        std::lock_guard<std::mutex> lock(m_lock0);\n"
-             "        for (int i = 0; i < n; ++i) m_audioBuffer.write(rendered[i]);\n"
-             "    }\n"
+             MONOLITHIC_BATCH + "\n"
              "    " + MARK),
         )
         for before, after in replacements:
             if source.count(before) != 1:
                 raise ValueError("Unsupported synthesizer layout: " + before.strip())
             source = source.replace(before, after, 1)
-        return source
+        return upgrade_monolithic_synthesizer(source)
 
     if name == "piston_engine_simulator.cpp":
         replacements = (
@@ -210,13 +235,17 @@ def patch(root: Path) -> None:
                 LEGACY_SYNTHESIZER_PATCHED_SHA,
                 PREVIOUS_SYNTHESIZER_PATCHED_SHA,
                 SINGLE_PACKET_SYNTHESIZER_PATCHED_SHA,
+                MONOLITHIC_TWO_PACKET_SYNTHESIZER_PATCHED_SHA,
             ):
                 old_capacity = {
                     LEGACY_SYNTHESIZER_PATCHED_SHA: 2000,
                     PREVIOUS_SYNTHESIZER_PATCHED_SHA: 4096,
                     SINGLE_PACKET_SYNTHESIZER_PATCHED_SHA: 8192,
+                    MONOLITHIC_TWO_PACKET_SYNTHESIZER_PATCHED_SHA: 16384,
                 }[digest]
-                upgraded = upgrade_legacy_synthesizer(source, old_capacity)
+                upgraded = upgrade_legacy_synthesizer(source, old_capacity) \
+                    if old_capacity != 16384 else source
+                upgraded = upgrade_monolithic_synthesizer(upgraded)
                 if hashlib.sha256(upgraded.encode("utf-8")).hexdigest() != PATCHED_HASHES[name]:
                     raise ValueError("Legacy Engine Simulator upgrade produced unexpected bytes")
                 newline = "\r\n" if b"\r\n" in raw else "\n"

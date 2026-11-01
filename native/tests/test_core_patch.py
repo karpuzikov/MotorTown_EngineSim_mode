@@ -17,6 +17,14 @@ except ModuleNotFoundError:
     patcher = None
 
 
+def previous_synthesizer_bytes(modern: str, capacity: int) -> str:
+    # Reconstruct an exact audited historical output batch to test upgrades
+    # without depending on any player's configured Windows checkout.
+    assert modern.count(patcher.STREAMED_BATCH) == 1
+    monolithic = modern.replace(patcher.STREAMED_BATCH, patcher.MONOLITHIC_BATCH, 1)
+    return monolithic.replace('16384', str(capacity))
+
+
 @unittest.skipUnless(os.environ.get("MTES_ENGINE_SIM_SOURCE"),
                      "Set MTES_ENGINE_SIM_SOURCE to the pinned Engine Simulator checkout")
 class CorePatchTests(unittest.TestCase):
@@ -61,7 +69,7 @@ class CorePatchTests(unittest.TestCase):
         self.assertIn("delete[] m_inputChannels[i].transferBuffer;", synth)
         self.assertIn("std::lock_guard<std::mutex> lock(m_lock0);", synth)
         self.assertNotIn("std::unique_lock<std::mutex> lk(m_inputLock);", synth)
-        self.assertIn("std::array<int16_t, 16384> rendered", synth)
+        self.assertIn("std::array<int16_t, 1024> rendered", synth)
         self.assertIn("delete[] m_history;", jitter)
         self.assertNotIn("assert(m_antialiasingFilters == nullptr);", piston)
         self.assertIn("m_compiler->addSearchPath(scriptLibrary.toString());", compiler)
@@ -100,7 +108,7 @@ class CorePatchTests(unittest.TestCase):
         patcher.patch(self.root)
         sound = self.root / 'src/synthesizer.cpp'
         modern = sound.read_text()
-        old = modern.replace('16384', '2000')
+        old = previous_synthesizer_bytes(modern, 2000)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
                          patcher.LEGACY_SYNTHESIZER_PATCHED_SHA)
         sound.write_text(old)
@@ -112,7 +120,7 @@ class CorePatchTests(unittest.TestCase):
         patcher.patch(self.root)
         sound = self.root / 'src/synthesizer.cpp'
         modern = sound.read_text()
-        old = modern.replace('16384', '4096')
+        old = previous_synthesizer_bytes(modern, 4096)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
                          patcher.PREVIOUS_SYNTHESIZER_PATCHED_SHA)
         sound.write_text(old)
@@ -123,9 +131,20 @@ class CorePatchTests(unittest.TestCase):
         patcher.patch(self.root)
         sound = self.root / 'src/synthesizer.cpp'
         modern = sound.read_text()
-        old = modern.replace('16384', '8192')
+        old = previous_synthesizer_bytes(modern, 8192)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
                          patcher.SINGLE_PACKET_SYNTHESIZER_PATCHED_SHA)
+        sound.write_text(old)
+        patcher.patch(self.root)
+        self.assertEqual(sound.read_text(), modern)
+
+    def test_monolithic_16384_audio_patch_upgrades_existing_build(self):
+        patcher.patch(self.root)
+        sound = self.root / 'src/synthesizer.cpp'
+        modern = sound.read_text()
+        old = previous_synthesizer_bytes(modern, 16384)
+        self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
+                         patcher.MONOLITHIC_TWO_PACKET_SYNTHESIZER_PATCHED_SHA)
         sound.write_text(old)
         patcher.patch(self.root)
         self.assertEqual(sound.read_text(), modern)
@@ -161,6 +180,28 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         modern = patcher.upgrade_legacy_synthesizer(legacy, 8192)
         self.assertEqual(modern.count('16384'), 3)
         self.assertNotIn('8192', modern)
+
+    def test_renderer_publishes_short_chunks_before_entire_batch_is_done(self):
+        # A 16,384-frame DSP batch can take longer than the native 30-ms
+        # read deadline. Readers must be able to consume each finished chunk
+        # without waiting for the rest of that batch to finish rendering.
+        vendor = (
+            '#include <cassert>\n'
+            '    m_inputSamplesRead = 0;\n\n    m_audioBufferSize = 0;\n'
+            '        m_inputChannels[i].data.destroy();\n'
+            'void Synthesizer::writeInput(const double *data) {\n'
+            '    std::unique_lock<std::mutex> lk(m_inputLock);\n'
+            '            && m_audioBuffer.size() < 2000;\n'
+            '        std::max(0, 2000 - (int)m_audioBuffer.size()),\n'
+            '    for (int i = 0; i < n; ++i) {\n'
+            '        m_audioBuffer.write(renderAudio(i));\n'
+            '    }\n'
+        )
+        modified = patcher.transformed('synthesizer.cpp', vendor)
+        self.assertIn('std::array<int16_t, 1024> rendered;', modified)
+        self.assertIn('for (int offset = 0; offset < n; offset += 1024)', modified)
+        self.assertIn('renderAudio(offset + i)', modified)
+        self.assertNotIn('std::array<int16_t, 16384> rendered;', modified)
 
     def test_cmake_reconfigures_when_core_patch_changes(self):
         cmake = (ROOT / 'CMakeLists.txt').read_text()
@@ -203,12 +244,13 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         for pattern in (
             r'm_audioBuffer\.size\(\) < (\d+)',
             r'std::max\(0, (\d+) - \(int\)m_audioBuffer\.size\(\)\)',
-            r'std::array<int16_t, (\d+)> rendered',
         ):
             match = re.search(pattern, modified)
             self.assertIsNotNone(match, f'Synthesizer limit absent: {pattern}')
             self.assertGreaterEqual(int(match.group(1)), 2 * 6615,
                 'The renderer cannot buffer two 150-ms Motor Town PCM packets')
+        self.assertIn('std::array<int16_t, 1024> rendered;', modified)
+        self.assertIn('for (int offset = 0; offset < n; offset += 1024)', modified)
 
 
 if __name__ == "__main__":
