@@ -103,6 +103,7 @@ int main() {
     // Rendering a previous vehicle's synthesized engine over a different
     // stock vehicle is unsafe even if its PCM is otherwise healthy.
     assert(!game.submit("Atlas", second, scratch.data(), scratch.size(), t, 1.0));
+    assert(game.status() == GameAudioOutput::Status::PcmUnavailable);
     assert(!second->muted && !sink.started);
     events.clear();
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
@@ -170,6 +171,7 @@ int main() {
     assert(!game.submit("Tuscan", first, scratch.data(), scratch.size(),
         t + std::chrono::seconds(2), 1.0));
     assert(events.back() == "prepare");
+    assert(game.status() == GameAudioOutput::Status::MutePending);
     assert(!sink.started && !first->muted);
     first->ready = true;
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(),
@@ -181,6 +183,7 @@ int main() {
     sink.allow_queue = false;
     assert(!game.submit("Atlas", second, scratch.data(), scratch.size(),
         t + std::chrono::seconds(2), 1.0));
+    assert(game.status() == GameAudioOutput::Status::QueueFailed);
     assert(!second->muted && !sink.started);
     sink.allow_queue = true;
 
@@ -188,6 +191,7 @@ int main() {
     sink.allow_start = false;
     assert(!game.submit("Atlas", second, scratch.data(), scratch.size(),
         t + std::chrono::seconds(2), 1.0));
+    assert(game.status() == GameAudioOutput::Status::StartFailed);
     assert(!second->muted && !sink.started);
     sink.allow_start = true;
 

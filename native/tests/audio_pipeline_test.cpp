@@ -131,6 +131,7 @@ int main() {
     // At startup, EngineAudio advances only 5ms. A 50ms read would underflow
     // and restarting that engine each packet would prevent it from warming up.
     assert(!pipeline.process(a1, t, 1.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::Priming);
     assert(!first->muted && !sink.started && !second->muted);
     assert(source->scripts.size() == 1 && source->scripts[0] == "boxer.mr");
     assert(source->advances == 1 && source->reads == 0);
@@ -147,6 +148,7 @@ int main() {
         "MTES2 A1B2C3D4E5F60708 2 3200 0.900 1 4 43617241 2 6500");
     assert(a2);
     assert(pipeline.process(a2, t + std::chrono::milliseconds(50), 0.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::Playing);
     assert(source->scripts.size() == 1 && source->advances == 2);
     assert(source->last_rpm == 3200 && source->last_gear == 3);
     assert(sink.queues == 1 && sink.last.size() == 2205 && first->muted);
@@ -180,6 +182,7 @@ int main() {
         "MTES2 A1B2C3D4E5F60708 5 2000 0.500 1 2 43617258 -1 0");
     assert(unknown);
     assert(!pipeline.process(unknown, t + std::chrono::milliseconds(200), 1.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::NoProfile);
     assert(!second->muted && !sink.started);
     assert(source->scripts.size() == 2);
 
@@ -189,6 +192,7 @@ int main() {
         "MTES2 A1B2C3D4E5F60708 6 2100 0.500 1 3 43617241 2 6500");
     assert(a6);
     assert(!pipeline.process(a6, t + std::chrono::milliseconds(250), 1.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::NoEmitter);
     assert(!first->muted && !sink.started && source->scripts.size() == 2);
     emitters.unavailable = false;
 
@@ -214,6 +218,7 @@ int main() {
     const auto a11 = parse_game_telemetry(
         "MTES2 A1B2C3D4E5F60708 11 2350 0.500 1 3 43617241 2 6500");
     assert(a11 && !pipeline.process(a11, t + std::chrono::milliseconds(500), 0.8));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::OutputQueueFailed);
     assert(!first->muted && !sink.started);
     sink.fail_queue = false;
 
@@ -229,6 +234,7 @@ int main() {
         "MTES2 A1B2C3D4E5F60708 13 2500 0.500 1 3 43617241 2 6500");
     const auto loads_before_underflow = source->scripts.size();
     assert(a13 && !pipeline.process(a13, t + std::chrono::milliseconds(600), 1.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::PcmUnderrun);
     assert(!first->muted && !sink.started);
     const auto a14 = parse_game_telemetry(
         "MTES2 A1B2C3D4E5F60708 14 2600 0.500 1 3 43617241 2 6500");
@@ -244,6 +250,7 @@ int main() {
 
     // Stale/missing telemetry and stopped ignition cannot hold the stock mute.
     assert(!pipeline.process(std::nullopt, t + std::chrono::seconds(1), 1.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::NoTelemetry);
     assert(!first->muted && !sink.started);
     const auto loads_before_replay = source->scripts.size();
     assert(!pipeline.process(a14, t + std::chrono::seconds(1), 1.0));
@@ -278,5 +285,21 @@ int main() {
     assert(volumeEmitter->muted && volumeSink.started && volumeSink.last.size() == 2205);
     for (auto pcm : volumeSink.last) assert(pcm == 0);
     assert(!volumePipeline.process(v3, t + std::chrono::milliseconds(100)));
+    assert(volumePipeline.stage() == NativeAudioPipeline::Stage::InvalidVolume);
     assert(!volumeEmitter->muted && !volumeSink.started);
+
+    // Stage diagnostics distinguish a failed script load from PCM starvation.
+    std::vector<std::string> brokenEvents;
+    auto brokenBackend = std::make_unique<TraceBackend>(brokenEvents);
+    brokenBackend->fail_load = true;
+    EngineAudio brokenEngine(std::move(brokenBackend));
+    TraceSink brokenSink(brokenEvents);
+    GameAudioOutput brokenOutput(brokenEngine, brokenSink);
+    Profiles brokenProfiles;
+    Emitters brokenEmitters;
+    brokenEmitters.car_a = std::make_shared<TraceEmitter>(brokenEvents, "broken");
+    NativeAudioPipeline brokenPipeline(brokenEngine, brokenOutput,
+        brokenProfiles, brokenEmitters);
+    assert(!brokenPipeline.process(v1, t));
+    assert(brokenPipeline.stage() == NativeAudioPipeline::Stage::EngineLoadFailed);
 }

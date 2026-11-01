@@ -39,6 +39,7 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
     EngineState state, std::chrono::steady_clock::time_point when) {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (vehicle.empty() || script.empty() || !valid(state)) {
+        m_updateStatus.store(UpdateStatus::InvalidState);
         stop_locked();
         return false;
     }
@@ -46,11 +47,13 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
         stop_locked();
         try {
             if (!m_backend->load(script)) {
+                m_updateStatus.store(UpdateStatus::LoadFailed);
                 m_backend->stop();
                 return false;
             }
         }
         catch (...) {
+            m_updateStatus.store(UpdateStatus::LoadFailed);
             m_backend->stop();
             return false;
         }
@@ -67,14 +70,17 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
         // Reverse gears have no direct equivalent in the source simulator.
         if (!m_backend->advance(delta, state.rpm, state.throttle,
                 state.gear > 0 ? state.gear - 1 : -1)) {
+            m_updateStatus.store(UpdateStatus::AdvanceFailed);
             stop_locked();
             return false;
         }
     }
     catch (...) {
+        m_updateStatus.store(UpdateStatus::AdvanceFailed);
         stop_locked();
         return false;
     }
+    m_updateStatus.store(UpdateStatus::Ready);
     return true;
 }
 
@@ -88,6 +94,7 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
         when < m_lastUpdate || when - m_lastUpdate > MaxTelemetryAge ||
         !std::isfinite(engineVolume) || engineVolume < 0 || engineVolume > 1) {
         m_replacing.store(false);
+        m_renderStatus.store(RenderStatus::InvalidState);
         return 0;
     }
     try {
@@ -96,6 +103,8 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
         // replacement sound on top of Motor Town's stock engine emitter.
         if (count != frames ||
             !std::any_of(dst, dst + count, [](std::int16_t sample) { return sample != 0; })) {
+            m_renderStatus.store(count != frames ? RenderStatus::PcmUnderrun :
+                RenderStatus::PcmSilent);
             std::fill_n(dst, frames, 0);
             m_replacing.store(false);
             return 0;
@@ -106,9 +115,11 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
             dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * engineVolume));
         }
         m_replacing.store(true);
+        m_renderStatus.store(RenderStatus::Ready);
         return count;
     }
     catch (...) {
+        m_renderStatus.store(RenderStatus::InvalidState);
         stop_locked();
         std::fill_n(dst, frames, 0);
         return 0;

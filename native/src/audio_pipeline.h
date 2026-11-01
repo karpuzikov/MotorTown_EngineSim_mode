@@ -37,6 +37,13 @@ public:
 // producer cadence; the Unreal sink must be configured to that format.
 class NativeAudioPipeline final {
 public:
+    enum class Stage {
+        NoTelemetry, StalePacket, IgnitionOff, InvalidVolume, NoProfile,
+        NoEmitter, EngineLoadFailed, EngineAdvanceFailed, Priming,
+        PcmUnderrun, PcmSilent, PcmUnavailable, MutePending,
+        StockMuteFailed, OutputQueueFailed, OutputStartFailed,
+        UnexpectedFailure, Playing
+    };
     using Clock = std::chrono::steady_clock;
     static constexpr std::size_t NominalPacketFrames = 2205;
 
@@ -55,6 +62,7 @@ public:
     bool process(const std::optional<GameTelemetrySample>& sample,
         Clock::time_point now);
     void stop() noexcept;
+    Stage stage() const noexcept { return m_stage; }
 
 private:
     void silence() noexcept;
@@ -73,6 +81,7 @@ private:
     bool m_seen = false;
     bool m_loaded = false;
     bool m_running = false;
+    Stage m_stage = Stage::NoTelemetry;
 };
 
 } // namespace mtes

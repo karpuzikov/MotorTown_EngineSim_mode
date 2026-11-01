@@ -24,15 +24,22 @@ bool GameAudioOutput::submit(const std::string& vehicle,
     double engineVolume) {
     if (m_stock && !m_playing) {
         stop();
-        if (m_stock) return false; // previous vehicle's restoration is pending
+        if (m_stock) {
+            m_status = Status::StockMuteFailed;
+            return false; // previous vehicle's restoration is pending
+        }
     }
     if (vehicle.empty() || !stock || !scratch || frames == 0) {
         stop();
+        m_status = Status::InvalidInput;
         return false;
     }
     if (m_vehicle != vehicle || m_stock != stock) {
         stop();
-        if (m_stock) return false;
+        if (m_stock) {
+            m_status = Status::StockMuteFailed;
+            return false;
+        }
     }
 
     // Validate the PCM's vehicle identity under EngineAudio's render lock.
@@ -40,6 +47,7 @@ bool GameAudioOutput::submit(const std::string& vehicle,
     if (m_source.render(scratch, frames, when, engineVolume, vehicle) != frames ||
         !m_source.is_replacing_stock()) {
         stop();
+        m_status = Status::PcmUnavailable;
         return false;
     }
     try {
@@ -47,6 +55,7 @@ bool GameAudioOutput::submit(const std::string& vehicle,
         // stock-emitter mute request is still pending acknowledgment.
         if (!stock->prepare()) {
             if (m_playing) stop();
+            m_status = Status::MutePending;
             return false;
         }
         // Motor Town can update active audio component volumes on its own
@@ -54,24 +63,37 @@ bool GameAudioOutput::submit(const std::string& vehicle,
         // original gain; if the target is gone, immediately fail open.
         if (m_playing && (!m_stock || !m_stock->mute())) {
             stop();
+            m_status = Status::StockMuteFailed;
             return false;
         }
         if (!m_sink.queue(scratch, frames)) {
             stop();
+            m_status = Status::QueueFailed;
             return false;
         }
-        if (m_playing) return true;
+        if (m_playing) {
+            m_status = Status::Playing;
+            return true;
+        }
         m_stock = std::move(stock);
         m_vehicle = vehicle;
-        if (!m_stock->mute() || !m_sink.start()) {
+        if (!m_stock->mute()) {
             stop();
+            m_status = Status::StockMuteFailed;
+            return false;
+        }
+        if (!m_sink.start()) {
+            stop();
+            m_status = Status::StartFailed;
             return false;
         }
         m_playing = true;
+        m_status = Status::Playing;
         return true;
     }
     catch (...) {
         stop();
+        m_status = Status::InvalidInput;
         return false;
     }
 }

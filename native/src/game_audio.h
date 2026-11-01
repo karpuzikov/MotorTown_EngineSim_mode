@@ -41,6 +41,10 @@ public:
 // Unreal components; that remains an in-game SDK adapter task.
 class GameAudioOutput final {
 public:
+    enum class Status {
+        Idle, InvalidInput, PcmUnavailable, MutePending, StockMuteFailed,
+        QueueFailed, StartFailed, Playing
+    };
     GameAudioOutput(EngineAudio& source, ProceduralAudioSink& sink);
     ~GameAudioOutput();
 
@@ -51,6 +55,7 @@ public:
         std::int16_t* scratch, std::size_t frames,
         std::chrono::steady_clock::time_point when, double engineVolume);
     void stop() noexcept;
+    Status status() const noexcept { return m_status; }
 
 private:
     EngineAudio& m_source;
@@ -58,6 +63,7 @@ private:
     std::shared_ptr<StockEngineEmitter> m_stock;
     std::string m_vehicle;
     bool m_playing = false;
+    Status m_status = Status::Idle;
 };
 
 } // namespace mtes

@@ -30,6 +30,8 @@ public:
 
 class EngineAudio final {
 public:
+    enum class UpdateStatus { Idle, InvalidState, LoadFailed, AdvanceFailed, Ready };
+    enum class RenderStatus { Idle, InvalidState, PcmUnderrun, PcmSilent, Ready };
     explicit EngineAudio(std::unique_ptr<EngineBackend> backend);
     ~EngineAudio();
 
@@ -42,6 +44,8 @@ public:
         std::chrono::steady_clock::time_point when, double engineVolume = 1.0,
         const std::string &expectedVehicle = {});
     bool is_replacing_stock() const noexcept { return m_replacing.load(); }
+    UpdateStatus update_status() const noexcept { return m_updateStatus.load(); }
+    RenderStatus render_status() const noexcept { return m_renderStatus.load(); }
     void stop() noexcept;
 
 private:
@@ -50,6 +54,8 @@ private:
     std::unique_ptr<EngineBackend> m_backend;
     mutable std::mutex m_mutex;
     std::atomic<bool> m_replacing{false};
+    std::atomic<UpdateStatus> m_updateStatus{UpdateStatus::Idle};
+    std::atomic<RenderStatus> m_renderStatus{RenderStatus::Idle};
     bool m_active = false;
     std::string m_vehicle;
     std::string m_script;

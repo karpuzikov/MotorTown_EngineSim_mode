@@ -108,6 +108,7 @@ public:
 #pragma once
 #include <vector>
 #include <string>
+#include <type_traits>
 namespace RC {
 enum class LogLevel { Verbose, Normal };
 struct LogRecord {
@@ -117,9 +118,14 @@ struct LogRecord {
 };
 extern std::vector<LogRecord> observed_logs;
 struct Output {
+    template<typename T>
+    static double numeric_value(T value) {
+        if constexpr (std::is_arithmetic_v<T>) return static_cast<double>(value);
+        else return 0.0;
+    }
     template<LogLevel L, typename... Args>
     static void send(const wchar_t* format, Args... args) {
-        observed_logs.push_back({L, format, {static_cast<double>(args)...}});
+        observed_logs.push_back({L, format, {numeric_value(args)...}});
     }
 };
 }

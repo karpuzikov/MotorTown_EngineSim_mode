@@ -27,6 +27,8 @@ int main() {
             });
     };
     assert(count_message(L"Native initialized") == 1);
+    // The game log must reveal which diagnostic build is installed.
+    assert(count_message(L"Audio diagnostics v0.3.1") == 1);
     const auto dir = std::filesystem::path(std::getenv("TMP"));
     const auto file = dir / "MotorTownEngineSim_native_telemetry.txt";
     auto write = [&](const char* packet) {

@@ -41,6 +41,7 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
     Clock::time_point now, double gameEngineVolume) {
     if (!sample) {
         stop();
+        m_stage = Stage::NoTelemetry;
         return false;
     }
 
@@ -49,6 +50,7 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
     if (m_seen && sample->session == m_seenSession) {
         if (sample->sequence < m_seenSequence) {
             silence(); // A replay must not keep engine audio ownership.
+            m_stage = Stage::StalePacket;
             return false;
         }
     }
@@ -59,6 +61,7 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
     if (m_seen && (now < m_seenAt ||
         (duplicate && now - m_seenAt > std::chrono::milliseconds(250)))) {
         silence();
+        m_stage = Stage::StalePacket;
         return false;
     }
 
@@ -76,13 +79,20 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         if (m_pcm.empty() || !sample->state.ignition ||
             !std::isfinite(gameEngineVolume) ||
             gameEngineVolume < 0 || gameEngineVolume > 1) {
+            m_stage = !sample->state.ignition ? Stage::IgnitionOff : Stage::InvalidVolume;
             silence();
             return false;
         }
 
         const auto script = m_profiles.script_for(*sample);
+        if (!script || script->empty()) {
+            m_stage = Stage::NoProfile;
+            silence();
+            return false;
+        }
         const auto stock = m_emitters.stock_for(*sample);
-        if (!script || script->empty() || !stock) {
+        if (!stock) {
+            m_stage = Stage::NoEmitter;
             silence();
             return false;
         }
@@ -94,6 +104,8 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
 
         const bool newlyLoaded = !m_loaded;
         if (!m_engine.update(sample->vehicle, *script, sample->state, now)) {
+            m_stage = m_engine.update_status() == EngineAudio::UpdateStatus::LoadFailed
+                ? Stage::EngineLoadFailed : Stage::EngineAdvanceFailed;
             silence();
             return false;
         }
@@ -106,7 +118,10 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         // A new Engine Simulator model has advanced only 5 ms. Give its
         // asynchronous synth thread another packet to fill a 50-ms buffer;
         // leave stock audio untouched during this priming period.
-        if (newlyLoaded) return false;
+        if (newlyLoaded) {
+            m_stage = Stage::Priming;
+            return false;
+        }
 
         if (!m_output.submit(sample->vehicle, stock, m_pcm.data(), m_pcm.size(),
                 now, gameEngineVolume)) {
@@ -114,12 +129,42 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
             // GameAudioOutput already restored stock sound; retain the loaded
             // backend so the next sequence can retry without recompilation.
             m_running = false;
+            switch (m_output.status()) {
+            case GameAudioOutput::Status::PcmUnavailable:
+                switch (m_engine.render_status()) {
+                case EngineAudio::RenderStatus::PcmUnderrun:
+                    m_stage = Stage::PcmUnderrun;
+                    break;
+                case EngineAudio::RenderStatus::PcmSilent:
+                    m_stage = Stage::PcmSilent;
+                    break;
+                default:
+                    m_stage = Stage::PcmUnavailable;
+                }
+                break;
+            case GameAudioOutput::Status::MutePending:
+                m_stage = Stage::MutePending;
+                break;
+            case GameAudioOutput::Status::StockMuteFailed:
+                m_stage = Stage::StockMuteFailed;
+                break;
+            case GameAudioOutput::Status::QueueFailed:
+                m_stage = Stage::OutputQueueFailed;
+                break;
+            case GameAudioOutput::Status::StartFailed:
+                m_stage = Stage::OutputStartFailed;
+                break;
+            default:
+                m_stage = Stage::UnexpectedFailure;
+            }
             return false;
         }
         m_running = true;
+        m_stage = Stage::Playing;
         return true;
     }
     catch (...) {
+        m_stage = Stage::UnexpectedFailure;
         silence();
         return false;
     }

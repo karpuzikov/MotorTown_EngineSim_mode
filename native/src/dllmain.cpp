@@ -11,6 +11,7 @@
 #include <Mod/CppUserModBase.hpp>
 
 #include <cstdlib>
+#include <chrono>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -46,13 +47,40 @@ std::filesystem::path module_root() {
     return {};
 #endif
 }
+
+// Fixed log strings keep the in-game failure report readable even when the
+// compiler/backend or a platform audio device rejects the replacement.
+const wchar_t* audio_stage_name(mtes::NativeAudioPipeline::Stage stage) noexcept {
+    using Stage = mtes::NativeAudioPipeline::Stage;
+    switch (stage) {
+    case Stage::NoTelemetry: return STR("no live telemetry");
+    case Stage::StalePacket: return STR("telemetry replay or stale packet");
+    case Stage::IgnitionOff: return STR("engine ignition off");
+    case Stage::InvalidVolume: return STR("invalid game engine volume");
+    case Stage::NoProfile: return STR("no exact engine-asset profile match");
+    case Stage::NoEmitter: return STR("no eligible stock engine emitter");
+    case Stage::EngineLoadFailed: return STR("Engine Simulator script or assets failed to load");
+    case Stage::EngineAdvanceFailed: return STR("Engine Simulator advance failed");
+    case Stage::Priming: return STR("Engine Simulator priming PCM");
+    case Stage::PcmUnderrun: return STR("Engine Simulator PCM buffer underrun");
+    case Stage::PcmSilent: return STR("Engine Simulator PCM buffer silent");
+    case Stage::PcmUnavailable: return STR("PCM unavailable or stale");
+    case Stage::MutePending: return STR("waiting for Lua stock-mute ACK");
+    case Stage::StockMuteFailed: return STR("stock engine mute or restoration failed");
+    case Stage::OutputQueueFailed: return STR("XAudio2 PCM queue failed");
+    case Stage::OutputStartFailed: return STR("XAudio2 PCM start failed");
+    case Stage::UnexpectedFailure: return STR("unexpected audio handoff failure");
+    case Stage::Playing: return STR("replacement PCM playing");
+    }
+    return STR("unknown");
+}
 }
 
 class MotorTownEngineSimMod final : public RC::CppUserModBase {
 public:
     MotorTownEngineSimMod() {
         ModName = STR("MotorTownEngineSim");
-        ModVersion = STR("0.3.0-dev");
+        ModVersion = STR("0.3.1-dev");
         ModDescription = STR("Native Motor Town engine audio (development only)");
         ModAuthors = STR("karpuzikov and contributors");
     }
@@ -68,6 +96,8 @@ public:
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native initialized; engine profiles ready: {}\n"),
             m_profilesReady);
+        RC::Output::send<RC::LogLevel::Normal>(
+            STR("[MTES] Audio diagnostics v0.3.1 active (stage updates every 5 seconds while driving)\n"));
     }
 
     auto on_update() -> void override {
@@ -94,6 +124,22 @@ public:
             }
             if (!sample || !sample->state.ignition ||
                 !m_profiles.script_for(*sample)) m_emitters.cancel();
+            // Only active driving requires diagnosis. Log changes promptly,
+            // with a 2-second floor, and repeat persistent faults at 5 s.
+            // Game audio remains untouched on every reported failure stage.
+            if (sample && sample->state.rpm >= 50) {
+                const auto stage = m_pipeline.stage();
+                const auto since = now - m_lastStageReport;
+                if (!m_stageReported ||
+                    (since >= std::chrono::seconds(2) && stage != m_lastStage) ||
+                    since >= std::chrono::seconds(5)) {
+                    RC::Output::send<RC::LogLevel::Normal>(
+                        STR("[MTES] Audio stage: {}\n"), audio_stage_name(stage));
+                    m_lastStage = stage;
+                    m_lastStageReport = now;
+                    m_stageReported = true;
+                }
+            }
         }
         if (!sample) {
             if (m_hadTelemetry) {
@@ -138,6 +184,9 @@ private:
     bool m_hadTelemetry = false;
     bool m_profilesReady = false;
     bool m_wasPlaying = false;
+    mtes::NativeAudioPipeline::Stage m_lastStage = mtes::NativeAudioPipeline::Stage::NoTelemetry;
+    mtes::NativeAudioPipeline::Clock::time_point m_lastStageReport{};
+    bool m_stageReported = false;
 };
 
 #if defined(_WIN32)
