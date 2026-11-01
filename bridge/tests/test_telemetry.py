@@ -148,7 +148,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.14', snapshot)
+        self.assertIn('v0.2.15', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
 
@@ -202,6 +202,51 @@ class TelemetryTests(unittest.TestCase):
         self.assertIn('SDK engine audio targets:', latest)
         self.assertIn('EngineAudioComponents[0]: AudioComponent /Game/Vehicle.EngineA', latest)
         self.assertIn('ExhaustAudioComponents[0]: AudioComponent /Game/Vehicle.ExhaustA', latest)
+
+    def test_direct_engine_audio_is_visible_without_nested_sound_owner(self):
+        _, report = self.sample('sdk_audio_direct', report='audio_targets')
+        self.assertIn('EngineSoundComponent: unavailable', report)
+        self.assertIn('EngineComponent.AudioComponent: AudioComponent /Game/Vehicle.MainEngine', report)
+        self.assertIn('Sound=SoundCue /Game/Audio.MainEngine VolumeMultiplier=0.65', report)
+        self.assertIn('EngineComponent.IntakeAudioComponent: AudioComponent /Game/Vehicle.IntakeA', report)
+        self.assertIn('EngineComponent.AfterfireAudioComponents[0]: AudioComponent /Game/Vehicle.AfterfireA', report)
+        self.assertNotIn('HornAudioComponent', report)
+
+    def test_invalid_direct_engine_audio_does_not_hide_valid_channels(self):
+        _, report = self.sample('sdk_audio_direct_invalid', report='audio_targets')
+        self.assertIn('EngineComponent.AudioComponent: unavailable', report)
+        self.assertIn('EngineComponent.AfterfireAudioComponents[0]: unavailable', report)
+        self.assertIn('EngineComponent.IntakeAudioComponent: AudioComponent /Game/Vehicle.IntakeA', report)
+
+    def test_late_direct_engine_channel_is_reported(self):
+        _, report = self.sample('sdk_audio_direct_late', report='audio_targets')
+        self.assertIn('EngineComponent.AudioComponent: AudioComponent /Game/Vehicle.MainEngine', report)
+
+    def test_last_running_audio_snapshot_survives_engine_shutdown(self):
+        _, report = self.sample('sdk_audio_direct_off', report='audio_targets')
+        self.assertIn('Engine state: ignition=true RPM=2400', report)
+        self.assertIn('EngineComponent.AudioComponent: AudioComponent /Game/Vehicle.MainEngine', report)
+        self.assertNotIn('Engine state: ignition=false', report)
+
+    def test_running_snapshot_survives_exiting_and_reentering_same_vehicle(self):
+        _, report = self.sample('sdk_audio_direct_reenter', report='audio_targets')
+        self.assertIn('Engine state: ignition=true RPM=2400', report)
+        self.assertIn('EngineComponent.AudioComponent: AudioComponent /Game/Vehicle.MainEngine', report)
+        self.assertNotIn('Engine state: ignition=false', report)
+
+    def test_new_vehicle_replaces_previous_running_snapshot(self):
+        _, report = self.sample('sdk_audio_direct_switch', report='audio_targets')
+        self.assertIn('Engine state: ignition=false RPM=2400', report)
+        self.assertNotIn('Engine state: ignition=true', report)
+
+    def test_initially_off_engine_report_is_not_mislabeled_as_running(self):
+        _, report = self.sample('sdk_audio_direct_initial_off', report='audio_targets')
+        self.assertIn('Engine state: ignition=false RPM=2400', report)
+
+    def test_direct_array_failure_is_reported_without_losing_main_engine(self):
+        _, report = self.sample('sdk_audio_direct_array_error', report='audio_targets')
+        self.assertIn('EngineComponent.AfterfireAudioComponents: unavailable', report)
+        self.assertIn('EngineComponent.AudioComponent: AudioComponent /Game/Vehicle.MainEngine', report)
 
     def test_gear_survives_a_deep_engine_sound_asset_and_autopilot_throttle(self):
         packet, snapshot = self.sample('deep_sound_and_gear', report='discovery')

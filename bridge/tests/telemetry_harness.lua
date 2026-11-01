@@ -254,16 +254,24 @@ if scenario == 'reflection_error' then
     vehicle_fields.GetClass = function() error('Synthetic reflection failure') end
 end
 if scenario == 'sdk_audio_targets' or scenario == 'sdk_audio_missing' or
-   scenario == 'sdk_audio_crowded' or scenario == 'sdk_audio_late' then
+   scenario == 'sdk_audio_crowded' or scenario == 'sdk_audio_late' or
+   scenario:match('^sdk_audio_direct') then
     -- These mock the exact UE4SS SDK property ownership, not its file layout:
     -- MTVehicle -> MTEngineComponent -> MTEngineSoundComponent -> TArray.
     vehicle_fields.VehicleSimulation = nil
     vehicle_fields.EngineComponent = engine
     vehicle_fields.HornAudioComponent = object({ VolumeMultiplier = 0.8 })
+    local liveRpm = getter('GetRPM', function() return state.rpm end)
+    local liveIgnition = getter('IsIgnitionOn', function() return state.running end)
+    engine_fields.GetRPM = liveRpm
+    engine_fields.IsIgnitionOn = liveIgnition
     engine_fields.GetClass = function()
-        return schema({'EngineSoundComponent'}, {rpm, throttle, ignition})
+        return schema({'EngineSoundComponent', 'AudioComponent',
+            'IntakeAudioComponent', 'JakeBrakeAudioComponent',
+            'AfterfireAudioComponents'},
+            {rpm, throttle, ignition, liveRpm, liveIgnition})
     end
-    if scenario ~= 'sdk_audio_missing' then
+    do
         local function sound(name)
             return object({ GetFullName = function() return 'SoundCue /Game/Audio.' .. name end })
         end
@@ -284,17 +292,36 @@ if scenario == 'sdk_audio_targets' or scenario == 'sdk_audio_missing' or
                 end,
             }, 'TArray')
         end
-        local engineAudio = {channel('EngineA', 0.75)}
-        if scenario == 'sdk_audio_crowded' then
-            engineAudio[2] = false -- invalid null element
+        if scenario ~= 'sdk_audio_missing' and
+            not scenario:match('^sdk_audio_direct') then
+            local engineAudio = {channel('EngineA', 0.75)}
+            if scenario == 'sdk_audio_crowded' then
+                engineAudio[2] = false -- invalid null element
+            end
+            local owner = object({
+                EngineAudioComponents = audio_array(engineAudio),
+                ExhaustAudioComponents = audio_array({channel('ExhaustA', 0.4)}),
+                GetClass = function() return schema({'EngineAudioComponents', 'ExhaustAudioComponents'}, {}) end,
+            })
+            if scenario == 'sdk_audio_late' then state.late_audio_owner = owner
+            else engine_fields.EngineSoundComponent = owner end
         end
-        local owner = object({
-            EngineAudioComponents = audio_array(engineAudio),
-            ExhaustAudioComponents = audio_array({channel('ExhaustA', 0.4)}),
-            GetClass = function() return schema({'EngineAudioComponents', 'ExhaustAudioComponents'}, {}) end,
-        })
-        if scenario == 'sdk_audio_late' then state.late_audio_owner = owner
-        else engine_fields.EngineSoundComponent = owner end
+        if scenario:match('^sdk_audio_direct') then
+            local main = channel('MainEngine', 0.65)
+            if scenario == 'sdk_audio_direct_late' then state.late_direct_audio = main
+            elseif scenario == 'sdk_audio_direct_invalid' then
+                engine_fields.AudioComponent = object({ready = false})
+            else engine_fields.AudioComponent = main end
+            engine_fields.IntakeAudioComponent = channel('IntakeA', 0.25)
+            local afterfire = channel('AfterfireA', 0.1)
+            if scenario == 'sdk_audio_direct_invalid' then afterfire = false end
+            engine_fields.AfterfireAudioComponents = audio_array({afterfire})
+            if scenario == 'sdk_audio_direct_array_error' then
+                engine_fields.AfterfireAudioComponents = object({
+                    GetArrayNum = function() error('Synthetic unavailable engine array') end,
+                })
+            end
+        end
     end
     if scenario == 'sdk_audio_crowded' then
         local props = {'EngineComponent', 'HornAudioComponent'}
@@ -306,7 +333,14 @@ if scenario == 'sdk_audio_targets' or scenario == 'sdk_audio_missing' or
         end
     end
 end
-local controller = object({ K2_GetPawn = function() return vehicle end })
+local controller = object({ K2_GetPawn = function()
+    if state.inVehicle == false then return nil end
+    return vehicle
+end })
+if scenario == 'sdk_audio_direct_switch' then
+    state.vehicleAddress = vehicle:GetAddress()
+    vehicle_fields.GetAddress = function() return state.vehicleAddress end
+end
 package.preload['UEHelpers'] = function() return { GetPlayerController = function() return controller end } end
 FindFirstOf = function() error('Must use the local player controller') end
 if scenario:match('^settings_') then
@@ -342,6 +376,7 @@ local tick = nil
 LoopInGameThreadWithDelay = function(delay, callback) assert(delay == 50); tick = callback end
 dofile(exporter)
 assert(tick, 'Exporter did not start its game-thread loop')
+if scenario == 'sdk_audio_direct_initial_off' then state.running = false end
 tick()
 if scenario == 'late_component' or scenario == 'late_actual_throttle' then
     engine_fields.ready = true
@@ -385,6 +420,27 @@ elseif scenario == 'sdk_audio_late' then
     engine_fields.EngineSoundComponent = state.late_audio_owner
     clock = clock + 6
     tick() -- RPM/throttle remain stable; targeted sound inventory must refresh
+elseif scenario == 'sdk_audio_direct_late' then
+    engine_fields.AudioComponent = state.late_direct_audio
+    clock = clock + 6
+    tick()
+elseif scenario == 'sdk_audio_direct_off' then
+    state.running = false
+    clock = clock + 6
+    tick()
+elseif scenario == 'sdk_audio_direct_reenter' then
+    state.inVehicle = false
+    clock = clock + 1
+    tick()
+    state.inVehicle = true
+    state.running = false
+    clock = clock + 6
+    tick()
+elseif scenario == 'sdk_audio_direct_switch' then
+    state.vehicleAddress = state.vehicleAddress + 100
+    state.running = false
+    clock = clock + 6
+    tick()
 elseif scenario == 'settings_change' then
     state.engine_volume = 0.95
     clock = clock + 1

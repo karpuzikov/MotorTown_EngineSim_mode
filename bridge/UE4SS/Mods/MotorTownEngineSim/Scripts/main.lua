@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.14, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.15, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Does not change vehicle physics or write any game properties.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
@@ -25,6 +25,8 @@ local mapping = nil
 local lastValue = ""
 local nextDiscovery = 0
 local nextAudioProbe = 0
+local hasRunningAudioSnapshot = false
+local audioSnapshotVehicle = nil
 local dumpInventory = true
 local lastGear = nil
 local nativeSequence = 0
@@ -253,23 +255,28 @@ local function score(name, kind)
     return scoreValue
 end
 
--- Explicit SDK-backed probe. The generic reflection budget can be exhausted
--- by thousands of unrelated properties before the audio arrays are visited.
--- Only read EngineComponent.EngineSoundComponent; horns and tires are excluded.
+-- Explicit SDK-backed, read-only probe. The generic reflection budget can be
+-- exhausted before the audio arrays are visited. Only inspect EngineComponent's
+-- own engine/exhaust channels; never enumerate horns or other vehicle audio.
 local function sdk_audio_targets(vehicle)
     local lines = {}
-    local owner = path_value(vehicle, "EngineComponent.EngineSoundComponent")
-    if not valid(owner) then
-        return {"EngineSoundComponent: unavailable"}
-    end
+    local engine = path_value(vehicle, "EngineComponent")
+    local owner = valid(engine) and member(engine, "EngineSoundComponent") or nil
     local function identity(obj)
         if not valid(obj) then return "unavailable" end
         local ok, name = pcall(function() return obj:GetFullName() end)
         if not ok or type(name) ~= "string" or name == "" then return "unavailable" end
         return name:sub(1, 220):gsub("[%c]", " ")
     end
-    for _, field in ipairs({"EngineAudioComponents", "ExhaustAudioComponents"}) do
-        local array = member(owner, field)
+    local function channel_line(prefix, channel)
+        if not valid(channel) then return prefix .. ": unavailable" end
+        local sound = identity(member(channel, "Sound"))
+        local gain = member(channel, "VolumeMultiplier")
+        if type(gain) ~= "number" or gain ~= gain then gain = "unavailable" end
+        return prefix .. ": " .. identity(channel) .. " Sound=" .. sound ..
+            " VolumeMultiplier=" .. tostring(gain)
+    end
+    local function inspect_array(array, field)
         local ok, count = pcall(function() return array:GetArrayNum() end)
         if not ok or type(count) ~= "number" or count < 0 or count > 4096 then
             lines[#lines + 1] = field .. ": unavailable"
@@ -284,12 +291,7 @@ local function sdk_audio_targets(vehicle)
                     if not got or not valid(channel) then
                         lines[#lines + 1] = field .. "[" .. tostring(index) .. "]: unavailable"
                     else
-                        local sound = identity(member(channel, "Sound"))
-                        local gain = member(channel, "VolumeMultiplier")
-                        if type(gain) ~= "number" or gain ~= gain then gain = "unavailable" end
-                        lines[#lines + 1] = field .. "[" .. tostring(index) .. "]: " ..
-                            identity(channel) .. " Sound=" .. sound ..
-                            " VolumeMultiplier=" .. tostring(gain)
+                        lines[#lines + 1] = channel_line(field .. "[" .. tostring(index) .. "]", channel)
                     end
                 end)
             end)
@@ -297,18 +299,45 @@ local function sdk_audio_targets(vehicle)
             if count > 16 then lines[#lines + 1] = field .. ": truncated to 16" end
         end
     end
+    if valid(owner) then
+        for _, field in ipairs({"EngineAudioComponents", "ExhaustAudioComponents"}) do
+            inspect_array(member(owner, field), field)
+        end
+    else
+        lines[#lines + 1] = "EngineSoundComponent: unavailable"
+    end
+    for _, field in ipairs({"AudioComponent", "IntakeAudioComponent", "JakeBrakeAudioComponent"}) do
+        lines[#lines + 1] = channel_line("EngineComponent." .. field,
+            valid(engine) and member(engine, field) or nil)
+    end
+    inspect_array(valid(engine) and member(engine, "AfterfireAudioComponents") or nil,
+        "EngineComponent.AfterfireAudioComponents")
     return lines
 end
 
 local function write_audio_targets(vehicle)
     if not valid(vehicle) then return end
+    local rpm = path_value(vehicle, "EngineComponent.GetRPM()")
+    local ignition = path_value(vehicle, "EngineComponent.IsIgnitionOn()")
+    -- Other engine implementations may expose the equivalent pure getters.
+    if type(rpm) ~= "number" then rpm = path_value(vehicle, "EngineComponent.GetEngineRPM()") end
+    if type(ignition) ~= "boolean" then
+        ignition = path_value(vehicle, "EngineComponent.IsEngineRunning()")
+    end
+    local running = ignition == true and type(rpm) == "number" and
+        rpm > 0 and rpm <= 25000 and rpm == rpm
+    -- Game exit/engine shutdown can otherwise erase the only usable snapshot.
+    if hasRunningAudioSnapshot and not running then return end
     local ok, name = pcall(function() return vehicle:GetFullName() end)
     if not ok or type(name) ~= "string" then name = "unavailable" end
     local report = io.open(AUDIO_TARGETS, "w")
     if report then
         report:write("Player vehicle: ", name:sub(1, 220), "\n",
+            "Engine state: ignition=", tostring(ignition),
+            " RPM=", tostring(rpm), "\n",
             "SDK engine audio targets:\n", table.concat(sdk_audio_targets(vehicle), "\n"), "\n")
         report:close()
+        if running then hasRunningAudioSnapshot = true end
     end
 end
 
@@ -459,7 +488,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.14 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.15 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -604,6 +633,12 @@ local function tick()
         lastVehicle = addr
         mapping, nextDiscovery, dumpInventory, lastGear = nil, 0, true, nil
         nextAudioProbe = 0
+        -- Briefly leaving/re-entering the same car must not discard its live
+        -- report. A different car must never inherit another one's snapshot.
+        if addr ~= audioSnapshotVehicle then
+            audioSnapshotVehicle = addr
+            hasRunningAudioSnapshot = false
+        end
     end
     -- Sound arrays can be populated after RPM/gear discovery has stabilized.
     -- Refresh these two exact fields without re-scanning thousands of properties.
@@ -660,7 +695,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.14 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.15 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then log("Sample failed: " .. tostring(err)) end

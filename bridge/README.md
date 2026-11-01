@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.14)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.15)
 
 ## Native telemetry bridge (development only)
 
@@ -18,7 +18,7 @@ Unavailable, non-float and out-of-range values are `-1` (unknown), never an
 assumed maximum or the master volume. The SDK confirms the field layout, but
 the value and lookup still require a Windows in-game check. Native `MTES2` and
 `MTES3` parsing remain supported, and the legacy `MTES1` file
-remains compatible with v0.2.14.
+remains compatible with v0.2.14 and v0.2.15.
 
 This is a transitional in-process integration, not procedural audio playback
 or stock engine-sound replacement.
@@ -33,6 +33,13 @@ The latest component list is also refreshed independently every five seconds
 in `%TEMP%\MotorTownEngineSim_audio_targets.txt` and included in the read-only
 diagnostic collector, so late-loaded engine/exhaust loops can be inspected
 without repeating the expensive general reflection scan.
+
+Version 0.2.15 also probes `EngineComponent.AudioComponent`,
+`IntakeAudioComponent`, `JakeBrakeAudioComponent`, and
+`AfterfireAudioComponents` when the nested `EngineSoundComponent` is not yet
+available. It records engine ignition/RPM with each report and retains the
+last running-engine snapshot instead of losing it on engine shutdown. These
+fields are observed only; no component is muted or claimed by the native mod.
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
