@@ -15,9 +15,14 @@ using Clock = std::chrono::steady_clock;
 class FakeBackend final : public EngineBackend {
 public:
     bool underrun = false;
+    bool underrun_emitted = false;
     bool load(const std::string&) override { return true; }
     bool advance(double, double, double, int) override { return true; }
     std::size_t read(std::int16_t* dst, std::size_t frames) override {
+        // A real exhausted producer returns zero after its available burst,
+        // not a perpetually-halving stream ending one sample short.
+        if (underrun && underrun_emitted) return 0;
+        if (underrun) underrun_emitted = true;
         const std::size_t n = underrun ? frames / 2 : frames;
         for (std::size_t i = 0; i < n; ++i) dst[i] = 4096;
         return n;

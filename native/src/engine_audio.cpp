@@ -115,7 +115,11 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
             const auto ready = std::min(m_backend->read(dst + count, frames - count),
                 frames - count);
             count += ready;
-            if (count == frames || std::chrono::steady_clock::now() >= deadline)
+            // A one-sample physical-step rounding gap can be bridged below.
+            // Do not waste the rest of the 30-ms deadline waiting for that
+            // last 22.7-microsecond sample while XAudio2 drains its queue.
+            if (count == frames || (count > 0 && count + 1 == frames) ||
+                std::chrono::steady_clock::now() >= deadline)
                 break;
             if (ready == 0) {
                 std::this_thread::sleep_until(std::min(deadline,

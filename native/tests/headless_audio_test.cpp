@@ -97,7 +97,9 @@ int main() {
     // inaudible; rejecting the whole packet causes an audible stock/synth
     // switch. Never paper over a larger shortfall.
     engine->final_sample_deficit = 1;
+    const int reads_before_rounding = engine->reads;
     assert(audio.render(pcm.data(), pcm.size(), start) == pcm.size());
+    assert(engine->reads == reads_before_rounding + 1); // No pointless 30-ms wait.
     assert(pcm[14] == 2048 && pcm[15] == 2048);
     assert(audio.is_replacing_stock());
     engine->final_sample_deficit = 2;
