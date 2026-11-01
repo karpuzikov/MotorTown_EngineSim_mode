@@ -108,6 +108,13 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
         // Called exclusively by NativeAudioWorker during live playback, so
         // this bounded wait cannot stall Unreal's game-update callback.
         std::size_t count = 0;
+        // The pinned simulator integrates an integer number of physical
+        // steps. At low authored frequencies (e.g. 6.5-kHz V10) a packet's
+        // sample count can differ by a few 44.1-kHz PCM samples. Bound tail
+        // continuity to at most 10 samples (<0.23ms), and to a much smaller
+        // fraction for shorter packets; genuine underruns still fail open.
+        const auto heldTailLimit = std::clamp(frames / std::size_t{800},
+            std::size_t{1}, std::size_t{10});
         const auto deadline = std::chrono::steady_clock::now() +
             std::chrono::milliseconds(30);
         while (count < frames) {
@@ -115,10 +122,9 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
             const auto ready = std::min(m_backend->read(dst + count, frames - count),
                 frames - count);
             count += ready;
-            // A one-sample physical-step rounding gap can be bridged below.
-            // Do not waste the rest of the 30-ms deadline waiting for that
-            // last 22.7-microsecond sample while XAudio2 drains its queue.
-            if (count == frames || (count > 0 && count + 1 == frames) ||
+            // Do not waste 30 ms waiting for a sub-millisecond rounding tail
+            // while XAudio2 drains its playback queue.
+            if (count == frames || (count > 0 && frames - count <= heldTailLimit) ||
                 std::chrono::steady_clock::now() >= deadline)
                 break;
             if (ready == 0) {
@@ -126,14 +132,11 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
                     std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
             }
         }
-        // A fixed physical step count may yield 8191 samples for the native
-        // 8192-sample packet (22.7 microseconds short). Reuse exactly one
-        // genuine end sample to preserve continuity rather than flickering
-        // back to stock audio for the entire 186-ms frame. A deficit of two
-        // or more samples still fails open below; never mask real underruns.
-        if (count > 0 && count + 1 == frames) {
-            dst[count] = dst[count - 1];
-            ++count;
+        // Carry only the last genuine sample across a tiny rounding tail;
+        // an actual missing producer batch is too large and fails below.
+        if (count > 0 && count < frames && frames - count <= heldTailLimit) {
+            std::fill(dst + count, dst + frames, dst[count - 1]);
+            count = frames;
         }
         // An incomplete or entirely silent buffer must not leak partial
         // replacement sound on top of Motor Town's stock engine emitter.

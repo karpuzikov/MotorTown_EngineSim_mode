@@ -106,6 +106,21 @@ int main() {
     assert(audio.render(pcm.data(), pcm.size(), start) == 0);
     assert(!audio.is_replacing_stock());
     for (auto sample : pcm) assert(sample == 0);
+
+    // The authored 6.5-kHz V10 simulation can be short by 3-9 output samples
+    // when its integer physics steps round at the 8192-sample packet limit.
+    // At this packet size only a sub-millisecond tail may be held, not a
+    // genuinely late 11+ sample rendering block.
+    std::array<std::int16_t, 8192> maxPacket{};
+    engine->final_sample_deficit = 9;
+    const int reads_before_v10 = engine->reads;
+    assert(audio.render(maxPacket.data(), maxPacket.size(), start) == maxPacket.size());
+    assert(engine->reads == reads_before_v10 + 1);
+    assert(maxPacket[8190] == 2048 && maxPacket[8191] == 2048);
+    engine->final_sample_deficit = 11;
+    assert(audio.render(maxPacket.data(), maxPacket.size(), start) == 0);
+    assert(!audio.is_replacing_stock());
+    for (auto sample : maxPacket) assert(sample == 0);
     engine->final_sample_deficit = 0;
 
     // Genuine Engine Simulator synthesizes asynchronously and can need
