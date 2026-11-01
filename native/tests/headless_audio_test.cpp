@@ -19,6 +19,7 @@ struct FakeEngine : EngineBackend {
     bool underrun = false;
     bool partial_once = false;
     bool throw_after_partial_write = false;
+    Clock::time_point ready_after{};
     std::string script;
     int last_gear = -99;
     double last_rpm = 0;
@@ -38,6 +39,7 @@ struct FakeEngine : EngineBackend {
     }
     std::size_t read(std::int16_t *dst, std::size_t requested) override {
         ++reads;
+        if (Clock::now() < ready_after) return 0;
         if (throw_after_partial_write) {
             dst[0] = 9000;
             throw std::runtime_error("Audio renderer failed mid-buffer");
@@ -83,6 +85,16 @@ int main() {
     assert(engine->reads == reads_before_partial + 2);
     assert(audio.is_replacing_stock());
 
+    // Genuine Engine Simulator synthesizes asynchronously and can need
+    // >5ms to finish a packet. On the dedicated native worker, allow 20ms
+    // for a ready packet without making Unreal's update callback wait.
+    engine->ready_after = Clock::now() + std::chrono::milliseconds(18);
+    const auto deferred_start = Clock::now();
+    assert(audio.render(pcm.data(), pcm.size(), start) == pcm.size());
+    assert(Clock::now() - deferred_start >= std::chrono::milliseconds(15));
+    assert(audio.is_replacing_stock());
+    engine->ready_after = {};
+
     // The game's Engine Volume must control replacement PCM, including zero.
     assert(audio.render(pcm.data(), pcm.size(), start, 0.25) == 16);
     assert(pcm[0] == 512 && pcm[15] == 512);
@@ -116,7 +128,9 @@ int main() {
     assert(!audio.is_replacing_stock());
     engine->underrun = false;
     engine->produce_audio = false;
+    const auto frozen_start = Clock::now();
     assert(audio.render(pcm.data(), pcm.size(), start + std::chrono::seconds(2)) == 0);
+    assert(Clock::now() - frozen_start < std::chrono::milliseconds(100));
     assert(!audio.is_replacing_stock());
 
     // Invalid data, engine-off and profile failures must never enable mute.

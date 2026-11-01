@@ -24,7 +24,7 @@ void GameAudioOutput::stop() noexcept {
 bool GameAudioOutput::submit(const std::string& vehicle,
     std::shared_ptr<StockEngineEmitter> stock, std::int16_t* scratch,
     std::size_t frames, std::chrono::steady_clock::time_point when,
-    double engineVolume) {
+    double engineVolume, const std::function<bool()>& stillEligible) {
     if (m_stock && !m_playing) {
         stop();
         if (m_stock) {
@@ -51,6 +51,13 @@ bool GameAudioOutput::submit(const std::string& vehicle,
         !m_source.is_replacing_stock()) {
         stop();
         m_status = Status::PcmUnavailable;
+        return false;
+    }
+    // Simulation and asynchronous PCM production take time. Recheck before
+    // requesting stock mute or handing audio to XAudio2.
+    if (stillEligible && !stillEligible()) {
+        stop();
+        m_status = Status::InvalidInput;
         return false;
     }
     try {
@@ -81,6 +88,11 @@ bool GameAudioOutput::submit(const std::string& vehicle,
                 return false;
             }
             offset += chunk;
+        }
+        if (stillEligible && !stillEligible()) {
+            stop();
+            m_status = Status::InvalidInput;
+            return false;
         }
         if (m_playing) {
             m_status = Status::Playing;

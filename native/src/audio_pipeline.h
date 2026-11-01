@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,9 +32,9 @@ public:
         const GameTelemetrySample& sample) = 0;
 };
 
-// Game-thread coordinator from validated Lua/UE4SS telemetry packets to
+// Dedicated-audio-worker coordinator from validated Lua/UE4SS telemetry to
 // genuine Engine Simulator PCM and fail-open stock-emitter ownership.
-// Nominal 2205 frames = 50 ms of 44.1-kHz mono PCM16; delayed game-thread
+// Nominal 2205 frames = 50 ms of 44.1-kHz mono PCM16; delayed Lua telemetry
 // ticks produce larger packets to keep the XAudio2 queue continuously fed.
 class NativeAudioPipeline final {
 public:
@@ -57,7 +58,8 @@ public:
     NativeAudioPipeline& operator=(const NativeAudioPipeline&) = delete;
 
     bool process(const std::optional<GameTelemetrySample>& sample,
-        Clock::time_point now, double gameEngineVolume, bool gameInForeground = true);
+        Clock::time_point now, double gameEngineVolume, bool gameInForeground = true,
+        const std::function<bool()>& stillEligible = {});
     // Runtime entry point: trust only the game setting carried by MTES4.
     // MTES2/3 and missing settings always leave stock audio in control.
     bool process(const std::optional<GameTelemetrySample>& sample,
@@ -65,6 +67,10 @@ public:
     // Native XAudio2 is not owned by Unreal's mixer. Stop it on focus loss.
     bool process(const std::optional<GameTelemetrySample>& sample,
         Clock::time_point now, bool gameInForeground);
+    // Recheck focus/identity after slow simulation and PCM rendering.
+    bool process(const std::optional<GameTelemetrySample>& sample,
+        Clock::time_point now, bool gameInForeground,
+        const std::function<bool()>& stillEligible);
     void stop() noexcept;
     Stage stage() const noexcept { return m_stage; }
 

@@ -45,13 +45,20 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
 
 bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
     Clock::time_point now, bool gameInForeground) {
-    return process(sample, now, sample && sample->engine_volume
-        ? *sample->engine_volume : std::numeric_limits<double>::quiet_NaN(),
-        gameInForeground);
+    return process(sample, now, gameInForeground, std::function<bool()>{});
 }
 
 bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
-    Clock::time_point now, double gameEngineVolume, bool gameInForeground) {
+    Clock::time_point now, bool gameInForeground,
+    const std::function<bool()>& stillEligible) {
+    return process(sample, now, sample && sample->engine_volume
+        ? *sample->engine_volume : std::numeric_limits<double>::quiet_NaN(),
+        gameInForeground, stillEligible);
+}
+
+bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
+    Clock::time_point now, double gameEngineVolume, bool gameInForeground,
+    const std::function<bool()>& stillEligible) {
     if (!gameInForeground) {
         stop();
         m_stage = Stage::Background;
@@ -63,8 +70,8 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         return false;
     }
 
-    // The Lua exporter increments every 50 ms, but the Unreal game callback
-    // may run much faster. No sequence may create more than one PCM block.
+    // The Lua exporter increments every ~50 ms, but worker polls are faster.
+    // No sequence may create more than one PCM block.
     if (m_seen && sample->session == m_seenSession) {
         if (sample->sequence < m_seenSequence) {
             silence(); // A replay must not keep engine audio ownership.
@@ -144,8 +151,8 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         }
 
         if (m_autoPacketDuration) {
-            // Timers run on whole Unreal game frames; a requested 50-ms Lua
-            // tick can arrive 67+ ms later. Produce that much sound or the
+            // Lua timers run on whole Unreal game frames; a 50-ms Lua tick
+            // can arrive 67+ ms later. Produce that much sound or the
             // audio device necessarily runs dry between callbacks.
             const double elapsed = sameSession
                 ? std::chrono::duration<double>(now - previousPacketAt).count()
@@ -157,7 +164,7 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         }
 
         if (!m_output.submit(sample->vehicle, stock, m_pcm.data(), m_pcm.size(),
-                now, gameEngineVolume)) {
+                now, gameEngineVolume, stillEligible)) {
             // PCM can legitimately underrun while the simulator warms up.
             // GameAudioOutput already restored stock sound; retain the loaded
             // backend so the next sequence can retry without recompilation.
@@ -186,6 +193,9 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
                 break;
             case GameAudioOutput::Status::StartFailed:
                 m_stage = Stage::OutputStartFailed;
+                break;
+            case GameAudioOutput::Status::InvalidInput:
+                m_stage = Stage::StalePacket;
                 break;
             default:
                 m_stage = Stage::UnexpectedFailure;

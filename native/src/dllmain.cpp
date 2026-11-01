@@ -1,7 +1,8 @@
-// In-process Engine Simulator PCM with an explicit game-thread mute lease.
+// In-process Engine Simulator PCM on a dedicated native worker thread.
 // This must be built with the exact UE4SS SDK compatible with Motor Town.
 #include "game_telemetry.h"
 #include "audio_pipeline.h"
+#include "audio_worker.h"
 #include "engine_sim_backend.h"
 #include "lua_mute_lease.h"
 #include "vehicle_profile.h"
@@ -93,12 +94,13 @@ class MotorTownEngineSimMod final : public RC::CppUserModBase {
 public:
     MotorTownEngineSimMod() {
         ModName = STR("MotorTownEngineSim");
-        ModVersion = STR("0.3.1-dev");
+        ModVersion = STR("0.3.2-dev");
         ModDescription = STR("Native Motor Town engine audio (development only)");
         ModAuthors = STR("karpuzikov and contributors");
     }
 
     ~MotorTownEngineSimMod() override {
+        m_worker.stop();
         m_pipeline.stop();
         m_emitters.cancel();
     }
@@ -106,11 +108,14 @@ public:
     auto on_unreal_init() -> void override {
         m_ready = true;
         m_profilesReady = m_profiles.reload();
+        const bool workerStarted = m_profilesReady && m_worker.start();
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native initialized; engine profiles ready: {}\n"),
             m_profilesReady);
         RC::Output::send<RC::LogLevel::Normal>(
-            STR("[MTES] Audio diagnostics v0.3.1 active (stage updates every 5 seconds while driving)\n"));
+            STR("[MTES] Native audio worker running: {}\n"), workerStarted);
+        RC::Output::send<RC::LogLevel::Normal>(
+            STR("[MTES] Audio diagnostics v0.3.2 active (stage updates every 5 seconds while driving)\n"));
     }
 
     auto on_update() -> void override {
@@ -123,9 +128,8 @@ public:
         const auto now = mtes::GameTelemetryFeed::Clock::now();
         m_telemetry.poll(now);
         auto sample = m_telemetry.current(now);
-        const bool gameInForeground = game_in_foreground();
         if (m_profilesReady) {
-            const bool audible = m_pipeline.process(sample, now, gameInForeground);
+            const bool audible = m_worker.playing();
             if (audible != m_wasPlaying) {
                 if (audible) {
                     RC::Output::send<RC::LogLevel::Normal>(
@@ -133,17 +137,15 @@ public:
                 } else {
                     RC::Output::send<RC::LogLevel::Normal>(
                         STR("[MTES] Engine Simulator PCM stopped: {}; stock cue restoring\n"),
-                        audio_stage_name(m_pipeline.stage()));
+                        audio_stage_name(m_worker.stage()));
                 }
                 m_wasPlaying = audible;
             }
-            if (!gameInForeground || !sample || !sample->state.ignition ||
-                !m_profiles.script_for(*sample)) m_emitters.cancel();
             // Only active driving requires diagnosis. Log changes promptly,
             // with a 2-second floor, and repeat persistent faults at 5 s.
             // Game audio remains untouched on every reported failure stage.
             if (sample && sample->state.rpm >= 50) {
-                const auto stage = m_pipeline.stage();
+                const auto stage = m_worker.stage();
                 const auto since = now - m_lastStageReport;
                 if (!m_stageReported ||
                     (since >= std::chrono::seconds(2) && stage != m_lastStage) ||
@@ -191,6 +193,8 @@ private:
     mtes::ExactVehicleProfiles m_profiles{module_root()};
     mtes::LuaMuteLeaseLookup m_emitters{game_telemetry_path().parent_path()};
     mtes::NativeAudioPipeline m_pipeline{m_engine, m_output, m_profiles, m_emitters};
+    mtes::NativeAudioWorker m_worker{game_telemetry_path(), m_pipeline,
+        [] { return game_in_foreground(); }, [this] { m_emitters.cancel(); }};
     std::string m_lastVehicle;
     std::optional<double> m_lastVolume;
     int m_lastGear = -99;

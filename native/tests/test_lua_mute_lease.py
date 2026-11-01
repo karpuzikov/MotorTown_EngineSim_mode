@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('g++'), 'Requires a C++20 compiler')
 class LuaMuteLeaseTests(unittest.TestCase):
+    def test_native_mute_request_publication_is_atomic(self):
+        source = (ROOT / 'src/lua_mute_lease.cpp').read_text()
+        self.assertIn('MOVEFILE_REPLACE_EXISTING', source)
+        self.assertIn('std::filesystem::rename', source)
+
     def test_ack_identity_liveness_and_expiry(self):
         with tempfile.TemporaryDirectory(prefix='mtes-mute-lease-') as temp:
             executable = Path(temp) / 'mute-lease-test'

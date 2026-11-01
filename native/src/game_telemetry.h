@@ -38,8 +38,8 @@ private:
     Clock::time_point m_received{};
 };
 
-// Called by the UE4SS native mod's frame callback; no worker process or
-// audio device. Rate-limited so a 120 Hz game does not read the file 120 Hz.
+// Called independently by the audio worker and UE4SS diagnostic callback.
+// Rate-limited so a 120 Hz game does not read the file 120 Hz.
 class GameTelemetryReader final {
 public:
     explicit GameTelemetryReader(std::filesystem::path file);

@@ -11,6 +11,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which("g++"), "Requires C++20 compiler")
 class EngineAudioTests(unittest.TestCase):
+    def test_no_additional_backend_read_after_render_deadline(self):
+        source = (ROOT / 'src/engine_audio.cpp').read_text()
+        self.assertIn('if (std::chrono::steady_clock::now() >= deadline) break;', source)
+
     def test_vehicle_handoff_fail_open_and_pcm_freshness(self):
         with tempfile.TemporaryDirectory(prefix="mtes-native-audio-") as temp:
             exe = pathlib.Path(temp) / "headless-audio-test"

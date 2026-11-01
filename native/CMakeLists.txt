@@ -48,6 +48,7 @@ add_subdirectory("${mtes_engine_sim_SOURCE_DIR}" "${mtes_engine_sim_BINARY_DIR}"
 
 set(MTES_AUDIO_SOURCES
     src/audio_pipeline.cpp
+    src/audio_worker.cpp
     src/engine_audio.cpp
     src/game_audio.cpp
     src/stock_engine_emitters.cpp
@@ -82,5 +83,5 @@ target_link_libraries(${mtes_target} PRIVATE
     engine-sim
     engine-sim-script-interpreter)
 if(WIN32)
-    target_link_libraries(${mtes_target} PRIVATE xaudio2 user32)
+    target_link_libraries(${mtes_target} PRIVATE xaudio2 user32 ole32)
 endif()

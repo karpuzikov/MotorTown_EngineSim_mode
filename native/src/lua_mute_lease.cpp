@@ -7,6 +7,10 @@
 #include <sstream>
 #include <utility>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 namespace mtes {
 namespace {
 
@@ -22,10 +26,32 @@ std::string hex(std::string_view input) {
 }
 
 bool write_command(const std::filesystem::path& path, const std::string& value) {
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    output << value << '\n';
-    output.flush();
-    return output.good();
+    // The Lua game thread may read this request while the native worker is
+    // writing it. Truncating the published file would expose empty/partial
+    // commands, counting as spurious watchdog idle ticks.
+    auto pending = path;
+    pending += ".mtes-pending";
+    {
+        std::ofstream output(pending, std::ios::binary | std::ios::trunc);
+        output << value << '\n';
+        output.flush();
+        if (!output.good()) return false;
+    }
+#ifdef _WIN32
+    // Windows std::filesystem::rename replacement may fail if the target
+    // exists; MoveFileExW is the atomic replacement primitive. An open Lua
+    // reader may briefly deny deletion, so retry without blocking Unreal.
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (MoveFileExW(pending.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
+            return true;
+        if (attempt < 2) Sleep(1);
+    }
+    return false;
+#else
+    std::error_code error;
+    std::filesystem::rename(pending, path, error);
+    return !error;
+#endif
 }
 
 } // namespace

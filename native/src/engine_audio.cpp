@@ -105,16 +105,22 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
         // drain the available pieces, allowing a small, bounded scheduling
         // window for the producer to finish the rest. Never expose any
         // partial packet to XAudio2 if the deadline really does expire.
+        // Called exclusively by NativeAudioWorker during live playback, so
+        // this bounded wait cannot stall Unreal's game-update callback.
         std::size_t count = 0;
         const auto deadline = std::chrono::steady_clock::now() +
-            std::chrono::milliseconds(5);
+            std::chrono::milliseconds(30);
         while (count < frames) {
+            if (std::chrono::steady_clock::now() >= deadline) break;
             const auto ready = std::min(m_backend->read(dst + count, frames - count),
                 frames - count);
             count += ready;
             if (count == frames || std::chrono::steady_clock::now() >= deadline)
                 break;
-            if (ready == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if (ready == 0) {
+                std::this_thread::sleep_until(std::min(deadline,
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
+            }
         }
         // An incomplete or entirely silent buffer must not leak partial
         // replacement sound on top of Motor Town's stock engine emitter.

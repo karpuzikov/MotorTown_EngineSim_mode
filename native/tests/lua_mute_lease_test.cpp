@@ -1,5 +1,6 @@
 #include "lua_mute_lease.h"
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <filesystem>
@@ -8,6 +9,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 
 using namespace mtes;
 
@@ -95,4 +97,35 @@ int main(int argc, char** argv) {
     assert(lookup.stock_for(sample) != emitter);
     sample.engine_asset.clear();
     assert(!lookup.stock_for(sample));
+
+    // The worker now writes requests concurrently with Lua's game-thread
+    // reads. Every observed published file must be a complete command, not
+    // the temporary empty/partial result of truncating the active file.
+    sample.engine_asset = "MHEngineDataAsset Ford302";
+    sample.vehicle = "MTVehicle DoryWrecker_C_123";
+    sample.sequence = 70;
+    auto concurrent = lookup.stock_for(sample);
+    assert(concurrent);
+    std::atomic<bool> reading{true};
+    std::atomic<bool> incomplete{false};
+    std::thread observer([&] {
+        while (reading) {
+            std::ifstream input(request, std::ios::binary);
+            if (!input) continue;
+            const std::string content{std::istreambuf_iterator<char>{input},
+                std::istreambuf_iterator<char>{}};
+            if (content.empty() || content.back() != '\n' ||
+                (content.rfind("MTESM1 ", 0) != 0 &&
+                 content.rfind("MTESM0 ", 0) != 0)) incomplete = true;
+        }
+    });
+    for (int seq = 70; seq < 570; ++seq) {
+        sample.sequence = static_cast<std::uint64_t>(seq);
+        assert(lookup.stock_for(sample) == concurrent);
+        (void)concurrent->prepare();
+    }
+    reading = false;
+    observer.join();
+    assert(!incomplete);
+    assert(concurrent->restore());
 }

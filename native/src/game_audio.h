@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -53,7 +54,8 @@ public:
 
     bool submit(const std::string& vehicle, std::shared_ptr<StockEngineEmitter> stock,
         std::int16_t* scratch, std::size_t frames,
-        std::chrono::steady_clock::time_point when, double engineVolume);
+        std::chrono::steady_clock::time_point when, double engineVolume,
+        const std::function<bool()>& stillEligible = {});
     void stop() noexcept;
     Status status() const noexcept { return m_status; }
 

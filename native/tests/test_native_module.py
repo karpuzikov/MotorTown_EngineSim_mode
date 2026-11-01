@@ -15,7 +15,7 @@ import os
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = [
-    'game_telemetry.cpp', 'audio_pipeline.cpp', 'engine_audio.cpp',
+    'game_telemetry.cpp', 'audio_pipeline.cpp', 'audio_worker.cpp', 'engine_audio.cpp',
     'game_audio.cpp', 'lua_mute_lease.cpp', 'vehicle_profile.cpp',
     'xaudio2_sink.cpp',
 ]
@@ -30,6 +30,7 @@ class NativeModTests(unittest.TestCase):
         self.assertTrue(source.is_file())
         text = source.read_text()
         self.assertIn('STR("MotorTownEngineSim")', text)
+        self.assertIn('STR("0.3.2-dev")', text)
         self.assertNotIn("CreateProcess", text)
         self.assertNotIn("ShellExecute", text)
         self.assertNotIn("SDL_CreateWindow", text)
@@ -85,6 +86,20 @@ struct Output {
         self.assertIn("add_library(MotorTownEngineSim SHARED", cmake)
         self.assertIn("target_link_libraries(MotorTownEngineSim PRIVATE UE4SS)", cmake)
         self.assertNotIn("engine-sim-app", cmake)
+
+    def test_unreal_update_callback_does_not_advance_slow_audio_backend(self):
+        # The slow actual Engine Simulator physics advance must never execute
+        # on UE4SS's Unreal update callback. A separate worker owns the PCM
+        # and still watches focus while Unreal update callbacks are paused.
+        source = (ROOT / 'src/dllmain.cpp').read_text()
+        update_body = source.split('auto on_update() -> void override {', 1)[1].split(
+            '\n    }\n\nprivate:', 1)[0]
+        self.assertNotIn('m_pipeline.process(', update_body)
+        self.assertNotIn('m_emitters.cancel()', update_body)
+        self.assertIn('m_worker.playing()', update_body)
+        self.assertIn('m_worker.stage()', update_body)
+        self.assertIn('m_worker.start()', source)
+        self.assertIn('m_worker.stop()', source)
 
     def test_ue4ss_frame_callback_consumes_live_gear_in_same_process(self):
         with tempfile.TemporaryDirectory(prefix='mtes-native-ue4ss-') as temp:
