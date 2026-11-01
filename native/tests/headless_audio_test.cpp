@@ -17,7 +17,9 @@ struct FakeEngine : EngineBackend {
     bool load_ok = true, advance_ok = true;
     bool produce_audio = true;
     bool underrun = false;
+    bool underrun_emitted = false;
     bool partial_once = false;
+    int final_sample_deficit = 0;
     bool throw_after_partial_write = false;
     Clock::time_point ready_after{};
     std::string script;
@@ -45,7 +47,12 @@ struct FakeEngine : EngineBackend {
             throw std::runtime_error("Audio renderer failed mid-buffer");
         }
         if (!produce_audio) return 0;
-        const std::size_t count = underrun || partial_once ? requested / 2 : requested;
+        if (underrun && underrun_emitted) return 0;
+        if (underrun) underrun_emitted = true;
+        const std::size_t count = final_sample_deficit > 0
+            ? requested > static_cast<std::size_t>(final_sample_deficit)
+                ? requested - static_cast<std::size_t>(final_sample_deficit) : 0
+            : underrun || partial_once ? requested / 2 : requested;
         partial_once = false;
         for (std::size_t i = 0; i < count; ++i) dst[i] = 2048;
         return count;
@@ -84,6 +91,20 @@ int main() {
     assert(audio.render(pcm.data(), pcm.size(), start) == pcm.size());
     assert(engine->reads == reads_before_partial + 2);
     assert(audio.is_replacing_stock());
+
+    // The simulator's physics-step rounding can generate 8191 PCM samples
+    // for a requested 8192-sample packet. Repeating ONE genuine sample is
+    // inaudible; rejecting the whole packet causes an audible stock/synth
+    // switch. Never paper over a larger shortfall.
+    engine->final_sample_deficit = 1;
+    assert(audio.render(pcm.data(), pcm.size(), start) == pcm.size());
+    assert(pcm[14] == 2048 && pcm[15] == 2048);
+    assert(audio.is_replacing_stock());
+    engine->final_sample_deficit = 2;
+    assert(audio.render(pcm.data(), pcm.size(), start) == 0);
+    assert(!audio.is_replacing_stock());
+    for (auto sample : pcm) assert(sample == 0);
+    engine->final_sample_deficit = 0;
 
     // Genuine Engine Simulator synthesizes asynchronously and can need
     // >5ms to finish a packet. On the dedicated native worker, allow 20ms

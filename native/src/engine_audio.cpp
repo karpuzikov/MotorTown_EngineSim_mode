@@ -122,6 +122,15 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
                     std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
             }
         }
+        // A fixed physical step count may yield 8191 samples for the native
+        // 8192-sample packet (22.7 microseconds short). Reuse exactly one
+        // genuine end sample to preserve continuity rather than flickering
+        // back to stock audio for the entire 186-ms frame. A deficit of two
+        // or more samples still fails open below; never mask real underruns.
+        if (count > 0 && count + 1 == frames) {
+            dst[count] = dst[count - 1];
+            ++count;
+        }
         // An incomplete or entirely silent buffer must not leak partial
         // replacement sound on top of Motor Town's stock engine emitter.
         if (count != frames ||
