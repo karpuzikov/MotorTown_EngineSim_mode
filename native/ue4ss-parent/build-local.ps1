@@ -140,6 +140,9 @@ try {
         '-B', $buildDir,
         '-A', 'x64',
         "-DMTES_UE4SS_SOURCE=$ue4ssSource",
+        # CMake 4.4 rejects the pinned Engine Simulator's older GoogleTest
+        # CMakeLists unless its compatibility floor is explicitly allowed.
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
         "-DCMAKE_TOOLCHAIN_FILE=$(Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake')",
         "-DFLEX_EXECUTABLE=$flexExe", "-DBISON_EXECUTABLE=$bisonExe"
     )

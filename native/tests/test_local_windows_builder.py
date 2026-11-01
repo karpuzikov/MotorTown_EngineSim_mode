@@ -45,6 +45,11 @@ class LocalWindowsBuilderTests(unittest.TestCase):
         self.assertIn('8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135', script)
         self.assertIn('Get-FileHash', script)
 
+    def test_cmake_4_handles_old_google_test_policy_minimum(self):
+        # Reproduced on Windows with CMake 4.4: the fetched GoogleTest tree
+        # declares a pre-3.5 minimum and CMake refuses to configure it.
+        self.assertIn('-DCMAKE_POLICY_VERSION_MINIMUM=3.5', self.builder())
+
     def test_windows_ci_parses_and_dry_runs_the_builder_without_private_source(self):
         content = CI.read_text()
         self.assertIn('build-local.ps1', content)
