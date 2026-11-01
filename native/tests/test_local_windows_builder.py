@@ -71,6 +71,25 @@ class LocalWindowsBuilderTests(unittest.TestCase):
         self.assertLess(script.index("@('--fresh') + $cmakeArgs"),
                         script.index("Invoke-Checked 'Configure native UE4SS"))
 
+    def test_build_never_calls_a_vcpkg_exe_after_linking(self):
+        # Reported again after --fresh: vcpkg.cmake still resolved its root to the
+        # removed C:\Users\666\AppData\Local\vcpkg, and z-applocal exited 9009.
+        script = self.builder()
+        self.assertIn("-DVCPKG_INSTALLED_DIR=$((Join-Path $vcpkgRoot 'installed')", script)
+        self.assertIn("'-DVCPKG_APPLOCAL_DEPS=OFF'", script)
+        configure = script.index("Invoke-Checked 'Configure native UE4SS")
+        check = script.index('Assert-VcpkgConfiguration $buildDir $vcpkgRoot')
+        compile_step = script.index("Invoke-Checked 'Compile and stage native UE4SS DLL'")
+        self.assertLess(configure, check)
+        self.assertLess(check, compile_step)
+
+    def test_staging_copies_vcpkg_runtime_dlls_without_applocal(self):
+        parent = (ROOT / 'ue4ss-parent' / 'CMakeLists.txt').read_text()
+        self.assertIn('"${MTES_VCPKG_RUNTIME_BIN}/*.dll"', parent)
+        self.assertIn('${mtes_runtime_copy_commands}', parent)
+        script = self.builder()
+        self.assertIn("-DMTES_VCPKG_RUNTIME_BIN=$(Join-Path $vcpkgRoot 'installed\\x64-windows\\bin')", script)
+
 
 PWSH = os.environ.get('MTES_TEST_PWSH') or shutil.which('pwsh')
 STALE_ROOT = 'C:/Users/666/AppData/Local/vcpkg'
@@ -81,7 +100,11 @@ LOCAL_ROOT = r'F:\Documents\Karpuzikov Tools\MotorTown EngineSim Mod\dependencie
 class StaleVcpkgCacheTests(unittest.TestCase):
     """Runs the builder's own cache check against CMakeCache.txt fixtures."""
 
-    def check(self, cache_lines):
+    def check(self, cache_lines, command=None):
+        command = command or '''
+$reason = Get-StaleVcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG
+if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
+'''
         with tempfile.TemporaryDirectory(prefix='MTES builder ') as temp:
             build = Path(temp) / 'build'
             build.mkdir()
@@ -92,47 +115,82 @@ class StaleVcpkgCacheTests(unittest.TestCase):
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MTES_BUILDER, [ref]$null, [ref]$null)
-foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Get-StaleVcpkgConfiguration')) {
+foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Get-StaleVcpkgConfiguration', 'Assert-VcpkgConfiguration')) {
     $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
     if ($fn.Count -ne 1) { throw "Missing builder function $name" }
     . ([scriptblock]::Create($fn[0].Extent.Text))
 }
-$reason = Get-StaleVcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG
-if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
-''')
+''' + command)
             env = dict(os.environ, MTES_BUILDER=str(BUILDER), MTES_BUILD=str(build), MTES_VCPKG=LOCAL_ROOT)
-            result = subprocess.run([PWSH, '-NoLogo', '-NoProfile', '-File', str(script)],
-                                    env=env, capture_output=True, text=True, timeout=60)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            return result.stdout.strip()
+            return subprocess.run([PWSH, '-NoLogo', '-NoProfile', '-File', str(script)],
+                                  env=env, capture_output=True, text=True, timeout=60)
+
+    def stale(self, cache_lines):
+        result = self.check(cache_lines)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout.strip()
 
     def test_first_configure_needs_no_fresh(self):
-        self.assertEqual(self.check(None), 'CURRENT')
+        self.assertEqual(self.stale(None), 'CURRENT')
 
     def test_reported_stale_user_vcpkg_toolchain_forces_fresh_configure(self):
-        output = self.check([
+        output = self.stale([
             f'CMAKE_TOOLCHAIN_FILE:FILEPATH={STALE_ROOT}/scripts/buildsystems/vcpkg.cmake',
             f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
         ])
         self.assertTrue(output.startswith('STALE toolchain'), output)
         self.assertIn(STALE_ROOT, output)
 
-    def test_cached_root_alone_is_detected_even_with_matching_toolchain(self):
+    def test_packages_from_another_vcpkg_force_fresh_configure(self):
+        # The user's cache after the first --fresh: matching toolchain, old packages.
         local = LOCAL_ROOT.replace('\\', '/')
-        output = self.check([
+        output = self.stale([
             f'CMAKE_TOOLCHAIN_FILE:FILEPATH={local}/scripts/buildsystems/vcpkg.cmake',
+            f'VCPKG_INSTALLED_DIR:PATH={STALE_ROOT}/installed',
             f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
         ])
-        self.assertTrue(output.startswith('STALE vcpkg root'), output)
+        self.assertTrue(output.startswith('STALE installed packages'), output)
 
     def test_matching_cache_keeps_incremental_configure(self):
         # CMake stores forward slashes; the selected root uses backslashes and may differ in case.
+        # A different internal Z_VCPKG_ROOT_DIR alone no longer matters: nothing runs its vcpkg.exe.
         local = LOCAL_ROOT.replace('\\', '/')
-        output = self.check([
+        output = self.stale([
             f'CMAKE_TOOLCHAIN_FILE:FILEPATH={local.lower()}/scripts/buildsystems/vcpkg.cmake',
-            f'Z_VCPKG_ROOT_DIR:INTERNAL={local}/',
+            f'VCPKG_INSTALLED_DIR:PATH={local}/installed/',
+            f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
         ])
         self.assertEqual(output, 'CURRENT')
+
+    def assert_configuration(self, cache_lines):
+        return self.check(cache_lines, 'Assert-VcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG')
+
+    def test_configured_build_with_pinned_packages_and_no_applocal_is_accepted(self):
+        local = LOCAL_ROOT.replace('\\', '/')
+        result = self.assert_configuration([
+            f'VCPKG_INSTALLED_DIR:PATH={local}/installed',
+            'VCPKG_APPLOCAL_DEPS:BOOL=OFF',
+            f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
+        ])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"detected root '{STALE_ROOT}'", result.stdout)
+
+    def test_configured_build_using_other_packages_is_refused(self):
+        result = self.assert_configuration([
+            f'VCPKG_INSTALLED_DIR:PATH={STALE_ROOT}/installed',
+            'VCPKG_APPLOCAL_DEPS:BOOL=OFF',
+        ])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('CMake uses vcpkg packages from', result.stdout + result.stderr)
+
+    def test_configured_build_with_applocal_is_refused(self):
+        local = LOCAL_ROOT.replace('\\', '/')
+        result = self.assert_configuration([
+            f'VCPKG_INSTALLED_DIR:PATH={local}/installed',
+            'VCPKG_APPLOCAL_DEPS:BOOL=ON',
+        ])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('applocal is still enabled', result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

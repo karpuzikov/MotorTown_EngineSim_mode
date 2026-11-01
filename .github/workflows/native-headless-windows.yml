@@ -53,6 +53,10 @@ jobs:
           choco install winflexbison3 -y --no-progress
           & 'C:\vcpkg\vcpkg.exe' install 'sdl2:x64-windows' 'sdl2-image:x64-windows' 'boost-filesystem:x64-windows'
 
+      - name: Reproduce stale vcpkg root post-build failure and verify the builder settings
+        shell: pwsh
+        run: python -m unittest native.tests.test_vcpkg_applocal_windows -v
+
       - name: Configure headless PCM smoke (no UE4SS or GUI)
         shell: pwsh
         run: |

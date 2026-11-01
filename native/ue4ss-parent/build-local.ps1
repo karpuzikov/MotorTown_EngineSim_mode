@@ -48,23 +48,42 @@ function Test-SamePath([string]$Left, [string]$Right) {
     return [string]::Equals($a, $b, [StringComparison]::OrdinalIgnoreCase)
 }
 
-# vcpkg.cmake caches its root (Z_VCPKG_ROOT_DIR) on the first configure and never
-# re-detects it, and CMake ignores a changed CMAKE_TOOLCHAIN_FILE in an existing
-# cache. A build directory first configured with another vcpkg therefore keeps
-# calling that vcpkg.exe in every post-build z-applocal step (MSB3073, exit 9009).
+# CMake ignores a changed CMAKE_TOOLCHAIN_FILE in an existing cache, so a build
+# directory first configured with another vcpkg must be reconfigured from scratch.
 function Get-StaleVcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
     $cache = [IO.Path]::Combine($BuildDir, 'CMakeCache.txt')
     if (-not (Test-Path -LiteralPath $cache -PathType Leaf)) { return $null }
-    $toolchain = $VcpkgRoot.TrimEnd('\', '/') + '\scripts\buildsystems\vcpkg.cmake'
+    $root = $VcpkgRoot.TrimEnd('\', '/')
     $cachedToolchain = Get-CMakeCacheValue $cache 'CMAKE_TOOLCHAIN_FILE'
-    if (-not (Test-SamePath $cachedToolchain $toolchain)) {
+    if (-not (Test-SamePath $cachedToolchain ($root + '\scripts\buildsystems\vcpkg.cmake'))) {
         return "toolchain '$cachedToolchain'"
     }
-    $cachedRoot = Get-CMakeCacheValue $cache 'Z_VCPKG_ROOT_DIR'
-    if ($cachedRoot -and -not (Test-SamePath $cachedRoot $VcpkgRoot)) {
-        return "vcpkg root '$cachedRoot'"
+    $cachedInstalled = Get-CMakeCacheValue $cache 'VCPKG_INSTALLED_DIR'
+    if ($cachedInstalled -and -not (Test-SamePath $cachedInstalled ($root + '\installed'))) {
+        return "installed packages '$cachedInstalled'"
     }
     return $null
+}
+
+# The user's fresh configure still resolved vcpkg.cmake's internal root
+# (Z_VCPKG_ROOT_DIR) to C:\Users\...\AppData\Local\vcpkg, whose vcpkg.exe is gone,
+# and every post-build z-applocal step failed (MSB3073, exit 9009). The build
+# therefore pins VCPKG_INSTALLED_DIR and disables applocal (mtes-stage-dev copies
+# the runtime DLLs itself); this check refuses any other result.
+function Assert-VcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
+    $cache = [IO.Path]::Combine($BuildDir, 'CMakeCache.txt')
+    $root = $VcpkgRoot.TrimEnd('\', '/')
+    $installed = Get-CMakeCacheValue $cache 'VCPKG_INSTALLED_DIR'
+    if (-not (Test-SamePath $installed ($root + '\installed'))) {
+        throw "CMake uses vcpkg packages from '$installed', expected '$root\installed'."
+    }
+    if ((Get-CMakeCacheValue $cache 'VCPKG_APPLOCAL_DEPS') -notmatch '^(OFF|FALSE|0|NO)$') {
+        throw 'vcpkg post-build applocal is still enabled; it would call another vcpkg.exe.'
+    }
+    $detectedRoot = Get-CMakeCacheValue $cache 'Z_VCPKG_ROOT_DIR'
+    if ($detectedRoot -and -not (Test-SamePath $detectedRoot $root)) {
+        Write-Host "Note: vcpkg.cmake detected root '$detectedRoot'; not used (packages pinned to $root\installed, applocal off)." -ForegroundColor Yellow
+    }
 }
 
 function Invoke-Checked {
@@ -182,6 +201,10 @@ try {
         # CMakeLists unless its compatibility floor is explicitly allowed.
         '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
         "-DCMAKE_TOOLCHAIN_FILE=$(Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake')",
+        # Use only the selected vcpkg's packages, and never run a vcpkg.exe after
+        # linking: mtes-stage-dev copies the runtime DLLs from that same tree.
+        "-DVCPKG_INSTALLED_DIR=$((Join-Path $vcpkgRoot 'installed').Replace('\', '/'))",
+        '-DVCPKG_APPLOCAL_DEPS=OFF',
         "-DFLEX_EXECUTABLE=$flexExe", "-DBISON_EXECUTABLE=$bisonExe"
     )
     $staleVcpkg = Get-StaleVcpkgConfiguration $buildDir $vcpkgRoot
@@ -191,6 +214,7 @@ try {
         $cmakeArgs = @('--fresh') + $cmakeArgs
     }
     Invoke-Checked 'Configure native UE4SS + Engine Simulator DLL' 'cmake' $cmakeArgs
+    Assert-VcpkgConfiguration $buildDir $vcpkgRoot
     Invoke-Checked 'Compile and stage native UE4SS DLL' 'cmake' @(
         '--build', $buildDir, '--config', 'Game__Shipping__Win64',
         '--target', 'mtes-stage-dev', '--parallel', '4')
