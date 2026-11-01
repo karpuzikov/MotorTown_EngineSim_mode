@@ -1,5 +1,6 @@
 #include "engine_sim_backend.h"
 #include "impulse_wav.h"
+#include "overrun_fuel_cut.h"
 
 #include "compiler.h"
 #include "engine.h"
@@ -107,7 +108,8 @@ public:
         // Follow Motor Town crankshaft speed; its driving physics remain
         // authoritative. The simulator's dynamometer holds that speed while
         // its own combustion model generates the audio samples.
-        m_engine->getIgnitionModule()->m_enabled = true;
+        const double redlineRpm = m_engine->getRedline() / units::rpm(1.0);
+        m_engine->getIgnitionModule()->m_enabled = !m_fuelCut.update(rpm, throttle, redlineRpm);
         m_engine->setSpeedControl(throttle);
         m_simulator->m_starterMotor.m_enabled = false;
         m_simulator->m_dyno.m_enabled = true;
@@ -155,6 +157,7 @@ public:
         // Requires native/patch_engine_sim_core.py applied to the build-only
         // Engine Simulator checkout: upstream forgets several allocations.
         m_lastDynoSpeed = -1.0;
+        m_fuelCut.reset();
         if (m_simulator) {
             m_simulator->releaseSimulation();
             delete m_simulator;
@@ -177,6 +180,7 @@ private:
     Transmission *m_transmission = nullptr;
     Simulator *m_simulator = nullptr;
     double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
+    OverrunFuelCut m_fuelCut;
 };
 
 } // namespace
