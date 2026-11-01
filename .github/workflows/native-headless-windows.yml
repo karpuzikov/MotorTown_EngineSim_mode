@@ -30,6 +30,16 @@ jobs:
         shell: pwsh
         run: python -m unittest native.tests.test_ue4ss_build_parent -v
 
+      - name: Verify development installer scope, backup and PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'native/ue4ss-parent/install-dev-test.ps1').Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'Dev installer PowerShell parse failed' }
+          python -m unittest native.tests.test_dev_test_installer -v
+
       - name: Install original Engine Simulator build dependencies
         shell: pwsh
         run: |

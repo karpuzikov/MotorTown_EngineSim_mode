@@ -41,7 +41,9 @@ set_target_properties(MotorTownEngineSim PROPERTIES OUTPUT_NAME "main")
 set(mtes_stage_mod "${CMAKE_BINARY_DIR}/dev-stage/ue4ss/Mods/MotorTownEngineSim")
 set(mtes_stage "${mtes_stage_mod}/dlls")
 set(mtes_bridge_source "${CMAKE_CURRENT_LIST_DIR}/../../bridge/UE4SS/Mods/MotorTownEngineSim")
-set(mtes_profile_source "${MTES_NATIVE_SOURCE}/profiles")
+# These are package resources from this checkout, independent of a fake
+# native target used by the standalone parent CMake wiring test.
+set(mtes_profile_source "${CMAKE_CURRENT_LIST_DIR}/../profiles")
 add_custom_target(mtes-stage-dev ALL
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
