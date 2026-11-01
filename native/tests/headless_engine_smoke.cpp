@@ -179,8 +179,8 @@ int main(int argc, char **argv) {
         if (completeDelayedGamePackets < 36) return 11;
 
         // Exercise the hardest bounded case too: an ~186-ms frame requests
-        // exactly 8192 frames, the maximum native PCM packet and one full
-        // patched synthesizer batch. The 150-ms test alone misses this edge.
+        // exactly 8192 frames, the maximum native PCM packet. The 150-ms
+        // test alone misses this producer/consumer scheduling edge.
         std::array<std::int16_t, 8192> maxGamePcm{};
         int completeMaxGamePackets = 0;
         auto nextMaxPacketAt = std::chrono::steady_clock::now() +
@@ -188,16 +188,33 @@ int main(int argc, char **argv) {
         std::this_thread::sleep_until(nextMaxPacketAt);
         for (int frame = -4; frame < 20; ++frame) {
             const auto now = std::chrono::steady_clock::now();
+            const auto updateBegan = std::chrono::steady_clock::now();
             if (!audio.update(delayedVehicle, argv[profile],
                               {2400.0, 0.7, 2, true}, now)) {
                 std::cerr << "Failed to advance maximum PCM packet\n";
                 return 12;
             }
-            if (audio.render(maxGamePcm.data(), maxGamePcm.size(), now) ==
+            const auto updateFinished = std::chrono::steady_clock::now();
+            const auto beforeRead = meter->totalFramesRead;
+            const auto renderBegan = std::chrono::steady_clock::now();
+            const bool complete = audio.render(maxGamePcm.data(), maxGamePcm.size(), now) ==
                     maxGamePcm.size() &&
                 std::any_of(maxGamePcm.begin(), maxGamePcm.end(),
-                    [](std::int16_t sample) { return sample != 0; }) && frame >= 0) {
+                    [](std::int16_t sample) { return sample != 0; });
+            const auto renderFinished = std::chrono::steady_clock::now();
+            if (complete && frame >= 0) {
                 ++completeMaxGamePackets;
+            }
+            if (frame >= 0) {
+                const auto ms = [](auto elapsed) {
+                    return std::chrono::duration<double, std::milli>(elapsed).count();
+                };
+                std::cout << "186ms probe frame=" << frame
+                          << " raw=" << meter->totalFramesRead - beforeRead
+                          << "/8192 status=" << static_cast<int>(audio.render_status())
+                          << " update_ms=" << ms(updateFinished - updateBegan)
+                          << " render_ms=" << ms(renderFinished - renderBegan)
+                          << " complete=" << complete << "\n";
             }
             nextMaxPacketAt += std::chrono::milliseconds(186);
             std::this_thread::sleep_until(nextMaxPacketAt);
