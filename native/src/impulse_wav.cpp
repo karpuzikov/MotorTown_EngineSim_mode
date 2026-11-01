@@ -20,6 +20,14 @@ bool tag(const std::vector<std::uint8_t> &b, std::size_t i, const char *name) {
 }
 } // namespace
 
+std::filesystem::path impulse_wav_path(const std::string &script,
+    const std::string &filename) {
+    if (script.empty() || filename.empty()) return {};
+    const std::filesystem::path file(filename);
+    if (file.is_absolute()) return file;
+    return std::filesystem::path(script).parent_path() / "sound-library" / file;
+}
+
 std::vector<std::int16_t> parse_impulse_wav(const std::vector<std::uint8_t> &bytes) {
     if (bytes.size() < 44 || bytes.size() > MaxBytes ||
         !tag(bytes, 0, "RIFF") || !tag(bytes, 8, "WAVE")) return {};

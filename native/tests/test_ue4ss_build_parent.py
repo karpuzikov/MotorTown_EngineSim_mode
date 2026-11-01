@@ -47,8 +47,11 @@ class UE4SSParentBuildTests(unittest.TestCase):
             sim = native / 'sim-fixture'
             (sim / 'es/sound-library').mkdir(parents=True)
             (sim / 'assets/engines/atg-video-2').mkdir(parents=True)
+            (sim / 'assets/sound-library/smooth').mkdir(parents=True)
             (sim / 'es/engine_sim.mr').write_text('// fake script library\n')
             (sim / 'assets/engines/atg-video-2/07_gm_ls.mr').write_text('// fake V8\n')
+            (sim / 'assets/sound-library/smooth/smooth_39.wav').write_bytes(
+                b'fixture IR bytes must survive staging unchanged')
             (sim / 'LICENSE').write_text('// fake license\n')
             (native / 'mod.cpp').write_text(
                 '#if defined(_WIN32)\n'
@@ -99,9 +102,17 @@ class UE4SSParentBuildTests(unittest.TestCase):
                           (package / 'engine_profiles.tsv').read_text())
             self.assertTrue((package / 'assets/dory_v8_prototype.mr').is_file())
             self.assertTrue((package / 'assets/engines/atg-video-2/07_gm_ls.mr').is_file())
+            self.assertEqual(
+                (package / 'assets/sound-library/smooth/smooth_39.wav').read_bytes(),
+                b'fixture IR bytes must survive staging unchanged')
             self.assertTrue((package / 'es/engine_sim.mr').is_file())
             self.assertTrue((package / 'ENGINE_SIM_LICENSE.txt').is_file())
             self.assertFalse((temp / 'MotorTown').exists(), 'Build must not modify a game installation')
+
+            (sim / 'assets/sound-library/smooth/smooth_39.wav').unlink()
+            missing_ir = self.configure(ue4ss, native, temp / 'missing-ir-build', runtime_bin)
+            self.assertNotEqual(missing_ir.returncode, 0)
+            self.assertIn('impulse-response assets', missing_ir.stdout + missing_ir.stderr)
 
     def test_rejects_missing_sdk_source_and_incompatible_targets(self):
         with tempfile.TemporaryDirectory(prefix='MTES UE4SS reject ') as directory:

@@ -37,7 +37,8 @@ class DevInstallerBehaviorTests(unittest.TestCase):
                 'engine_profiles.tsv', 'ENGINE_SIM_LICENSE.txt',
                 'assets/dory_v8_prototype.mr',
                 'assets/engines/atg-video-2/07_gm_ls.mr',
-                'es/engine_sim.mr', 'es/sound-library/smooth/smooth_39.wav',
+                'assets/sound-library/smooth/smooth_39.wav',
+                'es/engine_sim.mr',
             ):
                 path = stage / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,5 +55,5 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             self.assertEqual((mod / 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll').read_text(),
                              'staged:dlls/boost_filesystem-vc143-mt-x64-1_92.dll')
             self.assertIn('Exporter v0.2.16 active', (mod / 'Scripts/main.lua').read_text())
-            self.assertTrue((mod / 'es/sound-library/smooth/smooth_39.wav').is_file())
+            self.assertTrue((mod / 'assets/sound-library/smooth/smooth_39.wav').is_file())
             self.assertEqual(len(list(backup.glob('*/MotorTownEngineSim/dlls/main.dll'))), 1)

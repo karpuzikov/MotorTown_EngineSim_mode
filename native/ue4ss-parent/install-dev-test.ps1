@@ -31,7 +31,7 @@ $required = @(
     'engine_profiles.tsv', 'ENGINE_SIM_LICENSE.txt',
     'assets\dory_v8_prototype.mr',
     'assets\engines\atg-video-2\07_gm_ls.mr',
-    'es\engine_sim.mr', 'es\sound-library\smooth\smooth_39.wav'
+    'assets\sound-library\smooth\smooth_39.wav', 'es\engine_sim.mr'
 )
 foreach ($relative in $required) {
     $path = Join-Path $StageRoot $relative

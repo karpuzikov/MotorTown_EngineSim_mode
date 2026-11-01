@@ -36,8 +36,9 @@ if(NOT mtes_mod_type STREQUAL "SHARED_LIBRARY")
 endif()
 get_property(mtes_engine_sim_stage GLOBAL PROPERTY MTES_ENGINE_SIM_SOURCE_DIR)
 if(NOT EXISTS "${mtes_engine_sim_stage}/es/engine_sim.mr" OR
-   NOT EXISTS "${mtes_engine_sim_stage}/assets/engines/atg-video-2/07_gm_ls.mr")
-    message(FATAL_ERROR "Pinned Engine Simulator script assets are unavailable for staging")
+   NOT EXISTS "${mtes_engine_sim_stage}/assets/engines/atg-video-2/07_gm_ls.mr" OR
+   NOT EXISTS "${mtes_engine_sim_stage}/assets/sound-library/smooth/smooth_39.wav")
+    message(FATAL_ERROR "Pinned Engine Simulator script or V8 impulse-response assets are unavailable for staging")
 endif()
 
 # Stage a dev artifact for inspection. This does not touch Motor Town, enable
@@ -100,6 +101,10 @@ add_custom_target(mtes-stage-dev ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${mtes_engine_sim_stage}/assets/engines/atg-video-2/07_gm_ls.mr"
         "${mtes_stage_mod}/assets/engines/atg-video-2/07_gm_ls.mr"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_mod}/assets/sound-library/smooth"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${mtes_engine_sim_stage}/assets/sound-library/smooth/smooth_39.wav"
+        "${mtes_stage_mod}/assets/sound-library/smooth/smooth_39.wav"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es" "${mtes_stage_mod}/es"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different

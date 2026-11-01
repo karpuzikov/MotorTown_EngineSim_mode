@@ -80,7 +80,8 @@ public:
                     stop();
                     return false;
                 }
-                const auto samples = load_impulse_wav(response->getFilename());
+                const auto impulse = impulse_wav_path(script, response->getFilename());
+                const auto samples = load_impulse_wav(impulse.string());
                 if (!usable_impulse_for_engine_sim(samples) ||
                     samples.size() > std::numeric_limits<unsigned int>::max()) {
                     stop();

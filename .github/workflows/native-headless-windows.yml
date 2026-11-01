@@ -88,3 +88,18 @@ jobs:
           $profiles += $dory
           & 'native/build-windows/Release/mtes-headless-smoke.exe' @profiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Dory PCM with only assets shipped in the native mod
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path
+          $trial = Join-Path (Resolve-Path 'native/build-windows').Path 'packaged-v8-trial'
+          $assets = Join-Path $trial 'assets'
+          New-Item -ItemType Directory -Force -Path (Join-Path $assets 'engines/atg-video-2') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $assets 'sound-library/smooth') | Out-Null
+          Copy-Item 'native/profiles/dory_v8_prototype.mr' (Join-Path $assets 'dory_v8_prototype.mr')
+          Copy-Item (Join-Path $source 'assets/engines/atg-video-2/07_gm_ls.mr') (Join-Path $assets 'engines/atg-video-2/07_gm_ls.mr')
+          Copy-Item (Join-Path $source 'assets/sound-library/smooth/smooth_39.wav') (Join-Path $assets 'sound-library/smooth/smooth_39.wav')
+          Copy-Item (Join-Path $source 'es') (Join-Path $trial 'es') -Recurse
+          & 'native/build-windows/Release/mtes-headless-smoke.exe' (Join-Path $assets 'dory_v8_prototype.mr')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

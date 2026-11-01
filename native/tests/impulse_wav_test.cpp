@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <filesystem>
 #include <vector>
 
 using namespace mtes;
@@ -51,6 +52,17 @@ int main(int argc, char **argv) {
     auto wrongRate = pcm16;
     wrongRate[24] = 0x80;
     assert(parse_impulse_wav(wrongRate).empty());
+
+    // Engine Simulator supplies an IR name relative to its sound library.
+    // The native mod must not depend on Motor Town's process working directory.
+    const std::filesystem::path script =
+        "mods/MotorTownEngineSim/assets/dory_v8_prototype.mr";
+    assert(impulse_wav_path(script.string(), "smooth/smooth_39.wav") ==
+        std::filesystem::path(
+            "mods/MotorTownEngineSim/assets/sound-library/smooth/smooth_39.wav"));
+    const auto absolute = std::filesystem::current_path() / "absolute-impulse.wav";
+    assert(impulse_wav_path(script.string(), absolute.string()) == absolute);
+    assert(impulse_wav_path(script.string(), "").empty());
 
     for (int i = 1; i < argc; ++i) {
         assert(load_impulse_wav(argv[i]).size() > 100);
