@@ -2,6 +2,7 @@
 
 #include "audio_pipeline.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -22,8 +23,11 @@ public:
     bool mute() override;
     bool restore() noexcept override;
     void advance(std::uint64_t sequence) noexcept;
+    // How long a confirmed lease may ride out a transient ACK problem.
+    void set_transient_grace(std::chrono::milliseconds grace) noexcept { m_grace = grace; }
 
 private:
+    bool transient_failure(std::string_view reason, std::int64_t ageMs = -1) noexcept;
     void report_lost_ack(std::string_view reason, std::int64_t ageMs = -1) noexcept;
     std::filesystem::path m_request;
     std::filesystem::path m_ack;
@@ -36,6 +40,9 @@ private:
     bool m_prepared = false;
     bool m_requested = false;
     bool m_hadConfirmedAck = false;
+    bool m_inGrace = false;
+    std::chrono::steady_clock::time_point m_lastConfirmed{};
+    std::chrono::milliseconds m_grace{500};
 };
 
 class LuaMuteLeaseLookup final : public StockEmitterLookup {

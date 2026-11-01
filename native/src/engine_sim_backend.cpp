@@ -112,7 +112,11 @@ public:
         m_simulator->m_starterMotor.m_enabled = false;
         m_simulator->m_dyno.m_enabled = true;
         m_simulator->m_dyno.m_hold = true;
-        m_simulator->m_dyno.m_rotationSpeed = units::rpm(rpm);
+        // Motor Town RPM arrives every 50-150 ms. Stepping the dynamometer to
+        // each new speed jerks the crankshaft, audible as an odd falling-RPM
+        // sound in game. Ramp from the previous target across this frame.
+        const double target = units::rpm(rpm);
+        const double from = m_lastDynoSpeed >= 0.0 ? m_lastDynoSpeed : target;
         if (m_transmission->getGear() != gear) m_transmission->changeGear(gear);
         m_transmission->setClutchPressure(0.0);
 
@@ -127,8 +131,15 @@ public:
         m_simulator->setTargetSynthesizerLatency(
             m_simulator->getSynthesizerInputLatency());
         m_simulator->startFrame(seconds);
-        while (m_simulator->simulateStep()) {}
+        const int steps = m_simulator->getFrameIterationCount();
+        do {
+            const double t = steps > 0
+                ? std::min(1.0, (m_simulator->getCurrentIteration() + 1) / static_cast<double>(steps))
+                : 1.0;
+            m_simulator->m_dyno.m_rotationSpeed = from + (target - from) * t;
+        } while (m_simulator->simulateStep());
         m_simulator->endFrame();
+        m_lastDynoSpeed = target;
         return true;
     }
 
@@ -143,6 +154,7 @@ public:
     void stop() noexcept override {
         // Requires native/patch_engine_sim_core.py applied to the build-only
         // Engine Simulator checkout: upstream forgets several allocations.
+        m_lastDynoSpeed = -1.0;
         if (m_simulator) {
             m_simulator->releaseSimulation();
             delete m_simulator;
@@ -164,6 +176,7 @@ private:
     Vehicle *m_vehicle = nullptr;
     Transmission *m_transmission = nullptr;
     Simulator *m_simulator = nullptr;
+    double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
 };
 
 } // namespace
