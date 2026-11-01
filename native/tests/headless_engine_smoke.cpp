@@ -8,15 +8,41 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
+
+// Test-only boundary meter: retain the genuine Engine Simulator backend so
+// failed packets reveal whether the producer returned 0, partial or full PCM.
+class MeteredEngineBackend final : public mtes::EngineBackend {
+public:
+    explicit MeteredEngineBackend(std::unique_ptr<mtes::EngineBackend> delegate)
+        : underlying(std::move(delegate)) {}
+    bool load(const std::string& script) override { return underlying->load(script); }
+    bool advance(double seconds, double rpm, double throttle, int gear) override {
+        return underlying->advance(seconds, rpm, throttle, gear);
+    }
+    std::size_t read(std::int16_t* dst, std::size_t frames) override {
+        const auto count = underlying->read(dst, frames);
+        totalFramesRead += count;
+        return count;
+    }
+    void stop() noexcept override { underlying->stop(); }
+
+    std::uint64_t totalFramesRead = 0;
+private:
+    std::unique_ptr<mtes::EngineBackend> underlying;
+};
 
 int main(int argc, char **argv) {
     if (argc < 2) {
         std::cerr << "Expected one or more absolute Engine Simulator .mr profile paths\n";
         return 2;
     }
-    mtes::EngineAudio audio(mtes::make_engine_sim_backend());
+    auto measuringBackend = std::make_unique<MeteredEngineBackend>(
+        mtes::make_engine_sim_backend());
+    auto* const meter = measuringBackend.get();
+    mtes::EngineAudio audio(std::move(measuringBackend));
     std::array<std::int16_t, 882> pcm{};
     for (int profile = 1; profile < argc; ++profile) {
         // The same backend must release and reload the real physical model
@@ -111,16 +137,37 @@ int main(int argc, char **argv) {
         std::this_thread::sleep_until(nextPacketAt);
         for (int frame = -WarmupPackets; frame < 40; ++frame) {
             const auto now = std::chrono::steady_clock::now();
+            const auto updateBegan = std::chrono::steady_clock::now();
             if (!audio.update(delayedVehicle,
                               argv[profile], {2400.0, 0.7, 2, true}, now)) {
                 std::cerr << "Failed to advance delayed-game PCM packet\n";
                 return 10;
             }
-            if (audio.render(delayedGamePcm.data(), delayedGamePcm.size(), now) ==
+            const auto updateFinished = std::chrono::steady_clock::now();
+            // Diagnose the asynchronous producer scheduling independently
+            // of its capacity: compare 20 immediate reads with 20 reads
+            // given 15ms to finish after the same physical simulation step.
+            if (frame >= 20) std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            const auto beforeRead = meter->totalFramesRead;
+            const auto renderBegan = std::chrono::steady_clock::now();
+            const bool complete = audio.render(delayedGamePcm.data(), delayedGamePcm.size(), now) ==
                     delayedGamePcm.size() &&
                 std::any_of(delayedGamePcm.begin(), delayedGamePcm.end(),
-                    [](std::int16_t sample) { return sample != 0; }) && frame >= 0) {
+                    [](std::int16_t sample) { return sample != 0; });
+            if (complete && frame >= 0) {
                 ++completeDelayedGamePackets;
+            }
+            if (frame >= 0 && frame % 5 == 0) {
+                const auto renderFinished = std::chrono::steady_clock::now();
+                const auto ms = [](auto elapsed) {
+                    return std::chrono::duration<double, std::milli>(elapsed).count();
+                };
+                std::cout << "150ms probe frame=" << frame
+                          << " raw=" << meter->totalFramesRead - beforeRead
+                          << "/6615 status=" << static_cast<int>(audio.render_status())
+                          << " update_ms=" << ms(updateFinished - updateBegan)
+                          << " render_ms=" << ms(renderFinished - renderBegan)
+                          << " settled=" << (frame >= 20) << "\n";
             }
             nextPacketAt += std::chrono::milliseconds(150);
             std::this_thread::sleep_until(nextPacketAt);
