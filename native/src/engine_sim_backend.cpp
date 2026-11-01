@@ -116,6 +116,16 @@ public:
         if (m_transmission->getGear() != gear) m_transmission->changeGear(gear);
         m_transmission->setClutchPressure(0.0);
 
+        // Engine Simulator's standalone GUI varies its physics step count by
+        // +/-10% to chase a preferred input-audio latency. Motor Town supplies
+        // the real playback clock: shortening a 150-ms simulation frame that
+        // way produces fewer than the requested 6615 PCM samples and causes
+        // irrecoverable underruns regardless of producer wait time. Equalize
+        // the target to the currently measured latency before startFrame(),
+        // disabling both automatic resampling branches without patching the
+        // pinned third-party library or changing the actual engine model.
+        m_simulator->setTargetSynthesizerLatency(
+            m_simulator->getSynthesizerInputLatency());
         m_simulator->startFrame(seconds);
         while (m_simulator->simulateStep()) {}
         m_simulator->endFrame();
