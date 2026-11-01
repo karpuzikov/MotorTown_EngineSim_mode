@@ -58,32 +58,55 @@ function Get-StaleVcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
     if (-not (Test-SamePath $cachedToolchain ($root + '\scripts\buildsystems\vcpkg.cmake'))) {
         return "toolchain '$cachedToolchain'"
     }
-    $cachedInstalled = Get-CMakeCacheValue $cache 'VCPKG_INSTALLED_DIR'
-    if ($cachedInstalled -and -not (Test-SamePath $cachedInstalled ($root + '\installed'))) {
-        return "installed packages '$cachedInstalled'"
-    }
+    # VCPKG_INSTALLED_DIR is passed with -D on every configure, so a different
+    # cached value does not need a fresh configure.
     return $null
 }
 
-# The user's fresh configure still resolved vcpkg.cmake's internal root
-# (Z_VCPKG_ROOT_DIR) to C:\Users\...\AppData\Local\vcpkg, whose vcpkg.exe is gone,
-# and every post-build z-applocal step failed (MSB3073, exit 9009). The build
-# therefore pins VCPKG_INSTALLED_DIR and disables applocal (mtes-stage-dev copies
-# the runtime DLLs itself); this check refuses any other result.
+function Test-PathUnder([string]$Path, [string]$Root) {
+    if (-not $Path -or -not $Root) { return $false }
+    $p = $Path.Replace('\', '/').TrimEnd('/')
+    $r = $Root.Replace('\', '/').TrimEnd('/')
+    return [string]::Equals($p, $r, [StringComparison]::OrdinalIgnoreCase) -or
+        $p.StartsWith($r + '/', [StringComparison]::OrdinalIgnoreCase)
+}
+
+# On the user's PC something outside this repository keeps supplying
+# C:\Users\...\AppData\Local\vcpkg (no vcpkg.exe): first as vcpkg.cmake's root, so
+# post-build z-applocal failed (MSB3073, exit 9009); then as the final cached
+# VCPKG_INSTALLED_DIR, although vcpkg.cmake used the pinned packages. The build
+# disables applocal (mtes-stage-dev copies the runtime DLLs itself) and refuses
+# generated projects that reference any other vcpkg.
 function Assert-VcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
     $cache = [IO.Path]::Combine($BuildDir, 'CMakeCache.txt')
     $root = $VcpkgRoot.TrimEnd('\', '/')
-    $installed = Get-CMakeCacheValue $cache 'VCPKG_INSTALLED_DIR'
-    if (-not (Test-SamePath $installed ($root + '\installed'))) {
-        throw "CMake uses vcpkg packages from '$installed', expected '$root\installed'."
-    }
     if ((Get-CMakeCacheValue $cache 'VCPKG_APPLOCAL_DEPS') -notmatch '^(OFF|FALSE|0|NO)$') {
         throw 'vcpkg post-build applocal is still enabled; it would call another vcpkg.exe.'
     }
-    $detectedRoot = Get-CMakeCacheValue $cache 'Z_VCPKG_ROOT_DIR'
-    if ($detectedRoot -and -not (Test-SamePath $detectedRoot $root)) {
-        Write-Host "Note: vcpkg.cmake detected root '$detectedRoot'; not used (packages pinned to $root\installed, applocal off)." -ForegroundColor Yellow
+    $foreign = [Collections.Generic.List[string]]::new()
+    foreach ($name in @('Z_VCPKG_ROOT_DIR', 'VCPKG_INSTALLED_DIR', '_VCPKG_INSTALLED_DIR')) {
+        $value = Get-CMakeCacheValue $cache $name
+        if ($value -and -not (Test-PathUnder $value $root)) {
+            Write-Host "Note: CMake cache $name = '$value' (not the selected vcpkg $root)." -ForegroundColor Yellow
+            $foreign.Add($value.Replace('\', '/').TrimEnd('/'))
+        }
     }
+    if ($foreign.Count -eq 0) { return }
+    # Clues for whatever supplies the other vcpkg on this machine.
+    $hints = @(Get-ChildItem env: | Where-Object { $_.Name -like '*VCPKG*' -or $_.Value -like '*\vcpkg*' } |
+        ForEach-Object { "$($_.Name)=$($_.Value)" })
+    if ($hints.Count -gt 0) { Write-Host ('Note: environment ' + ($hints -join '; ')) -ForegroundColor Yellow }
+    $projects =@(Get-ChildItem -LiteralPath $BuildDir -Recurse -File -Filter '*.vcxproj' -ErrorAction SilentlyContinue)
+    foreach ($path in ($foreign | Select-Object -Unique)) {
+        foreach ($project in $projects) {
+            $text = [IO.File]::ReadAllText($project.FullName)
+            if ($text.IndexOf($path, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                $text.IndexOf($path.Replace('/', '\'), [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                throw "Generated project $($project.FullName) uses another vcpkg ('$path')."
+            }
+        }
+    }
+    Write-Host "Checked $($projects.Count) generated projects: none use another vcpkg." -ForegroundColor Green
 }
 
 function Invoke-Checked {

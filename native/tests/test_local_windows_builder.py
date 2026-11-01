@@ -100,7 +100,7 @@ LOCAL_ROOT = r'F:\Documents\Karpuzikov Tools\MotorTown EngineSim Mod\dependencie
 class StaleVcpkgCacheTests(unittest.TestCase):
     """Runs the builder's own cache check against CMakeCache.txt fixtures."""
 
-    def check(self, cache_lines, command=None):
+    def check(self, cache_lines, command=None, projects=None):
         command = command or '''
 $reason = Get-StaleVcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG
 if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
@@ -110,12 +110,15 @@ if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
             build.mkdir()
             if cache_lines is not None:
                 (build / 'CMakeCache.txt').write_text('\n'.join(cache_lines) + '\n')
+            for relative, text in (projects or {}).items():
+                (build / relative).parent.mkdir(parents=True, exist_ok=True)
+                (build / relative).write_text(text)
             script = Path(temp) / 'check.ps1'
             script.write_text('''
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MTES_BUILDER, [ref]$null, [ref]$null)
-foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Get-StaleVcpkgConfiguration', 'Assert-VcpkgConfiguration')) {
+foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'Get-StaleVcpkgConfiguration', 'Assert-VcpkgConfiguration')) {
     $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
     if ($fn.Count -ne 1) { throw "Missing builder function $name" }
     . ([scriptblock]::Create($fn[0].Extent.Text))
@@ -141,15 +144,17 @@ foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Get-StaleVcpkgConfi
         self.assertTrue(output.startswith('STALE toolchain'), output)
         self.assertIn(STALE_ROOT, output)
 
-    def test_packages_from_another_vcpkg_force_fresh_configure(self):
-        # The user's cache after the first --fresh: matching toolchain, old packages.
+    def test_cached_packages_alone_do_not_force_fresh_configure(self):
+        # VCPKG_INSTALLED_DIR is re-applied with -D on every configure; the user's
+        # cache keeps receiving the other value after configure, so this must not
+        # turn every incremental build into a fresh configure.
         local = LOCAL_ROOT.replace('\\', '/')
         output = self.stale([
             f'CMAKE_TOOLCHAIN_FILE:FILEPATH={local}/scripts/buildsystems/vcpkg.cmake',
             f'VCPKG_INSTALLED_DIR:PATH={STALE_ROOT}/installed',
             f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
         ])
-        self.assertTrue(output.startswith('STALE installed packages'), output)
+        self.assertEqual(output, 'CURRENT')
 
     def test_matching_cache_keeps_incremental_configure(self):
         # CMake stores forward slashes; the selected root uses backslashes and may differ in case.
@@ -162,26 +167,60 @@ foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Get-StaleVcpkgConfi
         ])
         self.assertEqual(output, 'CURRENT')
 
-    def assert_configuration(self, cache_lines):
-        return self.check(cache_lines, 'Assert-VcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG')
+    def assert_configuration(self, cache_lines, projects=None):
+        return self.check(cache_lines, 'Assert-VcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG', projects)
 
-    def test_configured_build_with_pinned_packages_and_no_applocal_is_accepted(self):
+    # The user's cache after 7afe5f2: CMake found Boost in the pinned tree, yet
+    # the final cache named the other vcpkg for both values.
+    USER_CACHE = [
+        f'VCPKG_INSTALLED_DIR:PATH={STALE_ROOT}/installed',
+        f'_VCPKG_INSTALLED_DIR:PATH={LOCAL_ROOT.replace(chr(92), "/")}/installed',
+        'VCPKG_APPLOCAL_DEPS:BOOL=OFF',
+        f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
+    ]
+    CLEAN_PROJECT = ('<Project><AdditionalIncludeDirectories>'
+                     + LOCAL_ROOT + r'\installed\x64-windows\include'
+                     + '</AdditionalIncludeDirectories></Project>')
+
+    def test_other_vcpkg_only_in_cache_is_reported_but_accepted(self):
+        result = self.assert_configuration(self.USER_CACHE, {
+            r'UE4SS\UE4SS.vcxproj': self.CLEAN_PROJECT,
+            r'MotorTownEngineSim\MotorTownEngineSim.vcxproj': self.CLEAN_PROJECT,
+        })
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"Z_VCPKG_ROOT_DIR = '{STALE_ROOT}'", result.stdout)
+        self.assertIn(f"VCPKG_INSTALLED_DIR = '{STALE_ROOT}/installed'", result.stdout)
+        self.assertIn('Checked 2 generated projects', result.stdout)
+
+    def test_project_using_other_vcpkg_packages_is_refused(self):
+        foreign = ('<Project><AdditionalDependencies>'
+                   r'C:\Users\666\AppData\Local\vcpkg\installed\x64-windows\lib\boost_filesystem-vc145-mt.lib'
+                   '</AdditionalDependencies></Project>')
+        result = self.assert_configuration(self.USER_CACHE, {
+            r'UE4SS\UE4SS.vcxproj': self.CLEAN_PROJECT,
+            r'MotorTownEngineSim\MotorTownEngineSim.vcxproj': foreign,
+        })
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('MotorTownEngineSim.vcxproj uses another vcpkg', result.stdout + result.stderr)
+
+    def test_project_calling_other_vcpkg_exe_is_refused(self):
+        # The exact post-build command from the user's failed build.
+        foreign = ('<Project><PostBuildEvent><Command>C:\\Users\\666\\AppData\\Local\\vcpkg\\vcpkg.exe z-applocal '
+                   '"--target-binary=F:/x/UE4SS.dll" --installed-bin-dir=C:/Users/666/AppData/Local/vcpkg/installed/x64-windows/bin'
+                   '</Command></PostBuildEvent></Project>')
+        result = self.assert_configuration(self.USER_CACHE, {r'UE4SS\UE4SS\UE4SS.vcxproj': foreign})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('uses another vcpkg', result.stdout + result.stderr)
+
+    def test_matching_cache_skips_the_project_scan(self):
         local = LOCAL_ROOT.replace('\\', '/')
         result = self.assert_configuration([
             f'VCPKG_INSTALLED_DIR:PATH={local}/installed',
             'VCPKG_APPLOCAL_DEPS:BOOL=OFF',
-            f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
+            f'Z_VCPKG_ROOT_DIR:INTERNAL={local}',
         ])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn(f"detected root '{STALE_ROOT}'", result.stdout)
-
-    def test_configured_build_using_other_packages_is_refused(self):
-        result = self.assert_configuration([
-            f'VCPKG_INSTALLED_DIR:PATH={STALE_ROOT}/installed',
-            'VCPKG_APPLOCAL_DEPS:BOOL=OFF',
-        ])
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('CMake uses vcpkg packages from', result.stdout + result.stderr)
+        self.assertNotIn('Note:', result.stdout)
 
     def test_configured_build_with_applocal_is_refused(self):
         local = LOCAL_ROOT.replace('\\', '/')
