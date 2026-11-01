@@ -1,5 +1,20 @@
 # Native Motor Town EngineSim mod - source foundation
 
+The development branch now includes an optional `XAudio2Sink` implementation of
+the PCM output interface. It opens a Windows 10/11 default-device voice inside
+the Motor Town process (44.1-kHz mono PCM16), uses four fixed 50-ms buffers,
+and retires each buffer through its audio-completion callback. Queue overflow,
+device creation failure and playback failure report an error so the existing
+handoff can restore stock sound. No desktop process or window is launched.
+`USoundWaveProcedural::QueueAudio` in Unreal 5.5 is a native non-reflected API;
+its address is not exposed by the available UE4SS reflection interface. This
+XAudio2 fallback is a development alternative, **not** an Unreal audio submix.
+It has not been tested with Motor Town's device selection, master volume or
+spatial audio. **The live `dllmain.cpp` deliberately does not instantiate this
+sink or mute any stock audio** until the real engine-emitter and exact profile
+adapters are in place and tested. Windows compilation will be checked by CI;
+audio output still needs a local Windows runtime test before enabling it.
+
 **Not a playable release.** This source exports the native UE4SS module entry
 points, a tested read-only game-telemetry receiver, a fail-open PCM controller,
 and an initial adapter that loads the genuine Engine Simulator engine scripts

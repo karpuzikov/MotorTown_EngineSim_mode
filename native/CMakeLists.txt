@@ -43,6 +43,8 @@ set(MTES_AUDIO_SOURCES
     src/engine_audio.cpp
     src/game_audio.cpp
     src/stock_engine_emitters.cpp
+    src/pcm_block_pool.cpp
+    src/xaudio2_sink.cpp
     src/game_telemetry.cpp
     src/vehicle_profile.cpp
     src/impulse_wav.cpp
@@ -70,3 +72,6 @@ target_include_directories(${mtes_target} PRIVATE
 target_link_libraries(${mtes_target} PRIVATE
     engine-sim
     engine-sim-script-interpreter)
+if(WIN32)
+    target_link_libraries(${mtes_target} PRIVATE xaudio2)
+endif()
