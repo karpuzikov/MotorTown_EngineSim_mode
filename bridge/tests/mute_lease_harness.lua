@@ -42,10 +42,40 @@ local channel = object("AudioComponent Engine", {
     VolumeMultiplier = 0.63, Sound = cue,
     SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
 })
-local engine = object("EngineComponent", {
+-- UE4SS returns a NEW Lua value for every object-property read, so two reads
+-- of the same component are different Lua values. The previous harness
+-- returned one shared table, which hid the in-game failure: the lease compared
+-- component wrappers with ~= and restored stock audio on every following
+-- tick (UE4SS.log 2026-11-01: lease/restore alternating, mute-ACK=39).
+-- Model each read as a fresh forwarding wrapper (plain tables: ~= is true).
+local function fresh_wrapper(target)
+    return setmetatable({}, {
+        __index = function(_, key)
+            local value = target[key]
+            if type(value) == "function" then
+                return function(_, ...) return target[key](target, ...) end
+            end
+            return value
+        end,
+        __newindex = function(_, key, value) target[key] = value end,
+    })
+end
+channel.GetAddress = function() return 0x1000 end
+intake.GetAddress = function() return 0x2000 end
+local engineFields = object("EngineComponent", {
     AudioComponent = channel,
     IntakeAudioComponent = intake,
     EngineData = object(assetName),
+})
+local engine = setmetatable({}, {
+    __index = function(_, key)
+        local value = engineFields[key]
+        if (key == "AudioComponent" or key == "IntakeAudioComponent") and value then
+            return fresh_wrapper(value)
+        end
+        return value
+    end,
+    __newindex = function(_, key, value) engineFields[key] = value end,
 })
 local vehicle = object(vehicleName, { EngineComponent = engine })
 local token = "A0B1C2"

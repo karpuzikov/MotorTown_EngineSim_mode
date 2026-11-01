@@ -49,7 +49,7 @@ class DevInstallerBehaviorTests(unittest.TestCase):
                 path = stage / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('staged:' + relative +
-                    ('\nExporter v0.2.17 active' if relative == 'Scripts/main.lua' else ''))
+                    ('\nExporter v0.2.18 active' if relative == 'Scripts/main.lua' else ''))
             (mod / 'dlls').mkdir(parents=True)
             (mod / 'dlls/main.dll').write_text('old-original-dll')
             command = [PWSH, '-NoLogo', '-NoProfile', '-File', str(SCRIPT),
@@ -60,6 +60,6 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             self.assertEqual((mod / 'dlls/main.dll').read_text(), 'staged:dlls/main.dll')
             self.assertEqual((mod / 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll').read_text(),
                              'staged:dlls/boost_filesystem-vc143-mt-x64-1_92.dll')
-            self.assertIn('Exporter v0.2.17 active', (mod / 'Scripts/main.lua').read_text())
+            self.assertIn('Exporter v0.2.18 active', (mod / 'Scripts/main.lua').read_text())
             self.assertTrue((mod / 'assets/sound-library/smooth/smooth_39.wav').is_file())
             self.assertEqual(len(list(backup.glob('*/MotorTownEngineSim/dlls/main.dll'))), 1)
