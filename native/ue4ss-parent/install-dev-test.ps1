@@ -7,10 +7,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$GameWin64,
-    [string]$StageRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments'))
-        'Karpuzikov Tools\MotorTown EngineSim Mod\build\UE4SS\dev-stage\ue4ss\Mods\MotorTownEngineSim'),
-    [string]$BackupRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments'))
-        'Karpuzikov Tools\MotorTown EngineSim Mod\backups')
+    [string]$StageRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Karpuzikov Tools\MotorTown EngineSim Mod\build\UE4SS\dev-stage\ue4ss\Mods\MotorTownEngineSim'),
+    [string]$BackupRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Karpuzikov Tools\MotorTown EngineSim Mod\backups')
 )
 
 Set-StrictMode -Version Latest
@@ -41,8 +39,7 @@ foreach ($relative in $required) {
         throw "Incomplete staged development package; missing: $path"
     }
 }
-if (-not (Select-String -LiteralPath (Join-Path $StageRoot 'Scripts\main.lua')
-    -Pattern 'Exporter v0.2.16 active' -Quiet)) {
+if (-not (Select-String -LiteralPath (Join-Path $StageRoot 'Scripts\main.lua') -Pattern 'Exporter v0.2.16 active' -Quiet)) {
     throw 'Refusing outdated staged Lua exporter.'
 }
 
