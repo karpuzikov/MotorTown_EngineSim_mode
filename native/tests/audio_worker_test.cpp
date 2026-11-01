@@ -133,6 +133,11 @@ int main(int argc, char** argv) {
     foreground = false;
     assert(eventually([&] { return !worker.playing() && !sink.playing &&
         !emitters.emitter->muted; }, 500ms));
+    // A focus change during an in-flight render can be rejected by the
+    // eligibility recheck (StalePacket) before the next Background tick.
+    assert(eventually([&] { return worker.drop_count(
+        NativeAudioPipeline::Stage::Background) + worker.drop_count(
+        NativeAudioPipeline::Stage::StalePacket) >= 1; }));
     assert(sink.queues == before_focus_queues);
     assert(cancels > 0);
 
@@ -167,6 +172,9 @@ int main(int argc, char** argv) {
     assert(eventually([&] { return !worker.playing() && !sink.playing &&
         !emitters.emitter->muted; }, 900ms));
     assert(worker.stage() == NativeAudioPipeline::Stage::NoTelemetry);
+    assert(eventually([&] { return worker.drop_count(
+        NativeAudioPipeline::Stage::NoTelemetry) >= 1; }));
+    assert(worker.total_drops() >= 2);
 
     packet(file, 10);
     assert(eventually([&] { return worker.stage() ==

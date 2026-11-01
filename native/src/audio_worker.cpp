@@ -53,6 +53,12 @@ void NativeAudioWorker::stop() noexcept {
     m_stage.store(NativeAudioPipeline::Stage::NoTelemetry);
 }
 
+void NativeAudioWorker::record_drop(NativeAudioPipeline::Stage reason) noexcept {
+    m_lastDropStage.store(reason);
+    m_dropCounts[static_cast<std::size_t>(reason)].fetch_add(1);
+    m_totalDrops.fetch_add(1);
+}
+
 void NativeAudioWorker::run(std::stop_token token,
     std::promise<bool>& ready) noexcept {
     using namespace std::chrono_literals;
@@ -96,10 +102,12 @@ void NativeAudioWorker::run(std::stop_token token,
                 m_cancelLease();
             }
             m_stage.store(stage);
-            m_playing.store(audible);
+            if (m_playing.exchange(audible) && !audible) record_drop(stage);
         }
         catch (...) {
+            const bool wasPlaying = m_playing.load();
             restore();
+            if (wasPlaying) record_drop(NativeAudioPipeline::Stage::UnexpectedFailure);
             m_stage.store(NativeAudioPipeline::Stage::UnexpectedFailure);
         }
         std::this_thread::sleep_until(now + 20ms);

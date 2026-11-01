@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -94,7 +95,7 @@ class MotorTownEngineSimMod final : public RC::CppUserModBase {
 public:
     MotorTownEngineSimMod() {
         ModName = STR("MotorTownEngineSim");
-        ModVersion = STR("0.3.3-dev");
+        ModVersion = STR("0.3.4-dev");
         ModDescription = STR("Native Motor Town engine audio (development only)");
         ModAuthors = STR("karpuzikov and contributors");
     }
@@ -115,7 +116,7 @@ public:
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native audio worker running: {}\n"), workerStarted);
         RC::Output::send<RC::LogLevel::Normal>(
-            STR("[MTES] Audio diagnostics v0.3.3 active (worker-clock PCM, stage updates every 5 seconds while driving)\n"));
+            STR("[MTES] Audio diagnostics v0.3.4 active (worker-clock PCM, interruption counters)\n"));
     }
 
     auto on_update() -> void override {
@@ -152,6 +153,27 @@ public:
                     since >= std::chrono::seconds(5)) {
                     RC::Output::send<RC::LogLevel::Normal>(
                         STR("[MTES] Audio stage: {}\n"), audio_stage_name(stage));
+                    const auto drops = m_worker.total_drops();
+                    if (drops != m_lastReportedDrops) {
+                        using Stage = mtes::NativeAudioPipeline::Stage;
+                        RC::Output::send<RC::LogLevel::Normal>(
+                            STR("[MTES] Audio interruptions: total={} last={} underrun={} silent={} unavailable={} mute-ACK={} queue={}\n"),
+                            drops, audio_stage_name(m_worker.last_drop_stage()),
+                            m_worker.drop_count(Stage::PcmUnderrun),
+                            m_worker.drop_count(Stage::PcmSilent),
+                            m_worker.drop_count(Stage::PcmUnavailable),
+                            m_worker.drop_count(Stage::MutePending),
+                            m_worker.drop_count(Stage::OutputQueueFailed));
+                        RC::Output::send<RC::LogLevel::Normal>(
+                            STR("[MTES] Other interruptions: stale={} background={} no-telemetry={} engine-advance={} stock-mute={} unexpected={}\n"),
+                            m_worker.drop_count(Stage::StalePacket),
+                            m_worker.drop_count(Stage::Background),
+                            m_worker.drop_count(Stage::NoTelemetry),
+                            m_worker.drop_count(Stage::EngineAdvanceFailed),
+                            m_worker.drop_count(Stage::StockMuteFailed),
+                            m_worker.drop_count(Stage::UnexpectedFailure));
+                        m_lastReportedDrops = drops;
+                    }
                     m_lastStage = stage;
                     m_lastStageReport = now;
                     m_stageReported = true;
@@ -210,6 +232,7 @@ private:
     mtes::NativeAudioPipeline::Stage m_lastStage = mtes::NativeAudioPipeline::Stage::NoTelemetry;
     mtes::NativeAudioPipeline::Clock::time_point m_lastStageReport{};
     bool m_stageReported = false;
+    std::uint64_t m_lastReportedDrops = 0;
 };
 
 #if defined(_WIN32)
