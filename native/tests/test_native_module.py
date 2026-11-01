@@ -33,6 +33,9 @@ class NativeModTests(unittest.TestCase):
         self.assertNotIn("CreateProcess", text)
         self.assertNotIn("ShellExecute", text)
         self.assertNotIn("SDL_CreateWindow", text)
+        # A real in-game PCM drop must name its cause, even if it lasts
+        # less than the five-second periodic stage-report interval.
+        self.assertIn('Engine Simulator PCM stopped: {}', text)
         with tempfile.TemporaryDirectory() as temp:
             stub = Path(temp) / "Mod"
             stub.mkdir()

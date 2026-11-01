@@ -23,6 +23,7 @@ public:
     int reads = 0;
     double last_rpm = 0;
     double last_throttle = 0;
+    double last_seconds = 0;
     int last_gear = -99;
     bool load(const std::string& script) override {
         events.push_back("load:" + script);
@@ -32,6 +33,7 @@ public:
     }
     bool advance(double seconds, double rpm, double throttle, int gear) override {
         ++advances;
+        last_seconds = seconds;
         ready_frames += static_cast<std::size_t>(seconds * 44100.0);
         last_rpm = rpm;
         last_throttle = throttle;
@@ -302,4 +304,36 @@ int main() {
         brokenProfiles, brokenEmitters);
     assert(!brokenPipeline.process(v1, t));
     assert(brokenPipeline.stage() == NativeAudioPipeline::Stage::EngineLoadFailed);
+
+    // UE4SS's game-thread 50ms timer can actually run every 67ms on a
+    // slower game frame rate. Queuing 2205 samples per 67ms would leave
+    // 17ms of XAudio2 silence each tick and make stock/synth stutter.
+    std::vector<std::string> slowEvents;
+    auto slowBackend = std::make_unique<TraceBackend>(slowEvents);
+    auto* slowSource = slowBackend.get();
+    EngineAudio slowEngine(std::move(slowBackend));
+    TraceSink slowSink(slowEvents);
+    GameAudioOutput slowOutput(slowEngine, slowSink);
+    Profiles slowProfiles;
+    Emitters slowEmitters;
+    slowEmitters.car_a = std::make_shared<TraceEmitter>(slowEvents, "slow");
+    NativeAudioPipeline slowPipeline(slowEngine, slowOutput,
+        slowProfiles, slowEmitters);
+    const auto s1 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 1 2400 0.5 1 2 43617241 2 6500 - 1.0");
+    const auto s2 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 2 2500 0.5 1 2 43617241 2 6500 - 1.0");
+    const auto s3 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 3 2600 0.5 1 2 43617241 2 6500 - 1.0");
+    const auto s4 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 4 2600 0.5 1 2 43617241 2 6500 - 1.0");
+    assert(s1 && s2 && s3 && s4);
+    assert(!slowPipeline.process(s1, t)); // Prime the backend.
+    assert(slowPipeline.process(s2, t + std::chrono::milliseconds(67)));
+    assert(slowSink.last.size() >= 2900 && slowSink.last.size() <= 3000);
+    assert(slowSource->last_seconds >= 0.066);
+    assert(slowPipeline.process(s3, t + std::chrono::milliseconds(150)));
+    assert(slowSink.last.size() >= 3600 && slowSink.last.size() <= 3700);
+    assert(slowPipeline.process(s4, t + std::chrono::milliseconds(260)));
+    assert(slowSink.last.size() == 4096); // Bound a long frame stall safely.
 }

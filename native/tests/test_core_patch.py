@@ -129,6 +129,8 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         source = (ROOT / 'tests/headless_engine_smoke.cpp').read_text()
         self.assertIn('std::array<std::int16_t, 2205> gamePcm', source)
         self.assertIn('completeGamePackets', source)
+        self.assertIn('std::array<std::int16_t, 2955> slowGamePcm', source)
+        self.assertIn('completeSlowGamePackets', source)
 
     def test_windows_ci_runs_full_pinned_patch_migration(self):
         workflow = (ROOT.parent / '.github/workflows/native-headless-windows.yml').read_text()

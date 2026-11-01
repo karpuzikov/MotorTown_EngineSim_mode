@@ -5,6 +5,8 @@
 #include <cstdint>
 
 int main() {
+    // A 67ms game tick requires ~2955 PCM16 samples in one queued packet.
+    assert(mtes::PcmBlockPool::FramesPerBlock >= 3000);
     mtes::PcmBlockPool pool;
     std::array<std::int16_t, mtes::PcmBlockPool::FramesPerBlock> pcm{};
     pcm[0] = 42;

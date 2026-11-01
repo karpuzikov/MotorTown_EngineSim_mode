@@ -1,16 +1,22 @@
 #include "audio_pipeline.h"
+#include "pcm_block_pool.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <utility>
 
 namespace mtes {
 
+static_assert(NativeAudioPipeline::MaxPacketFrames <= PcmBlockPool::FramesPerBlock);
+
 NativeAudioPipeline::NativeAudioPipeline(EngineAudio& engine,
     GameAudioOutput& output, VehicleProfileLookup& profiles,
     StockEmitterLookup& emitters, std::size_t framesPerPacket)
     : m_engine(engine), m_output(output), m_profiles(profiles), m_emitters(emitters),
-      m_pcm(framesPerPacket) {}
+      m_pcm(framesPerPacket), m_autoPacketDuration(framesPerPacket == NominalPacketFrames) {
+    if (m_autoPacketDuration) m_pcm.reserve(MaxPacketFrames);
+}
 
 NativeAudioPipeline::~NativeAudioPipeline() { stop(); }
 
@@ -56,6 +62,8 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
     }
     const bool duplicate = m_seen && sample->session == m_seenSession &&
         sample->sequence == m_seenSequence;
+    const bool sameSession = m_seen && sample->session == m_seenSession;
+    const auto previousPacketAt = m_seenAt;
     // Enforce the same 250-ms freshness window as GameTelemetryReader, even
     // if a future adapter mistakenly passes a cached sample after expiry.
     if (m_seen && (now < m_seenAt ||
@@ -121,6 +129,19 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         if (newlyLoaded) {
             m_stage = Stage::Priming;
             return false;
+        }
+
+        if (m_autoPacketDuration) {
+            // Timers run on whole Unreal game frames; a requested 50-ms Lua
+            // tick can arrive 67+ ms later. Produce that much sound or the
+            // audio device necessarily runs dry between callbacks.
+            const double elapsed = sameSession
+                ? std::chrono::duration<double>(now - previousPacketAt).count()
+                : static_cast<double>(NominalPacketFrames) / 44100.0;
+            const auto duration = std::clamp(elapsed, 0.005,
+                static_cast<double>(MaxPacketFrames) / 44100.0);
+            const auto frames = static_cast<std::size_t>(std::lround(duration * 44100.0));
+            m_pcm.resize(std::clamp(frames, std::size_t{1}, MaxPacketFrames));
         }
 
         if (!m_output.submit(sample->vehicle, stock, m_pcm.data(), m_pcm.size(),

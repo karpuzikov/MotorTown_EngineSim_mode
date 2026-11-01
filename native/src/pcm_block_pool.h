@@ -11,7 +11,9 @@ namespace mtes {
 // the audio thread releases them on completion without allocation or locking.
 class PcmBlockPool final {
 public:
-    static constexpr std::size_t FramesPerBlock = 2205;
+    // Covers a delayed UE4SS game tick (up to ~93 ms) without allocating
+    // on the XAudio2 callback or silently truncating a PCM packet.
+    static constexpr std::size_t FramesPerBlock = 4096;
     static constexpr std::size_t BlockCount = 4;
 
     struct Block {

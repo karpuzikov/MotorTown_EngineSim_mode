@@ -33,8 +33,8 @@ public:
 
 // Game-thread coordinator from validated Lua/UE4SS telemetry packets to
 // genuine Engine Simulator PCM and fail-open stock-emitter ownership.
-// Nominal 2205 frames = 50 ms of 44.1-kHz mono PCM16, matching the MTES2
-// producer cadence; the Unreal sink must be configured to that format.
+// Nominal 2205 frames = 50 ms of 44.1-kHz mono PCM16; delayed game-thread
+// ticks produce larger packets to keep the XAudio2 queue continuously fed.
 class NativeAudioPipeline final {
 public:
     enum class Stage {
@@ -46,6 +46,7 @@ public:
     };
     using Clock = std::chrono::steady_clock;
     static constexpr std::size_t NominalPacketFrames = 2205;
+    static constexpr std::size_t MaxPacketFrames = 4096;
 
     NativeAudioPipeline(EngineAudio& engine, GameAudioOutput& output,
         VehicleProfileLookup& profiles, StockEmitterLookup& emitters,
@@ -72,6 +73,7 @@ private:
     VehicleProfileLookup& m_profiles;
     StockEmitterLookup& m_emitters;
     std::vector<std::int16_t> m_pcm;
+    bool m_autoPacketDuration = false;
     std::shared_ptr<StockEngineEmitter> m_activeEmitter;
     std::string m_activeVehicle;
     std::string m_activeScript;

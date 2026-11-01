@@ -118,7 +118,8 @@ public:
                         STR("[MTES] Engine Simulator PCM active; stock V8 cue leased\n"));
                 } else {
                     RC::Output::send<RC::LogLevel::Normal>(
-                        STR("[MTES] Engine Simulator PCM stopped; stock cue restoring\n"));
+                        STR("[MTES] Engine Simulator PCM stopped: {}; stock cue restoring\n"),
+                        audio_stage_name(m_pipeline.stage()));
                 }
                 m_wasPlaying = audible;
             }

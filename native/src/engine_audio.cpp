@@ -63,7 +63,8 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
         m_lastUpdate = when;
     }
     const double delta = std::clamp(
-        std::chrono::duration<double>(when - m_lastUpdate).count(), 0.005, 0.05);
+        std::chrono::duration<double>(when - m_lastUpdate).count(), 0.005,
+        4096.0 / 44100.0); // Match the maximum queued 44.1-kHz PCM packet.
     m_lastUpdate = when;
     try {
         // Engine Simulator uses -1 for neutral, 0 for first gear, etc.

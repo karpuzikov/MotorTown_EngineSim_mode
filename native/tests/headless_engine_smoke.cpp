@@ -62,6 +62,30 @@ int main(int argc, char **argv) {
         std::cout << argv[profile] << " complete Motor Town PCM packets: "
                   << completeGamePackets << "\n";
         if (completeGamePackets < 5) return 7;
+
+        // A requested 50-ms Lua timer may run every ~67 ms when the game
+        // thread misses the nominal deadline. Verify genuine synthesis also
+        // sustains a 2955-frame block instead of passing only fake backends.
+        std::array<std::int16_t, 2955> slowGamePcm{};
+        int completeSlowGamePackets = 0;
+        for (int frame = 0; frame < 80; ++frame) {
+            const auto now = start + std::chrono::milliseconds(6400 + frame * 67);
+            if (!audio.update("native-test-vehicle-" + std::to_string(profile),
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance slow-game PCM packet\n";
+                return 8;
+            }
+            if (audio.render(slowGamePcm.data(), slowGamePcm.size(), now) ==
+                    slowGamePcm.size() &&
+                std::any_of(slowGamePcm.begin(), slowGamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; })) {
+                ++completeSlowGamePackets;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::cout << argv[profile] << " complete slow-game PCM packets: "
+                  << completeSlowGamePackets << "\n";
+        if (completeSlowGamePackets < 5) return 9;
     }
     audio.stop();
     if (audio.is_replacing_stock()) return 5;
