@@ -21,6 +21,12 @@ class DevInstallerSourceTests(unittest.TestCase):
         self.assertNotIn('mods.txt', text)
         self.assertNotIn('Remove-Item', text)
 
+    def test_exporter_version_guard_matches_staged_source(self):
+        exporter = (SCRIPT.parents[2] / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua').read_text()
+        expected = next(line.split('"')[1] for line in exporter.splitlines()
+                        if 'log("Exporter v' in line and 'active. Telemetry:' in line)
+        self.assertIn("-Pattern '" + expected.split('. Telemetry:')[0] + "'", SCRIPT.read_text())
+
 
 @unittest.skipUnless(PWSH, 'Requires PowerShell')
 class DevInstallerBehaviorTests(unittest.TestCase):
