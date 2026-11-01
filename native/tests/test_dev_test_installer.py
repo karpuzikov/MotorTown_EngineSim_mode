@@ -32,7 +32,8 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             mod = game / 'ue4ss/Mods/MotorTownEngineSim'
             backup = root / 'backups'
             for relative in (
-                'dlls/main.dll', 'Scripts/main.lua', 'enabled.txt',
+                'dlls/main.dll', 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll',
+                'Scripts/main.lua', 'enabled.txt',
                 'engine_profiles.tsv', 'ENGINE_SIM_LICENSE.txt',
                 'assets/dory_v8_prototype.mr',
                 'assets/engines/atg-video-2/07_gm_ls.mr',
@@ -50,6 +51,8 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             finished = subprocess.run(command, capture_output=True, text=True, timeout=20)
             self.assertEqual(finished.returncode, 0, finished.stdout + finished.stderr)
             self.assertEqual((mod / 'dlls/main.dll').read_text(), 'staged:dlls/main.dll')
+            self.assertEqual((mod / 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll').read_text(),
+                             'staged:dlls/boost_filesystem-vc143-mt-x64-1_92.dll')
             self.assertIn('Exporter v0.2.16 active', (mod / 'Scripts/main.lua').read_text())
             self.assertTrue((mod / 'es/sound-library/smooth/smooth_39.wav').is_file())
             self.assertEqual(len(list(backup.glob('*/MotorTownEngineSim/dlls/main.dll'))), 1)

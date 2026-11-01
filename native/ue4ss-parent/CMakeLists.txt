@@ -44,11 +44,43 @@ set(mtes_bridge_source "${CMAKE_CURRENT_LIST_DIR}/../../bridge/UE4SS/Mods/MotorT
 # These are package resources from this checkout, independent of a fake
 # native target used by the standalone parent CMake wiring test.
 set(mtes_profile_source "${CMAKE_CURRENT_LIST_DIR}/../profiles")
+# The Windows vcpkg triplet is dynamically linked. Engine Simulator's Boost
+# imports (and their transitive vcpkg DLLs) must live next to main.dll for
+# UE4SS's LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR to find them in-game. Keep this
+# limited to the development package, not the game or global PATH.
+set(MTES_VCPKG_RUNTIME_BIN "" CACHE PATH "DLL directory for the active vcpkg Windows triplet")
+if(WIN32 AND NOT MTES_VCPKG_RUNTIME_BIN AND
+   DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+    set(MTES_VCPKG_RUNTIME_BIN "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
+endif()
+set(mtes_runtime_copy_commands)
+if(MTES_VCPKG_RUNTIME_BIN)
+    if(NOT IS_DIRECTORY "${MTES_VCPKG_RUNTIME_BIN}")
+        message(FATAL_ERROR "vcpkg runtime DLL directory missing: ${MTES_VCPKG_RUNTIME_BIN}")
+    endif()
+    file(GLOB mtes_runtime_dlls CONFIGURE_DEPENDS
+        "${MTES_VCPKG_RUNTIME_BIN}/*.dll")
+    if(WIN32 AND NOT mtes_runtime_dlls)
+        message(FATAL_ERROR "No vcpkg runtime DLLs available to stage in ${MTES_VCPKG_RUNTIME_BIN}")
+    endif()
+    foreach(mtes_runtime_dll IN LISTS mtes_runtime_dlls)
+        get_filename_component(mtes_runtime_name "${mtes_runtime_dll}" NAME)
+        if(mtes_runtime_name STREQUAL "main.dll")
+            message(FATAL_ERROR "Refusing to overwrite main.dll with a vcpkg runtime")
+        endif()
+        list(APPEND mtes_runtime_copy_commands
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${mtes_runtime_dll}" "${mtes_stage}/${mtes_runtime_name}")
+    endforeach()
+elseif(WIN32)
+    message(FATAL_ERROR "Set MTES_VCPKG_RUNTIME_BIN to the active vcpkg triplet's bin directory")
+endif()
 add_custom_target(mtes-stage-dev ALL
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "$<TARGET_FILE:MotorTownEngineSim>"
         "${mtes_stage}/main${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    ${mtes_runtime_copy_commands}
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_mod}/Scripts"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${mtes_bridge_source}/Scripts/main.lua" "${mtes_stage_mod}/Scripts/main.lua"

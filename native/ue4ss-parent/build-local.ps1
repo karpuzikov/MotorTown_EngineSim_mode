@@ -140,6 +140,7 @@ try {
         '-B', $buildDir,
         '-A', 'x64',
         "-DMTES_UE4SS_SOURCE=$ue4ssSource",
+        "-DMTES_VCPKG_RUNTIME_BIN=$(Join-Path $vcpkgRoot 'installed\x64-windows\bin')",
         # CMake 4.4 rejects the pinned Engine Simulator's older GoogleTest
         # CMakeLists unless its compatibility floor is explicitly allowed.
         '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',

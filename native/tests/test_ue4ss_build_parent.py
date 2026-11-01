@@ -18,11 +18,14 @@ CMAKE = os.environ.get('MTES_TEST_CMAKE') or shutil.which('cmake')
 
 @unittest.skipUnless(CMAKE, 'Requires CMake and a C++ compiler')
 class UE4SSParentBuildTests(unittest.TestCase):
-    def configure(self, ue4ss, native, build):
-        return subprocess.run([
+    def configure(self, ue4ss, native, build, runtime_bin=None):
+        command = [
             CMAKE, '-S', str(PARENT), '-B', str(build),
             f'-DMTES_UE4SS_SOURCE={ue4ss}', f'-DMTES_NATIVE_SOURCE={native}',
-        ], text=True, capture_output=True, timeout=30)
+        ]
+        if runtime_bin is not None:
+            command.append(f'-DMTES_VCPKG_RUNTIME_BIN={runtime_bin}')
+        return subprocess.run(command, text=True, capture_output=True, timeout=30)
 
     def test_source_parent_builds_and_stages_a_mod_without_installing_game_files(self):
         with tempfile.TemporaryDirectory(prefix='MTES UE4SS parent ') as directory:
@@ -55,7 +58,12 @@ class UE4SSParentBuildTests(unittest.TestCase):
                 'add_library(MotorTownEngineSim SHARED mod.cpp)\n'
                 'target_link_libraries(MotorTownEngineSim PRIVATE UE4SS)\n'
             )
-            configured = self.configure(ue4ss, native, build)
+            runtime_bin = temp / 'vcpkg deps/bin'
+            runtime_bin.mkdir(parents=True)
+            boost_dll = 'boost_filesystem-vc143-mt-x64-1_92.dll'
+            (runtime_bin / boost_dll).write_bytes(b'fake Boost dynamic runtime')
+            (runtime_bin / 'not-a-runtime.txt').write_text('do not bundle me')
+            configured = self.configure(ue4ss, native, build, runtime_bin)
             self.assertEqual(configured.returncode, 0, configured.stdout + configured.stderr)
             compiled = subprocess.run([CMAKE, '--build', str(build), '--config', 'Release',
                                        '--target', 'mtes-stage-dev'],
@@ -66,6 +74,9 @@ class UE4SSParentBuildTests(unittest.TestCase):
             staged = build / 'dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls' / ('main' + suffix)
             self.assertTrue(staged.is_file(), f'Missing staged C++ mod: {staged}')
             self.assertGreater(staged.stat().st_size, 0)
+            self.assertEqual((staged.parent / boost_dll).read_bytes(),
+                             b'fake Boost dynamic runtime')
+            self.assertFalse((staged.parent / 'not-a-runtime.txt').exists())
             package = staged.parent.parent
             self.assertTrue((package / 'Scripts/main.lua').is_file())
             self.assertTrue((package / 'engine_profiles.tsv').is_file())
