@@ -48,12 +48,25 @@ std::filesystem::path module_root() {
 #endif
 }
 
+bool game_in_foreground() noexcept {
+#ifdef _WIN32
+    const HWND foreground = GetForegroundWindow();
+    if (!foreground || IsIconic(foreground)) return false;
+    DWORD owner = 0;
+    (void)GetWindowThreadProcessId(foreground, &owner);
+    return owner == GetCurrentProcessId();
+#else
+    return true;
+#endif
+}
+
 // Fixed log strings keep the in-game failure report readable even when the
 // compiler/backend or a platform audio device rejects the replacement.
 const wchar_t* audio_stage_name(mtes::NativeAudioPipeline::Stage stage) noexcept {
     using Stage = mtes::NativeAudioPipeline::Stage;
     switch (stage) {
     case Stage::NoTelemetry: return STR("no live telemetry");
+    case Stage::Background: return STR("game minimized or not in foreground");
     case Stage::StalePacket: return STR("telemetry replay or stale packet");
     case Stage::IgnitionOff: return STR("engine ignition off");
     case Stage::InvalidVolume: return STR("invalid game engine volume");
@@ -110,8 +123,9 @@ public:
         const auto now = mtes::GameTelemetryFeed::Clock::now();
         m_telemetry.poll(now);
         auto sample = m_telemetry.current(now);
+        const bool gameInForeground = game_in_foreground();
         if (m_profilesReady) {
-            const bool audible = m_pipeline.process(sample, now);
+            const bool audible = m_pipeline.process(sample, now, gameInForeground);
             if (audible != m_wasPlaying) {
                 if (audible) {
                     RC::Output::send<RC::LogLevel::Normal>(
@@ -123,7 +137,7 @@ public:
                 }
                 m_wasPlaying = audible;
             }
-            if (!sample || !sample->state.ignition ||
+            if (!gameInForeground || !sample || !sample->state.ignition ||
                 !m_profiles.script_for(*sample)) m_emitters.cancel();
             // Only active driving requires diagnosis. Log changes promptly,
             // with a 2-second floor, and repeat persistent faults at 5 s.

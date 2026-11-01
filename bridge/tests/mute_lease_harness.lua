@@ -56,9 +56,33 @@ local expected = string.format("MTESA1 %s 1 %s %s %s", session,
     token, hex(vehicleName), hex(assetName))
 assert(read(ack) == expected, "ACK: " .. tostring(read(ack)) .. " expected " .. expected)
 
+-- Native may read an ACK on another game thread. An old positive ACK must
+-- be revoked BEFORE the stock channel's gain is restored, or both sources
+-- can become audible in the handoff window.
+local originalSetGain = channel.SetVolumeMultiplier
+channel.SetVolumeMultiplier = function(self, gain)
+    if gain == 0.63 then
+        assert(read(ack) == "MTESA0", "Invalidate ACK before stock gain restore")
+    end
+    originalSetGain(self, gain)
+end
+
+-- If the native reader misses a response on a slow frame, the same live
+-- request may be re-ACKed while its bounded watchdog is still running.
+-- A duplicate cannot extend the watchdog indefinitely after a DLL crash.
+write(ack, "MTESA0")
+__test_mute(vehicle)
+assert(read(ack) == expected, "A repeated live lease must refresh its ACK")
+assert(channel.VolumeMultiplier == 0)
+
 -- The exporter must restore the captured 0.63, not assume a default 1.0.
-for _ = 1, 4 do __test_mute(vehicle) end
+for _ = 1, 3 do __test_mute(vehicle) end
 assert(channel.VolumeMultiplier == 0.63)
+assert(read(ack) == "MTESA0", "Restoration must invalidate a once-live ACK")
+for _ = 1, 8 do __test_mute(vehicle) end
+assert(channel.VolumeMultiplier == 0.63,
+    "A crashed native writer's unchanged request must never re-mute the car")
+assert(read(ack) == "MTESA0", "A stale request must not issue a new ACK")
 
 lease(2, "DAD0", vehicleName .. "_OTHER")
 __test_mute(vehicle)
@@ -85,6 +109,15 @@ assert(read(ack) == oldAck)
 -- Leaving the car always releases a successful lease immediately.
 channel.SetVolumeMultiplier = function(self, volume) self.VolumeMultiplier = volume end
 lease(6, "CC22")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0)
+channel.Sound = object("SoundCue /Game/Other.Other")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0.63,
+    "If the stock cue changes, restore immediately; prior ACK is no longer valid")
+assert(read(ack) == "MTESA0")
+channel.Sound = cue
+lease(7, "EE33")
 __test_mute(vehicle)
 assert(channel.VolumeMultiplier == 0)
 __test_mute(nil)

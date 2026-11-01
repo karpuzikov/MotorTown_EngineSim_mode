@@ -8,7 +8,8 @@
 
 namespace mtes {
 
-static_assert(NativeAudioPipeline::MaxPacketFrames <= PcmBlockPool::FramesPerBlock);
+static_assert(NativeAudioPipeline::MaxPacketFrames <=
+    PcmBlockPool::FramesPerBlock * PcmBlockPool::BlockCount);
 
 NativeAudioPipeline::NativeAudioPipeline(EngineAudio& engine,
     GameAudioOutput& output, VehicleProfileLookup& profiles,
@@ -39,12 +40,23 @@ void NativeAudioPipeline::stop() noexcept {
 
 bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
     Clock::time_point now) {
-    return process(sample, now, sample && sample->engine_volume
-        ? *sample->engine_volume : std::numeric_limits<double>::quiet_NaN());
+    return process(sample, now, true);
 }
 
 bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
-    Clock::time_point now, double gameEngineVolume) {
+    Clock::time_point now, bool gameInForeground) {
+    return process(sample, now, sample && sample->engine_volume
+        ? *sample->engine_volume : std::numeric_limits<double>::quiet_NaN(),
+        gameInForeground);
+}
+
+bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& sample,
+    Clock::time_point now, double gameEngineVolume, bool gameInForeground) {
+    if (!gameInForeground) {
+        stop();
+        m_stage = Stage::Background;
+        return false;
+    }
     if (!sample) {
         stop();
         m_stage = Stage::NoTelemetry;

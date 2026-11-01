@@ -71,7 +71,11 @@ int main(int argc, char** argv) {
     write(ack, response(sample.session, 55, token));
     std::filesystem::last_write_time(ack,
         std::filesystem::file_time_type::clock::now() - std::chrono::milliseconds(160));
-    assert(!emitter->prepare()); // native rejects ACK before Lua's watchdog
+    assert(emitter->prepare()); // a 150-ms game frame must retain the verified lease
+
+    std::filesystem::last_write_time(ack,
+        std::filesystem::file_time_type::clock::now() - std::chrono::milliseconds(210));
+    assert(!emitter->prepare()); // Lua's four 50-ms ticks may already have restored stock
 
     write(ack, response(sample.session, 55, token));
     std::filesystem::last_write_time(ack,

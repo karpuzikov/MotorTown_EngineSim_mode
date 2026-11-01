@@ -62,10 +62,12 @@ bool LuaMuteLeaseEmitter::prepare() {
     const auto changed = std::filesystem::last_write_time(m_ack, error);
     if (error) return false;
     const auto age = decltype(changed)::clock::now() - changed;
-    // Stricter than Lua's ~200-ms watchdog: a recent but already *restored*
-    // ACK must not briefly allow PCM over the game's original cue.
-    if (age < -std::chrono::milliseconds(125) ||
-        age > std::chrono::milliseconds(125)) return false;
+    // A slow frame can take 150-185 ms between Lua updates. Keep a bounded
+    // lease through those frames, but expire BEFORE the minimum four 50-ms
+    // Lua watchdog ticks could restore stock. Lua also writes MTESA0 on
+    // every restoration, invalidating the ACK immediately.
+    constexpr auto MaxAckAge = std::chrono::milliseconds(190);
+    if (age < -MaxAckAge || age > MaxAckAge) return false;
     std::ifstream response(m_ack, std::ios::binary);
     std::string tag, session, number, token, vehicle, asset, extra;
     if (!(response >> tag >> session >> number >> token >> vehicle >> asset) ||

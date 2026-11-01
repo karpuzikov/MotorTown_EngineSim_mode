@@ -86,6 +86,46 @@ int main(int argc, char **argv) {
         std::cout << argv[profile] << " complete slow-game PCM packets: "
                   << completeSlowGamePackets << "\n";
         if (completeSlowGamePackets < 5) return 9;
+
+        // In-game frames occasionally take ~150 ms. Run this phase on a
+        // real wall clock (not synthetic 150-ms timestamps with 2-ms sleeps)
+        // so the genuine asynchronous synthesizer has the same production
+        // and consumption cadence as a slow game frame. Its 4096-frame FIFO
+        // must refill while our consumer assembles each 6615-frame packet.
+        audio.stop();
+        const auto delayedVehicle =
+            "native-delayed-vehicle-" + std::to_string(profile);
+        if (!audio.update(delayedVehicle, argv[profile],
+                          {2400.0, 0.7, 2, true}, std::chrono::steady_clock::now())) {
+            std::cerr << "Failed to prime delayed-game engine\n";
+            return 10;
+        }
+        std::array<std::int16_t, 6615> delayedGamePcm{};
+        int completeDelayedGamePackets = 0;
+        auto nextPacketAt = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(150);
+        std::this_thread::sleep_until(nextPacketAt);
+        for (int frame = 0; frame < 40; ++frame) {
+            const auto now = std::chrono::steady_clock::now();
+            if (!audio.update(delayedVehicle,
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance delayed-game PCM packet\n";
+                return 10;
+            }
+            if (audio.render(delayedGamePcm.data(), delayedGamePcm.size(), now) ==
+                    delayedGamePcm.size() &&
+                std::any_of(delayedGamePcm.begin(), delayedGamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; })) {
+                ++completeDelayedGamePackets;
+            }
+            nextPacketAt += std::chrono::milliseconds(150);
+            std::this_thread::sleep_until(nextPacketAt);
+        }
+        std::cout << argv[profile] << " complete delayed-game PCM packets: "
+                  << completeDelayedGamePackets << "\n";
+        // First packets may prime an audio thread; more than four losses
+        // during the remaining six seconds would audibly stutter in-game.
+        if (completeDelayedGamePackets < 36) return 11;
     }
     audio.stop();
     if (audio.is_replacing_stock()) return 5;

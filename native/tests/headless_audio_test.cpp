@@ -17,6 +17,7 @@ struct FakeEngine : EngineBackend {
     bool load_ok = true, advance_ok = true;
     bool produce_audio = true;
     bool underrun = false;
+    bool partial_once = false;
     bool throw_after_partial_write = false;
     std::string script;
     int last_gear = -99;
@@ -42,7 +43,8 @@ struct FakeEngine : EngineBackend {
             throw std::runtime_error("Audio renderer failed mid-buffer");
         }
         if (!produce_audio) return 0;
-        const std::size_t count = underrun ? requested / 2 : requested;
+        const std::size_t count = underrun || partial_once ? requested / 2 : requested;
+        partial_once = false;
         for (std::size_t i = 0; i < count; ++i) dst[i] = 2048;
         return count;
     }
@@ -70,6 +72,15 @@ int main() {
     assert(!audio.is_replacing_stock());
     assert(audio.render(pcm.data(), pcm.size(), start) == 16);
     assert(pcm[0] == 2048 && pcm[15] == 2048);
+    assert(audio.is_replacing_stock());
+
+    // The genuine synthesizer renders on another thread. A partial first
+    // read followed by the available remainder is a complete PCM packet,
+    // not a reason to unmute Motor Town's stock cue and restart XAudio2.
+    engine->partial_once = true;
+    const int reads_before_partial = engine->reads;
+    assert(audio.render(pcm.data(), pcm.size(), start) == pcm.size());
+    assert(engine->reads == reads_before_partial + 2);
     assert(audio.is_replacing_stock());
 
     // The game's Engine Volume must control replacement PCM, including zero.

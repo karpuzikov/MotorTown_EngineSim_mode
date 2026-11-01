@@ -1,4 +1,7 @@
 #include "game_audio.h"
+#include "pcm_block_pool.h"
+
+#include <algorithm>
 
 namespace mtes {
 
@@ -66,10 +69,18 @@ bool GameAudioOutput::submit(const std::string& vehicle,
             m_status = Status::StockMuteFailed;
             return false;
         }
-        if (!m_sink.queue(scratch, frames)) {
-            stop();
-            m_status = Status::QueueFailed;
-            return false;
+        // A slow game frame can represent 100-185 ms of simulation. The
+        // XAudio2 pool owns fixed-size callback blocks; queue *all* PCM,
+        // never truncate the game frame to a single 4096-sample block.
+        for (std::size_t offset = 0; offset < frames;) {
+            const auto chunk = std::min(frames - offset,
+                PcmBlockPool::FramesPerBlock);
+            if (!m_sink.queue(scratch + offset, chunk)) {
+                stop();
+                m_status = Status::QueueFailed;
+                return false;
+            }
+            offset += chunk;
         }
         if (m_playing) {
             m_status = Status::Playing;

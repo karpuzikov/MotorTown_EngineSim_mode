@@ -38,7 +38,7 @@ public:
 class NativeAudioPipeline final {
 public:
     enum class Stage {
-        NoTelemetry, StalePacket, IgnitionOff, InvalidVolume, NoProfile,
+        NoTelemetry, Background, StalePacket, IgnitionOff, InvalidVolume, NoProfile,
         NoEmitter, EngineLoadFailed, EngineAdvanceFailed, Priming,
         PcmUnderrun, PcmSilent, PcmUnavailable, MutePending,
         StockMuteFailed, OutputQueueFailed, OutputStartFailed,
@@ -46,7 +46,7 @@ public:
     };
     using Clock = std::chrono::steady_clock;
     static constexpr std::size_t NominalPacketFrames = 2205;
-    static constexpr std::size_t MaxPacketFrames = 4096;
+    static constexpr std::size_t MaxPacketFrames = 8192;
 
     NativeAudioPipeline(EngineAudio& engine, GameAudioOutput& output,
         VehicleProfileLookup& profiles, StockEmitterLookup& emitters,
@@ -57,11 +57,14 @@ public:
     NativeAudioPipeline& operator=(const NativeAudioPipeline&) = delete;
 
     bool process(const std::optional<GameTelemetrySample>& sample,
-        Clock::time_point now, double gameEngineVolume);
+        Clock::time_point now, double gameEngineVolume, bool gameInForeground = true);
     // Runtime entry point: trust only the game setting carried by MTES4.
     // MTES2/3 and missing settings always leave stock audio in control.
     bool process(const std::optional<GameTelemetrySample>& sample,
         Clock::time_point now);
+    // Native XAudio2 is not owned by Unreal's mixer. Stop it on focus loss.
+    bool process(const std::optional<GameTelemetrySample>& sample,
+        Clock::time_point now, bool gameInForeground);
     void stop() noexcept;
     Stage stage() const noexcept { return m_stage; }
 

@@ -76,11 +76,13 @@ public:
     bool started = false;
     bool fail_queue = false;
     int queues = 0;
+    std::vector<std::size_t> packet_sizes;
     std::vector<std::int16_t> last;
     bool queue(const std::int16_t* pcm, std::size_t frames) override {
         events.push_back("queue");
         if (fail_queue) return false;
         ++queues;
+        packet_sizes.push_back(frames);
         last.assign(pcm, pcm + frames);
         return true;
     }
@@ -229,15 +231,15 @@ int main() {
     assert(a12 && pipeline.process(a12, t + std::chrono::milliseconds(550), 1.0));
     assert(first->muted);
 
-    // A transient sound-buffer underrun must restore stock immediately but
-    // keep the Engine Simulator core warm for the next fresh packet.
+    // An asynchronous producer's partial first read must be assembled into
+    // a complete packet without ever restoring stock mid-drive.
     source->underrun_once = true;
     const auto a13 = parse_game_telemetry(
         "MTES2 A1B2C3D4E5F60708 13 2500 0.500 1 3 43617241 2 6500");
     const auto loads_before_underflow = source->scripts.size();
-    assert(a13 && !pipeline.process(a13, t + std::chrono::milliseconds(600), 1.0));
-    assert(pipeline.stage() == NativeAudioPipeline::Stage::PcmUnderrun);
-    assert(!first->muted && !sink.started);
+    assert(a13 && pipeline.process(a13, t + std::chrono::milliseconds(600), 1.0));
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::Playing);
+    assert(first->muted && sink.started);
     const auto a14 = parse_game_telemetry(
         "MTES2 A1B2C3D4E5F60708 14 2600 0.500 1 3 43617241 2 6500");
     assert(a14 && pipeline.process(a14, t + std::chrono::milliseconds(650), 1.0));
@@ -335,5 +337,30 @@ int main() {
     assert(slowPipeline.process(s3, t + std::chrono::milliseconds(150)));
     assert(slowSink.last.size() >= 3600 && slowSink.last.size() <= 3700);
     assert(slowPipeline.process(s4, t + std::chrono::milliseconds(260)));
-    assert(slowSink.last.size() == 4096); // Bound a long frame stall safely.
+    assert(slowSink.packet_sizes[slowSink.packet_sizes.size() - 2] == 4096);
+    assert(slowSink.last.size() == 755); // 110 ms = 4851 samples, not 4096.
+
+    // The Unreal tick can be delayed 150 ms. 4096 samples cover only 93 ms
+    // and leave an unavoidable ~57-ms XAudio2 gap. The output must queue
+    // *all* 6615 samples, in device-sized blocks, to bridge that interval.
+    const auto s5 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 5 2600 0.5 1 2 43617241 2 6500 - 1.0");
+    assert(s5);
+    const auto priorPackets = slowSink.packet_sizes.size();
+    assert(slowPipeline.process(s5, t + std::chrono::milliseconds(410)));
+    std::size_t emitted = 0;
+    for (std::size_t i = priorPackets; i < slowSink.packet_sizes.size(); ++i) {
+        assert(slowSink.packet_sizes[i] <= 4096);
+        emitted += slowSink.packet_sizes[i];
+    }
+    assert(emitted == 6615);
+    assert(slowSource->last_seconds >= 0.149);
+
+    // Direct XAudio2 output has no automatic Unreal background suspension.
+    // Leaving/minimizing the game must stop that voice and restore stock
+    // ownership rather than play the engine indefinitely on the desktop.
+    assert(!slowPipeline.process(s5, t + std::chrono::milliseconds(420), false));
+    assert(slowPipeline.stage() == NativeAudioPipeline::Stage::Background);
+    assert(!slowSink.started &&
+        !std::static_pointer_cast<TraceEmitter>(slowEmitters.car_a)->muted);
 }

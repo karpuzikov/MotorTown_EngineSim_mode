@@ -82,5 +82,5 @@ target_link_libraries(${mtes_target} PRIVATE
     engine-sim
     engine-sim-script-interpreter)
 if(WIN32)
-    target_link_libraries(${mtes_target} PRIVATE xaudio2)
+    target_link_libraries(${mtes_target} PRIVATE xaudio2 user32)
 endif()

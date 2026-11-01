@@ -50,6 +50,7 @@ local leasedAudio = nil
 local leaseToken = nil
 local leaseSequence = 0
 local leaseIdleTicks = 0
+local lastAcceptedLeaseSequence = 0
 local KNOWN_ENGINE_CUE =
     "SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine"
 
@@ -75,7 +76,27 @@ local function set_gain(channel, volume)
     return ok and actual and math.abs(actual - volume) <= 0.001 or false
 end
 
+local function write_mute_ack(session, sequenceText, token, vehicleHex, assetHex)
+    local ack = io.open(MUTE_ACK, "w")
+    if not ack then return false end
+    ack:write("MTESA1 ", session, " ", sequenceText, " ", token,
+        " ", vehicleHex, " ", assetHex, "\n")
+    ack:close()
+    return true
+end
+
 local function restore_leased_engine()
+    if leaseToken then
+        -- Revoke playback permission BEFORE touching the original gain.
+        -- Native audio may inspect the ACK concurrently with this tick.
+        local ack = io.open(MUTE_ACK, "w")
+        if ack then
+            ack:write("MTESA0\n")
+            ack:close()
+        else
+            log("WARNING: Could not invalidate native mute ACK")
+        end
+    end
     if leasedAudio then
         if valid(leasedAudio.channel) then
             if not set_gain(leasedAudio.channel, leasedAudio.gain) then
@@ -123,34 +144,59 @@ local function mute_lease_tick(vehicle)
     local data = valid(engine) and member(engine, "EngineData") or nil
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local cue = valid(channel) and member(channel, "Sound") or nil
+    if leasedAudio and (leasedAudio.channel ~= channel or
+        hex_name(full_name(vehicle)) ~= leasedAudio.vehicleHex or
+        hex_name(full_name(data)) ~= leasedAudio.assetHex or
+        full_name(cue) ~= KNOWN_ENGINE_CUE) then
+        -- The verified owner/cue disappeared or changed. Revoke its ACK
+        -- immediately, not after four watchdog ticks of overlapping audio.
+        restore_leased_engine()
+        return
+    end
     local matching = session == nativeSession and sequence and sequence > 0 and
         hex_name(full_name(vehicle)) == vehicleHex and
         hex_name(full_name(data)) == assetHex and
         full_name(cue) == KNOWN_ENGINE_CUE and valid(channel)
 
-    if matching and (token ~= leaseToken or sequence > leaseSequence) then
+    -- Remember the highest *accepted* sequence even after restoring stock.
+    -- Otherwise a crashed DLL leaves MTESM1 on disk and its static request
+    -- re-mutes the engine every fifth Lua tick forever.
+    if matching and sequence > lastAcceptedLeaseSequence and
+        (token ~= leaseToken or sequence > leaseSequence) then
         if leasedAudio and (leasedAudio.channel ~= channel or leaseToken ~= token) then
             if not restore_leased_engine() then return end
         end
         if not leasedAudio then
             local original = tonumber(member(channel, "VolumeMultiplier"))
             if not original or original < 0 or original > 4 then return end
-            leasedAudio = { channel = channel, gain = original }
+            leasedAudio = { channel = channel, gain = original,
+                vehicleHex = vehicleHex, assetHex = assetHex }
             log("Native PCM lease requested; muting verified V8 engine cue only")
         end
         if not set_gain(channel, 0.0) then
             restore_leased_engine()
             return
         end
-        local ack = io.open(MUTE_ACK, "w")
-        if not ack then
+        if not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
             restore_leased_engine()
             return
         end
-        ack:write("MTESA1 ", session, " ", sequenceText, " ", token,
-            " ", vehicleHex, " ", assetHex, "\n")
-        ack:close()
         leaseToken, leaseSequence, leaseIdleTicks = token, sequence, 0
+        lastAcceptedLeaseSequence = sequence
+        return
+    end
+
+    if matching and token == leaseToken and sequence == leaseSequence and
+        leasedAudio and leasedAudio.channel == channel then
+        -- A duplicate is allowed to refresh an ACK lost to scheduling or
+        -- file timing, but it does NOT reset the independent 4-tick
+        -- watchdog. A stopped DLL can never hold the stock cue muted.
+        leaseIdleTicks = leaseIdleTicks + 1
+        if leaseIdleTicks >= 4 then restore_leased_engine(); return end
+        if not set_gain(channel, 0.0) or
+            not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
+            restore_leased_engine()
+        end
         return
     end
 

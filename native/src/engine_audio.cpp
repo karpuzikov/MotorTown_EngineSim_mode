@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <thread>
 
 namespace mtes {
 namespace {
@@ -64,7 +65,7 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
     }
     const double delta = std::clamp(
         std::chrono::duration<double>(when - m_lastUpdate).count(), 0.005,
-        4096.0 / 44100.0); // Match the maximum queued 44.1-kHz PCM packet.
+        8192.0 / 44100.0); // Match the maximum queued 44.1-kHz PCM packet.
     m_lastUpdate = when;
     try {
         // Engine Simulator uses -1 for neutral, 0 for first gear, etc.
@@ -99,7 +100,22 @@ std::size_t EngineAudio::render(std::int16_t *dst, std::size_t frames,
         return 0;
     }
     try {
-        const std::size_t count = std::min(m_backend->read(dst, frames), frames);
+        // The genuine synthesizer fills its output FIFO on a separate
+        // thread. An incomplete *first* read is not necessarily an underrun:
+        // drain the available pieces, allowing a small, bounded scheduling
+        // window for the producer to finish the rest. Never expose any
+        // partial packet to XAudio2 if the deadline really does expire.
+        std::size_t count = 0;
+        const auto deadline = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(5);
+        while (count < frames) {
+            const auto ready = std::min(m_backend->read(dst + count, frames - count),
+                frames - count);
+            count += ready;
+            if (count == frames || std::chrono::steady_clock::now() >= deadline)
+                break;
+            if (ready == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         // An incomplete or entirely silent buffer must not leak partial
         // replacement sound on top of Motor Town's stock engine emitter.
         if (count != frames ||
