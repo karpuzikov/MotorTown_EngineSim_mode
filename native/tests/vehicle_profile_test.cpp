@@ -120,6 +120,30 @@ int main(int argc, char** argv) {
         fs::equivalent(*catalog.script_for(family), root / "profiles/v8.mr"));
     family.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/Electric_V8ish.Electric";
     assert(!catalog.script_for(family)); // "-" keeps stock sound, even with a V8 cue
+    // The game's default V8 cue says nothing: the engine's MaxRPM decides.
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "asset\telectric\t-\nmaxrpm\t0-3300\tprofiles/boxer.mr\n"
+              << "maxrpm\t3301-30000\tprofiles/v6.mr\n";
+    }
+    assert(catalog.reload());
+    family.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/Mystery.Mystery";
+    family.max_rpm = 2500;
+    assert(fs::equivalent(*catalog.script_for(family), root / "profiles/boxer.mr"));
+    family.max_rpm = 6000;
+    assert(fs::equivalent(*catalog.script_for(family), root / "profiles/v6.mr"));
+    family.max_rpm = 0;
+    assert(!catalog.script_for(family));
+    family.max_rpm = 6000;
+    family.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/Electric.Electric";
+    assert(!catalog.script_for(family));
+    for (const char* bad : {"maxrpm\t5000\tprofiles/v6.mr\n", "maxrpm\t9-1\tprofiles/v6.mr\n",
+                            "maxrpm\tx-9\tprofiles/v6.mr\n"}) {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << bad;
+        rules.close();
+        assert(!catalog.reload());
+    }
     {
         std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
         rules << "asset\t(unclosed\tprofiles/v6.mr\n";

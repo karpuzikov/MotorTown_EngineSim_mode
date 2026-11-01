@@ -233,3 +233,51 @@ lease(13, "DE88")
 __test_mute(vehicle)
 assert(channel.VolumeMultiplier == 0.63, "A component without a cue is not leased")
 assert(read(ack) == "MTESA0")
+
+-- Engine sound layers on OTHER AudioComponents of the car (exhaust/engine
+-- layers from the engine's sound data) must be leased too, or the stock
+-- engine overlaps the replacement (in game 2026-11-02). Horn stays alone.
+channel.Sound = cue
+engine.IntakeAudioComponent = intake
+local exhaust = object("AudioComponent ExhaustLayer", {
+    VolumeMultiplier = 0.9,
+    Sound = object("SoundCue /Game/Cars/Parts/Engine/Sound/V6Sport/V6Sport_02/SC_Exhaust.SC_Exhaust"),
+    SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
+})
+exhaust.GetAddress = function() return 0x3000 end
+local afterfire = object("AudioComponent Afterfire", {
+    VolumeMultiplier = 0.5,
+    Sound = object("SoundCue /Game/Cars/Parts/Engine/Sound/Afterfire/SC_Afterfire.SC_Afterfire"),
+    SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
+})
+afterfire.GetAddress = function() return 0x4000 end
+local horn = object("AudioComponent Horn", {
+    VolumeMultiplier = 1.0, Sound = object("SoundWave /Game/Sounds/Vehicle/Horn.Horn"),
+    SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
+})
+horn.GetAddress = function() return 0x5000 end
+StaticFindObject = function() return object("Class /Script/Engine.AudioComponent") end
+vehicle.K2_GetComponentsByClass = function()
+    return { channel, intake, exhaust, afterfire, horn }
+end
+lease(20, "EF99")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
+assert(exhaust.VolumeMultiplier == 0, "Extra engine sound layer must be muted")
+assert(afterfire.VolumeMultiplier == 0.5, "Afterfire pops stay stock")
+assert(horn.VolumeMultiplier == 1.0, "Horn is never touched")
+__test_mute(nil)
+assert(exhaust.VolumeMultiplier == 0.9, "Extra layer gain restored")
+assert(channel.VolumeMultiplier == 0.63)
+
+-- A gain the game refuses to take back must not block every later lease.
+lease(21, "F0AA")
+__test_mute(vehicle)
+assert(exhaust.VolumeMultiplier == 0)
+exhaust.SetVolumeMultiplier = function() error("component being destroyed") end
+for _ = 1, 25 do __test_mute(nil) end
+exhaust.SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end
+lease(22, "F1BB")
+__test_mute(vehicle)
+assert(read(ack) == string.format("MTESA1 %s 22 F1BB %s %s", session,
+    hex(vehicleName), hex(assetName)), "A stuck restore must give up eventually")

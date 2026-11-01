@@ -32,14 +32,18 @@ class VehicleProfileTests(unittest.TestCase):
 class PackagedFamilyRuleTests(unittest.TestCase):
     """Python's re matches these ECMAScript patterns identically."""
 
-    def resolve(self, asset, cue=''):
+    def resolve(self, asset, cue='', max_rpm=0):
         import re
         rules = []
         for line in (ROOT / 'profiles/engine_families.tsv').read_text().splitlines():
             if not line or line.startswith('#'):
                 continue
             field, pattern, profile = line.split('\t')
-            rules.append((field, re.compile(pattern, re.IGNORECASE), profile))
+            if field == 'maxrpm':
+                low, high = (float(x) for x in pattern.split('-'))
+                rules.append((field, (low, high), profile))
+            else:
+                rules.append((field, re.compile(pattern, re.IGNORECASE), profile))
         exact = {}
         for line in (ROOT / 'profiles/engine_profiles.tsv').read_text().splitlines():
             if line and not line.startswith('#'):
@@ -51,31 +55,52 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             for field, pattern, profile in rules:
                 if field == wanted and name and pattern.search(name):
                     return None if profile == '-' else profile
-        return None
+        for field, (low, high), profile in (r for r in rules if r[0] == 'maxrpm'):
+            if max_rpm > 0 and low <= max_rpm <= high:
+                return None if profile == '-' else profile
+        return 'STOCK'
 
     def test_every_rule_points_to_a_packaged_profile(self):
         for line in (ROOT / 'profiles/engine_families.tsv').read_text().splitlines():
             if line and not line.startswith('#'):
                 field, _, profile = line.split('\t')
-                self.assertIn(field, ('asset', 'cue'))
+                self.assertIn(field, ('asset', 'cue', 'maxrpm'))
                 if profile != '-':
                     self.assertTrue((ROOT / 'profiles' / Path(profile).name).is_file(), profile)
 
     def test_known_motor_town_engines_get_matching_cylinder_layouts(self):
         prefix = 'MHEngineDataAsset /Game/Cars/Parts/Engine/'
         cases = {
-            'FordSmalBlock302_V8_5L_140HP.FordSmalBlock302_V8_5L_140HP': 'assets/es_gm_ls.mr',
-            'V6Sport_DOHC_200HP.V6Sport_DOHC_200HP': 'assets/es_v6_60.mr',
-            '2JZ320HP.2JZ320HP': 'assets/es_toyota_2jz.mr',
-            'I4_1600_110HP.I4_1600_110HP': 'assets/es_honda_b18c.mr',
-            'Inline6_Diesel_400HP.Inline6_Diesel_400HP': 'assets/es_bmw_m52.mr',
-            'V12_600HP.V12_600HP': 'assets/es_ferrari_412.mr',
-            'Electric_200kW.Electric_200kW': None,
+            'FordSmalBlock302_V8_5L_140HP': 'assets/es_gm_ls.mr',
+            'V6Sport_DOHC_200HP': 'assets/es_v6_60.mr',
+            '2JZ320HP': 'assets/es_toyota_2jz.mr',
+            'RB26DET276HP': 'assets/es_toyota_2jz.mr',
+            'S58': 'assets/es_bmw_m52.mr',
+            'I4Sport_150HP': 'assets/es_honda_b18c.mr',
+            'I6Sport_200HP': 'assets/es_bmw_m52.mr',
+            'Hemi392_525HP': 'assets/es_chev_454.mr',
+            '81bb': 'assets/es_chev_454.mr',
+            'V10ACR': 'assets/es_lfa_v10.mr',
+            'Ferrari_275_V12_400HP': 'assets/es_ferrari_412.mr',
+            'Electric_200kW': None,
         }
         for name, expected in cases.items():
             with self.subTest(name=name):
-                self.assertEqual(self.resolve(prefix + name), expected)
+                self.assertEqual(self.resolve(prefix + name + '.' + name, max_rpm=6000), expected)
+        mystery = prefix + 'Mystery.Mystery'
         truck_cue = 'SoundCue /Game/Cars/Parts/Engine/Sound/Truck/MidDuty_02/SC_MidDuty.SC_MidDuty'
-        self.assertEqual(self.resolve(prefix + 'Mystery.Mystery', truck_cue), 'assets/es_bmw_m52.mr')
+        self.assertEqual(self.resolve(mystery, truck_cue), 'assets/es_bmw_m52.mr')
+        two_stroke = 'SoundCue /Game/Cars/Parts/Engine/Sound/2Stroke/SC_2StrokeEngine_Chainsaw.SC_2StrokeEngine_Chainsaw'
+        self.assertEqual(self.resolve(mystery, two_stroke), 'assets/es_honda_trx520.mr')
+        i4_cue = 'SoundCue /Game/Cars/Parts/Engine/Sound/I4Sport/SC_I4SportEngine.SC_I4SportEngine'
+        self.assertEqual(self.resolve(mystery, i4_cue), 'assets/es_honda_b18c.mr')
+        # The default V8 cue says nothing about the engine: MaxRPM decides,
+        # and every combustion engine gets a profile.
         v8_cue = 'SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine'
-        self.assertEqual(self.resolve(prefix + 'Mystery.Mystery', v8_cue), 'assets/es_gm_ls.mr')
+        self.assertEqual(self.resolve(mystery, v8_cue, 2500), 'assets/es_bmw_m52.mr')
+        self.assertEqual(self.resolve(mystery, v8_cue, 4500), 'assets/es_chev_454.mr')
+        self.assertEqual(self.resolve(mystery, v8_cue, 6000), 'assets/es_gm_ls.mr')
+        self.assertEqual(self.resolve(mystery, v8_cue, 8000), 'assets/es_honda_b18c.mr')
+        self.assertEqual(self.resolve(mystery, v8_cue, 12000), 'assets/es_hayabusa.mr')
+        for rpm in range(1, 30001, 50):
+            self.assertNotEqual(self.resolve(mystery, v8_cue, rpm), 'STOCK', rpm)

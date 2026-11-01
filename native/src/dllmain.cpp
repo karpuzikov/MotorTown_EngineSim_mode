@@ -197,6 +197,26 @@ public:
         }
         // Lua leases the two verified engine/intake cues; unrelated effects,
         // music, horns and ambient audio are never altered.
+        if (m_profilesReady && (sample->vehicle != m_lastProfileVehicle ||
+                sample->engine_asset != m_lastProfileAsset ||
+                sample->engine_cue != m_lastProfileCue)) {
+            // Profiles are read-only after on_unreal_init(); safe to query here.
+            const auto script = m_profiles.script_for(*sample);
+            const auto wide = [](const std::string& text) {
+                return std::wstring(text.begin(), text.end());
+            };
+            RC::Output::send<RC::LogLevel::Normal>(
+                STR("[MTES] Engine {} | stock cue {} | max RPM {} -> {}\n"),
+                wide(sample->engine_asset.empty() ? "unknown" : sample->engine_asset),
+                wide(sample->engine_cue.empty() ? "unknown" : sample->engine_cue),
+                sample->max_rpm,
+                wide(script && !script->empty()
+                    ? std::filesystem::path(*script).filename().string()
+                    : std::string("stock sound (electric or unknown)")));
+            m_lastProfileVehicle = sample->vehicle;
+            m_lastProfileAsset = sample->engine_asset;
+            m_lastProfileCue = sample->engine_cue;
+        }
         if (!m_hadTelemetry || sample->vehicle != m_lastVehicle ||
             sample->state.gear != m_lastGear ||
             sample->engine_volume != m_lastVolume) {
@@ -226,6 +246,7 @@ private:
     mtes::NativeAudioWorker m_worker{game_telemetry_path(), m_pipeline,
         [] { return game_in_foreground(); }, [this] { m_emitters.cancel(); }};
     std::string m_lastVehicle;
+    std::string m_lastProfileVehicle, m_lastProfileAsset, m_lastProfileCue;
     std::optional<double> m_lastVolume;
     int m_lastGear = -99;
     bool m_ready = false;

@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.19, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.20, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -102,6 +102,73 @@ local function write_mute_ack(session, sequenceText, token, vehicleHex, assetHex
     return true
 end
 
+-- Engine sound is not only EngineComponent.AudioComponent: depending on the
+-- car's engine sound data, Motor Town plays further engine/exhaust/intake
+-- layers on other AudioComponents of the same vehicle. All of them must be
+-- leased, or stock engine sound overlaps the replacement. Jake brake and
+-- afterfire pops stay stock: Engine Simulator does not synthesize them.
+local audioComponentClass = nil
+local function is_engine_sound(name)
+    if type(name) ~= "string" then return false end
+    local lower = name:lower()
+    if lower:find("afterfire", 1, true) or lower:find("backfire", 1, true) or
+        lower:find("jakebrake", 1, true) or lower:find("jake_brake", 1, true) then
+        return false
+    end
+    return lower:find("/cars/parts/engine/", 1, true) ~= nil or
+        lower:find("/vehicle/intake/", 1, true) ~= nil or
+        lower:find("/vehicle/exhaust", 1, true) ~= nil or
+        lower:find("/vehicle/engine", 1, true) ~= nil
+end
+
+local function vehicle_audio_components(vehicle)
+    local found = {}
+    pcall(function()
+        if not audioComponentClass then
+            audioComponentClass = StaticFindObject("/Script/Engine.AudioComponent")
+        end
+        if not valid(audioComponentClass) then audioComponentClass = nil; return end
+        local list = vehicle:K2_GetComponentsByClass(audioComponentClass)
+        local function add(component)
+            if valid(component) and #found < 64 then found[#found + 1] = component end
+        end
+        if type(list) == "table" then
+            for _, component in ipairs(list) do add(component) end
+        else
+            list:ForEach(function(_, element) add(element:get()) end)
+        end
+    end)
+    return found
+end
+
+-- Extra engine-sound components besides the known engine/intake channels.
+local function extra_engine_audio(vehicle, skip)
+    local extras = {}
+    for _, component in ipairs(vehicle_audio_components(vehicle)) do
+        local address = address_of(component)
+        if address and not skip[address] and is_engine_sound(sound_name(component)) then
+            extras[#extras + 1] = { component = component, address = address,
+                name = sound_name(component) }
+        end
+    end
+    return extras
+end
+
+local loggedAudioVehicle = nil
+local function log_vehicle_audio(vehicle)
+    local address = address_of(vehicle)
+    if not address or address == loggedAudioVehicle then return end
+    loggedAudioVehicle = address
+    for _, component in ipairs(vehicle_audio_components(vehicle)) do
+        log("Vehicle audio: " .. tostring(full_name(component)) .. " sound=" ..
+            tostring(sound_name(component)) .. " volume=" ..
+            tostring(member(component, "VolumeMultiplier")) .. " engine=" ..
+            tostring(is_engine_sound(sound_name(component))))
+    end
+end
+
+local restoreFailures = 0
+local mute_extra_engine_audio
 local function restore_leased_engine(reason)
     if leaseToken then
         -- Revoke playback permission BEFORE touching the original gain.
@@ -127,11 +194,27 @@ local function restore_leased_engine(reason)
                 restored = false
             end
         end
-        if not restored then
-            log("WARNING: Could not restore original engine/intake gains; retrying (" ..
-                tostring(reason or "unknown") .. ")")
-            return false
+        for _, extra in ipairs(leasedAudio.extras or {}) do
+            if valid(extra.component) and not set_gain(extra.component, extra.gain) then
+                restored = false
+            end
         end
+        if not restored then
+            -- The ACK is already revoked, so native audio is silent. A car
+            -- the game itself is fading/rebuilding may refuse the old gain;
+            -- never let that block every later lease (in game: 4 minutes).
+            restoreFailures = restoreFailures + 1
+            if restoreFailures < 20 then
+                if restoreFailures == 1 then
+                    log("WARNING: Could not restore original engine/intake gains; retrying (" ..
+                        tostring(reason or "unknown") .. ")")
+                end
+                return false
+            end
+            log("WARNING: Gave up restoring stock gains after 20 attempts (" ..
+                tostring(reason or "unknown") .. ")")
+        end
+        restoreFailures = 0
         leasedAudio = nil
         log("Restored stock engine/intake audio (" ..
             tostring(reason or "unknown") .. ")")
@@ -139,6 +222,30 @@ local function restore_leased_engine(reason)
     leaseToken = nil
     leaseSequence = 0
     leaseIdleTicks = 0
+    return true
+end
+
+-- Mutes every engine-sound component of the leased car (re-scanned every
+-- 20 ticks: the game can start layers late). Keeps each original gain.
+local extraScanTick = 0
+mute_extra_engine_audio = function(vehicle)
+    if not leasedAudio or not leasedAudio.extras then return true end
+    extraScanTick = extraScanTick + 1
+    if not leasedAudio.scanned or extraScanTick % 20 == 0 then
+        leasedAudio.scanned = true
+        for _, extra in ipairs(extra_engine_audio(vehicle, leasedAudio.extraAddresses)) do
+            local original = tonumber(member(extra.component, "VolumeMultiplier"))
+            if original and original >= 0 and original <= 4 then
+                extra.gain = original
+                leasedAudio.extras[#leasedAudio.extras + 1] = extra
+                leasedAudio.extraAddresses[extra.address] = true
+                log("Also muting engine sound layer " .. tostring(extra.name))
+            end
+        end
+    end
+    for _, extra in ipairs(leasedAudio.extras) do
+        if valid(extra.component) and not set_gain(extra.component, 0.0) then return false end
+    end
     return true
 end
 
@@ -223,12 +330,22 @@ local function mute_lease_tick(vehicle)
                 channelAddress = channelAddress, intakeAddress = intakeAddress,
                 cueName = cueName, intakeCueName = intakeCueName,
                 vehicleHex = vehicleHex, assetHex = assetHex }
+            log_vehicle_audio(vehicle)
             log("Native PCM lease requested; muting engine cue " .. tostring(cueName) ..
                 " and intake cue " .. tostring(intakeCueName))
         end
         if not set_gain(channel, 0.0) or
             (intake and not set_gain(intake, 0.0)) then
             restore_leased_engine("mute gain validation failed")
+            return
+        end
+        if not leasedAudio.extras then
+            leasedAudio.extras = {}
+            leasedAudio.extraAddresses = { [channelAddress] = true }
+            if intakeAddress then leasedAudio.extraAddresses[intakeAddress] = true end
+        end
+        if not mute_extra_engine_audio(vehicle) then
+            restore_leased_engine("extra engine sound mute failed")
             return
         end
         if not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
@@ -251,6 +368,7 @@ local function mute_lease_tick(vehicle)
         end
         if not set_gain(channel, 0.0) or
             (intake and not set_gain(intake, 0.0)) or
+            not mute_extra_engine_audio(vehicle) or
             not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
             restore_leased_engine("renewal gain or ACK failed")
         end
@@ -713,7 +831,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.19 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.20 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -934,7 +1052,7 @@ local function write_engine_catalog(vehicle)
     local ok, assets = pcall(function() return FindAllOf("MHEngineDataAsset") end)
     if not ok or type(assets) ~= "table" or #assets == catalogCount then return end
     catalogCount = #assets
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.19" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.20" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1146,7 +1264,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.19 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.20 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

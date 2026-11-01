@@ -96,16 +96,33 @@ bool ExactVehicleProfiles::reload() {
             if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty() || line.front() == '#') continue;
             const auto fields = split_tabs(line);
-            if (fields.size() != 3 || (fields[0] != "asset" && fields[0] != "cue") ||
+            if (fields.size() != 3 ||
+                (fields[0] != "asset" && fields[0] != "cue" && fields[0] != "maxrpm") ||
                 fields[1].empty() || fields[1].size() > 512 ||
                 families.size() >= 1000) return false;
             FamilyRule rule;
-            rule.cue = fields[0] == "cue";
-            try {
-                rule.pattern = std::regex(fields[1],
-                    std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
+            if (fields[0] == "maxrpm") {
+                rule.field = Field::MaxRpm;
+                const auto dash = fields[1].find('-');
+                if (dash == std::string::npos) return false;
+                try {
+                    std::size_t a = 0, b = 0;
+                    const auto low = fields[1].substr(0, dash), high = fields[1].substr(dash + 1);
+                    rule.minRpm = std::stod(low, &a);
+                    rule.maxRpm = std::stod(high, &b);
+                    if (a != low.size() || b != high.size() || !(rule.minRpm >= 0) ||
+                        !(rule.maxRpm >= rule.minRpm) || rule.maxRpm > 100000) return false;
+                }
+                catch (...) { return false; }
             }
-            catch (const std::regex_error&) { return false; }
+            else {
+                rule.field = fields[0] == "cue" ? Field::Cue : Field::Asset;
+                try {
+                    rule.pattern = std::regex(fields[1],
+                        std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
+                }
+                catch (const std::regex_error&) { return false; }
+            }
             if (fields[2] != "-") {
                 const auto script = packaged_script(root, fields[2]);
                 if (!script) return false;
@@ -121,12 +138,20 @@ bool ExactVehicleProfiles::reload() {
 }
 
 std::optional<std::string> ExactVehicleProfiles::family_for(
-    const std::string& name, bool cue) const {
+    const std::string& name, Field field) const {
     if (name.empty()) return std::nullopt;
     for (const auto& rule : m_families) {
-        if (rule.cue != cue || !std::regex_search(name, rule.pattern)) continue;
-        if (rule.script.empty()) return std::string{}; // keep stock sound
-        return rule.script;
+        if (rule.field != field || !std::regex_search(name, rule.pattern)) continue;
+        return rule.script; // empty: keep stock sound
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> ExactVehicleProfiles::rpm_family_for(double maxRpm) const {
+    if (!(maxRpm > 0)) return std::nullopt;
+    for (const auto& rule : m_families) {
+        if (rule.field == Field::MaxRpm && maxRpm >= rule.minRpm && maxRpm <= rule.maxRpm)
+            return rule.script;
     }
     return std::nullopt;
 }
@@ -136,8 +161,9 @@ std::optional<std::string> ExactVehicleProfiles::script_for(
     if (sample.engine_asset.empty()) return std::nullopt;
     const auto it = m_profiles.find(sample.engine_asset);
     if (it != m_profiles.end()) return it->second;
-    auto family = family_for(sample.engine_asset, false);
-    if (!family) family = family_for(sample.engine_cue, true);
+    auto family = family_for(sample.engine_asset, Field::Asset);
+    if (!family) family = family_for(sample.engine_cue, Field::Cue);
+    if (!family) family = rpm_family_for(sample.max_rpm);
     if (!family || family->empty()) return std::nullopt;
     return family;
 }
