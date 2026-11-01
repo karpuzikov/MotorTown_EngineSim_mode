@@ -1,7 +1,7 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.16, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
--- Changes only the verified local vehicle V8 engine cue's audio gain, and
--- only with a live native PCM mute lease. Never changes vehicle physics.
+-- v0.2.17, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- Changes only verified local engine/intake cue gains, and only with a live
+-- native PCM mute lease. Never changes vehicle physics.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
 -- Examples of PATH SYNTAX only (not verified Motor Town field names):
@@ -53,6 +53,8 @@ local leaseIdleTicks = 0
 local lastAcceptedLeaseSequence = 0
 local KNOWN_ENGINE_CUE =
     "SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine"
+local KNOWN_INTAKE_CUE =
+    "SoundCue /Game/Sounds/Vehicle/Intake/SC_Intake01.SC_Intake01"
 
 local function full_name(object)
     if not valid(object) then return nil end
@@ -85,7 +87,7 @@ local function write_mute_ack(session, sequenceText, token, vehicleHex, assetHex
     return true
 end
 
-local function restore_leased_engine()
+local function restore_leased_engine(reason)
     if leaseToken then
         -- Revoke playback permission BEFORE touching the original gain.
         -- Native audio may inspect the ACK concurrently with this tick.
@@ -95,17 +97,29 @@ local function restore_leased_engine()
             ack:close()
         else
             log("WARNING: Could not invalidate native mute ACK")
+            return false
         end
     end
     if leasedAudio then
+        local restored = true
         if valid(leasedAudio.channel) then
             if not set_gain(leasedAudio.channel, leasedAudio.gain) then
-                log("WARNING: Could not restore original engine gain; retrying")
-                return false
+                restored = false
             end
         end
+        if leasedAudio.intake and valid(leasedAudio.intake) then
+            if not set_gain(leasedAudio.intake, leasedAudio.intakeGain) then
+                restored = false
+            end
+        end
+        if not restored then
+            log("WARNING: Could not restore original engine/intake gains; retrying (" ..
+                tostring(reason or "unknown") .. ")")
+            return false
+        end
         leasedAudio = nil
-        log("Restored stock V8 engine audio")
+        log("Restored stock engine/intake audio (" ..
+            tostring(reason or "unknown") .. ")")
     end
     leaseToken = nil
     leaseSequence = 0
@@ -119,7 +133,7 @@ local function mute_lease_tick(vehicle)
     if f then f:close() end
 
     if not valid(vehicle) then
-        restore_leased_engine()
+        restore_leased_engine("vehicle unavailable")
         return
     end
 
@@ -130,7 +144,7 @@ local function mute_lease_tick(vehicle)
         stopSession, stopToken = line:match("^MTESM0 ([0-9A-F]+) ([0-9A-F]+)$")
     end
     if stopSession == nativeSession and stopToken == leaseToken then
-        restore_leased_engine()
+        restore_leased_engine("native STOP request")
         return
     end
 
@@ -144,19 +158,25 @@ local function mute_lease_tick(vehicle)
     local data = valid(engine) and member(engine, "EngineData") or nil
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local cue = valid(channel) and member(channel, "Sound") or nil
+    local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
+    -- This verified Dory V8 profile needs BOTH cues; absence is not a
+    -- license to leave an unknown intake audible under native PCM.
+    local intakeVerified = valid(intake) and
+        full_name(member(intake, "Sound")) == KNOWN_INTAKE_CUE
     if leasedAudio and (leasedAudio.channel ~= channel or
+        leasedAudio.intake ~= intake or not intakeVerified or
         hex_name(full_name(vehicle)) ~= leasedAudio.vehicleHex or
         hex_name(full_name(data)) ~= leasedAudio.assetHex or
         full_name(cue) ~= KNOWN_ENGINE_CUE) then
         -- The verified owner/cue disappeared or changed. Revoke its ACK
         -- immediately, not after four watchdog ticks of overlapping audio.
-        restore_leased_engine()
+        restore_leased_engine("audio target or identity changed")
         return
     end
     local matching = session == nativeSession and sequence and sequence > 0 and
         hex_name(full_name(vehicle)) == vehicleHex and
         hex_name(full_name(data)) == assetHex and
-        full_name(cue) == KNOWN_ENGINE_CUE and valid(channel)
+        full_name(cue) == KNOWN_ENGINE_CUE and valid(channel) and intakeVerified
 
     -- Remember the highest *accepted* sequence even after restoring stock.
     -- Otherwise a crashed DLL leaves MTESM1 on disk and its static request
@@ -164,21 +184,26 @@ local function mute_lease_tick(vehicle)
     if matching and sequence > lastAcceptedLeaseSequence and
         (token ~= leaseToken or sequence > leaseSequence) then
         if leasedAudio and (leasedAudio.channel ~= channel or leaseToken ~= token) then
-            if not restore_leased_engine() then return end
+            if not restore_leased_engine("new lease token") then return end
         end
         if not leasedAudio then
             local original = tonumber(member(channel, "VolumeMultiplier"))
             if not original or original < 0 or original > 4 then return end
+            local intakeOriginal = intake and tonumber(member(intake, "VolumeMultiplier"))
+            if intake and (not intakeOriginal or intakeOriginal < 0 or
+                intakeOriginal > 4) then return end
             leasedAudio = { channel = channel, gain = original,
+                intake = intake, intakeGain = intakeOriginal,
                 vehicleHex = vehicleHex, assetHex = assetHex }
-            log("Native PCM lease requested; muting verified V8 engine cue only")
+            log("Native PCM lease requested; muting verified engine/intake cues")
         end
-        if not set_gain(channel, 0.0) then
-            restore_leased_engine()
+        if not set_gain(channel, 0.0) or
+            (intake and not set_gain(intake, 0.0)) then
+            restore_leased_engine("mute gain validation failed")
             return
         end
         if not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
-            restore_leased_engine()
+            restore_leased_engine("ACK write failed")
             return
         end
         leaseToken, leaseSequence, leaseIdleTicks = token, sequence, 0
@@ -192,10 +217,13 @@ local function mute_lease_tick(vehicle)
         -- file timing, but it does NOT reset the independent 4-tick
         -- watchdog. A stopped DLL can never hold the stock cue muted.
         leaseIdleTicks = leaseIdleTicks + 1
-        if leaseIdleTicks >= 4 then restore_leased_engine(); return end
+        if leaseIdleTicks >= 4 then
+            restore_leased_engine("duplicate watchdog expired"); return
+        end
         if not set_gain(channel, 0.0) or
+            (intake and not set_gain(intake, 0.0)) or
             not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
-            restore_leased_engine()
+            restore_leased_engine("renewal gain or ACK failed")
         end
         return
     end
@@ -203,7 +231,7 @@ local function mute_lease_tick(vehicle)
     -- Duplicate requests are not fresh heartbeats. No reliable wall-clock
     -- monotonic millisecond timer is needed on this UE4SS Lua game thread.
     leaseIdleTicks = leaseIdleTicks + 1
-    if leaseIdleTicks >= 4 then restore_leased_engine() end
+    if leaseIdleTicks >= 4 then restore_leased_engine("lease watchdog expired") end
 end
 
 log = function(line)
@@ -656,7 +684,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.16 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.17 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -867,7 +895,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.16 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.17 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

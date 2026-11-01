@@ -24,6 +24,7 @@ local session = assert(__test_session)
 local vehicleName = "MTVehicle DoryWrecker_C_123"
 local assetName = "MHEngineDataAsset Ford302"
 local cueName = "SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine"
+local intakeCueName = "SoundCue /Game/Sounds/Vehicle/Intake/SC_Intake01.SC_Intake01"
 local function object(name, fields)
     local o = fields or {}
     o.IsValid = function() return true end
@@ -31,7 +32,11 @@ local function object(name, fields)
     return o
 end
 
-local intake = object("AudioComponent Intake", { VolumeMultiplier = 0.75 })
+local intakeCue = object(intakeCueName)
+local intake = object("AudioComponent Intake", {
+    VolumeMultiplier = 0.75, Sound = intakeCue,
+    SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
+})
 local cue = object(cueName)
 local channel = object("AudioComponent Engine", {
     VolumeMultiplier = 0.63, Sound = cue,
@@ -51,7 +56,8 @@ end
 
 lease(1)
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0.75)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0,
+    "The verified engine and intake must both be muted before acknowledgment")
 local expected = string.format("MTESA1 %s 1 %s %s %s", session,
     token, hex(vehicleName), hex(assetName))
 assert(read(ack) == expected, "ACK: " .. tostring(read(ack)) .. " expected " .. expected)
@@ -73,11 +79,12 @@ end
 write(ack, "MTESA0")
 __test_mute(vehicle)
 assert(read(ack) == expected, "A repeated live lease must refresh its ACK")
-assert(channel.VolumeMultiplier == 0)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
 
 -- The exporter must restore the captured 0.63, not assume a default 1.0.
 for _ = 1, 3 do __test_mute(vehicle) end
 assert(channel.VolumeMultiplier == 0.63)
+assert(intake.VolumeMultiplier == 0.75, "Watchdog restores original intake gain")
 assert(read(ack) == "MTESA0", "Restoration must invalidate a once-live ACK")
 for _ = 1, 8 do __test_mute(vehicle) end
 assert(channel.VolumeMultiplier == 0.63,
@@ -94,9 +101,10 @@ assert(channel.VolumeMultiplier == 0.63)
 lease(4, "DAD0")
 __test_mute(vehicle)
 assert(channel.VolumeMultiplier == 0)
+assert(intake.VolumeMultiplier == 0)
 write(request, string.format("MTESM0 %s DAD0", session))
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0.63)
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75)
 
 -- A failed Unreal mutation must not be acknowledged.
 local oldAck = read(ack)
@@ -109,16 +117,59 @@ assert(read(ack) == oldAck)
 -- Leaving the car always releases a successful lease immediately.
 channel.SetVolumeMultiplier = function(self, volume) self.VolumeMultiplier = volume end
 lease(6, "CC22")
+intake.SetVolumeMultiplier = function() error("Intake rejected volume") end
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0)
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75,
+    "A failed intake mute must restore the engine, too")
+assert(read(ack) ~= string.format("MTESA1 %s 6 CC22 %s %s", session,
+    hex(vehicleName), hex(assetName)), "Failed intake must not be acknowledged")
+intake.SetVolumeMultiplier = function(self, volume) self.VolumeMultiplier = volume end
+lease(7, "DD33")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
+intake.Sound = object("SoundCue /Game/Other.Other")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75,
+    "A changed intake cue must revoke the shared mute lease")
+assert(read(ack) == "MTESA0")
+intake.Sound = intakeCue
+lease(8, "EE33")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
 channel.Sound = object("SoundCue /Game/Other.Other")
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0.63,
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75,
     "If the stock cue changes, restore immediately; prior ACK is no longer valid")
 assert(read(ack) == "MTESA0")
 channel.Sound = cue
-lease(7, "EE33")
+lease(9, "FF44")
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
 __test_mute(nil)
-assert(channel.VolumeMultiplier == 0.63)
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75)
+
+-- If ACK invalidation fails, stock must remain muted until it can be
+-- revoked; otherwise a still-authorized native sink could overlay it.
+lease(10, "AB55")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
+local realOpen = io.open
+io.open = function(path, mode)
+    if path == ack and mode == "w" then return nil end
+    return realOpen(path, mode)
+end
+__test_mute(nil)
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0,
+    "An unwritable ACK must prevent both stock channels being restored")
+io.open = realOpen
+__test_mute(nil)
+assert(read(ack) == "MTESA0")
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75)
+
+-- Dory's verified intake is mandatory. An absent component cannot grant a
+-- partial engine-only mute lease that leaves unknown intake sound audible.
+engine.IntakeAudioComponent = nil
+lease(11, "BC66")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0.63, "Missing intake cannot mute only engine")
+assert(read(ack) == "MTESA0", "Missing verified intake cannot authorize PCM")

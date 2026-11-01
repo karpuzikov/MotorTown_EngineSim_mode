@@ -185,6 +185,7 @@ try {
         Add-ReportFile $report 'Native engine audio telemetry' (Join-Path $directory 'MotorTownEngineSim_native_telemetry.txt') 5
         Add-ReportFile $report 'Native engine mute lease request' (Join-Path $directory 'MotorTownEngineSim_native_mute_request.txt') 5
         Add-ReportFile $report 'Game-thread verified mute ACK' (Join-Path $directory 'MotorTownEngineSim_native_mute_ack.txt') 5
+        Add-ReportFile $report 'Native ACK rejection reasons' (Join-Path $directory 'MotorTownEngineSim_mute_diagnostics.txt') 300 -IncludeHead
         Add-ReportFile $report 'Game exporter diagnostics' (Join-Path $directory 'MotorTownEngineSim_diagnostics.txt') 450 -IncludeHead
     }
     if ($gameExe) {

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace mtes {
 
@@ -23,8 +24,10 @@ public:
     void advance(std::uint64_t sequence) noexcept;
 
 private:
+    void report_lost_ack(std::string_view reason, std::int64_t ageMs = -1) noexcept;
     std::filesystem::path m_request;
     std::filesystem::path m_ack;
+    std::filesystem::path m_diagnostics;
     std::string m_session;
     std::string m_vehicleHex;
     std::string m_assetHex;
@@ -32,6 +35,7 @@ private:
     std::uint64_t m_sequence = 0;
     bool m_prepared = false;
     bool m_requested = false;
+    bool m_hadConfirmedAck = false;
 };
 
 class LuaMuteLeaseLookup final : public StockEmitterLookup {

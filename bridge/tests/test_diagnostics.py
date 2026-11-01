@@ -23,6 +23,10 @@ class DiagnosticPackagingTests(unittest.TestCase):
         collector = (ROOT / 'bridge/collect_diagnostics.ps1').read_text()
         self.assertIn("'Latest game discovery snapshot' (Join-Path $directory 'MotorTownEngineSim_discovery.txt') 350 -IncludeHead", collector)
 
+    def test_native_ack_rejection_reasons_are_collected(self):
+        collector = (ROOT / 'bridge/collect_diagnostics.ps1').read_text()
+        self.assertIn("'Native ACK rejection reasons' (Join-Path $directory 'MotorTownEngineSim_mute_diagnostics.txt')", collector)
+
 
 @unittest.skipUnless(PWSH, "Requires PowerShell")
 class DiagnosticReportTests(unittest.TestCase):
@@ -48,6 +52,7 @@ class DiagnosticReportTests(unittest.TestCase):
         (tempdir / "MotorTownEngineSim_diagnostics.txt").write_text("Exporter active. Synthetic diagnostic\n")
         (tempdir / "MotorTownEngineSim_native_mute_request.txt").write_text("MTESM1 TEST FIXTURE\n")
         (tempdir / "MotorTownEngineSim_native_mute_ack.txt").write_text("MTESA1 TEST FIXTURE\n")
+        (tempdir / "MotorTownEngineSim_mute_diagnostics.txt").write_text("seq=99 reason=ack_malformed ack_age_ms=-1\n")
         if flood_log:
             (tempdir / "MotorTownEngineSim_diagnostics.txt").write_text("Retry mapping: missing\n" * 1000)
         (tempdir / "MotorTownEngineSim_discovery.txt").write_text("Exporter v0.2.9\nMember RetainedEngineState = 5678\n")
@@ -94,6 +99,7 @@ exit $LASTEXITCODE
             self.assertIn("Synthetic diagnostic", report)
             self.assertIn('Native engine mute lease request', report)
             self.assertIn('MTESA1 TEST FIXTURE', report)
+            self.assertIn('reason=ack_malformed', report)
             self.assertIn("MotorTownEngineSim : 1", report)
             self.assertIn("Exporter SHA256:", report)
             self.assertIn("MTES_STARTUP_READY", report)

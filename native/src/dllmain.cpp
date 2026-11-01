@@ -95,7 +95,7 @@ class MotorTownEngineSimMod final : public RC::CppUserModBase {
 public:
     MotorTownEngineSimMod() {
         ModName = STR("MotorTownEngineSim");
-        ModVersion = STR("0.3.4-dev");
+        ModVersion = STR("0.3.5-dev");
         ModDescription = STR("Native Motor Town engine audio (development only)");
         ModAuthors = STR("karpuzikov and contributors");
     }
@@ -116,7 +116,7 @@ public:
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native audio worker running: {}\n"), workerStarted);
         RC::Output::send<RC::LogLevel::Normal>(
-            STR("[MTES] Audio diagnostics v0.3.4 active (worker-clock PCM, interruption counters)\n"));
+            STR("[MTES] Audio diagnostics v0.3.5 active (dual-cue lease, ACK diagnostics)\n"));
     }
 
     auto on_update() -> void override {
@@ -191,7 +191,7 @@ public:
             m_lastVolume.reset();
             return;
         }
-        // The lease allows one verified engine cue only; intake, effects,
+        // Lua leases the two verified engine/intake cues; unrelated effects,
         // music, horns and ambient audio are never altered.
         if (!m_hadTelemetry || sample->vehicle != m_lastVehicle ||
             sample->state.gear != m_lastGear ||

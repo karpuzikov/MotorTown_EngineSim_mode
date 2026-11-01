@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(temp);
     auto request = temp / "MotorTownEngineSim_native_mute_request.txt";
     auto ack = temp / "MotorTownEngineSim_native_mute_ack.txt";
+    auto diagnostics = temp / "MotorTownEngineSim_mute_diagnostics.txt";
     LuaMuteLeaseLookup lookup(temp);
     GameTelemetrySample sample;
     sample.session = "0123456789ABCDEF";
@@ -69,6 +70,8 @@ int main(int argc, char** argv) {
     sample.sequence = 55;
     assert(emitter == lookup.stock_for(sample));
     assert(!emitter->prepare()); // heartbeat lag is bounded
+    assert(read(diagnostics).find("utc_ms=") != std::string::npos);
+    assert(read(diagnostics).find("reason=ack_sequence_gap") != std::string::npos);
 
     write(ack, response(sample.session, 55, token));
     std::filesystem::last_write_time(ack,
@@ -78,6 +81,25 @@ int main(int argc, char** argv) {
     std::filesystem::last_write_time(ack,
         std::filesystem::file_time_type::clock::now() - std::chrono::milliseconds(210));
     assert(!emitter->prepare()); // Lua's four 50-ms ticks may already have restored stock
+    assert(read(diagnostics).find("reason=ack_age_expired") != std::string::npos);
+
+    write(ack, response(sample.session, 55, token));
+    assert(emitter->prepare());
+    write(ack, "MTESA0\n");
+    assert(!emitter->prepare());
+    assert(read(diagnostics).find("reason=ack_revoked") != std::string::npos);
+
+    write(ack, response(sample.session, 55, token));
+    assert(emitter->prepare());
+    write(ack, "MTESA1 incomplete\n");
+    assert(!emitter->prepare());
+    assert(read(diagnostics).find("reason=ack_malformed") != std::string::npos);
+
+    write(ack, response(sample.session, 55, token));
+    assert(emitter->prepare());
+    write(ack, response(sample.session, 55, token + "A"));
+    assert(!emitter->prepare());
+    assert(read(diagnostics).find("reason=ack_identity_mismatch") != std::string::npos);
 
     write(ack, response(sample.session, 55, token));
     std::filesystem::last_write_time(ack,

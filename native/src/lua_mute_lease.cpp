@@ -60,6 +60,7 @@ LuaMuteLeaseEmitter::LuaMuteLeaseEmitter(std::filesystem::path temp,
     std::string session, std::string vehicle, std::string asset)
     : m_request(temp / "MotorTownEngineSim_native_mute_request.txt"),
       m_ack(temp / "MotorTownEngineSim_native_mute_ack.txt"),
+      m_diagnostics(temp / "MotorTownEngineSim_mute_diagnostics.txt"),
       m_session(std::move(session)), m_vehicleHex(hex(vehicle)),
       m_assetHex(hex(asset)) {
     const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -73,39 +74,92 @@ void LuaMuteLeaseEmitter::advance(std::uint64_t sequence) noexcept {
     m_prepared = false;
 }
 
+void LuaMuteLeaseEmitter::report_lost_ack(
+    std::string_view reason, std::int64_t ageMs) noexcept {
+    // Only record transitions from a *confirmed* lease: initial ACK delay
+    // is normal. Avoid writing the response's session/token/vehicle to disk.
+    if (!m_hadConfirmedAck) return;
+    m_hadConfirmedAck = false;
+    try {
+        std::ofstream out(m_diagnostics, std::ios::app);
+        const auto utcMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        if (out) out << "utc_ms=" << utcMs << " seq=" << m_sequence
+                     << " reason=" << reason << " ack_age_ms=" << ageMs << '\n';
+    } catch (...) { /* Diagnostics must not affect the fail-open path. */ }
+}
+
 bool LuaMuteLeaseEmitter::prepare() {
     m_prepared = false;
     if (m_sequence == 0 || m_session.size() != 16 || m_vehicleHex.empty() ||
-        m_assetHex.empty() || m_request.empty() || m_ack.empty()) return false;
+        m_assetHex.empty() || m_request.empty() || m_ack.empty()) {
+        report_lost_ack("invalid_identity");
+        return false;
+    }
     if (!write_command(m_request, "MTESM1 " + m_session + " " +
         std::to_string(m_sequence) + " " + m_token + " " + m_vehicleHex +
-        " " + m_assetHex)) return false;
+        " " + m_assetHex)) {
+        report_lost_ack("request_write_failed");
+        return false;
+    }
     m_requested = true;
 
     // A previous game launch or old session may leave a matching-looking
     // response on disk; the ACK must be recent AND tied to this mute token.
     std::error_code error;
     const auto changed = std::filesystem::last_write_time(m_ack, error);
-    if (error) return false;
+    if (error) {
+        report_lost_ack("ack_stat_failed");
+        return false;
+    }
     const auto age = decltype(changed)::clock::now() - changed;
     // A slow frame can take 150-185 ms between Lua updates. Keep a bounded
     // lease through those frames, but expire BEFORE the minimum four 50-ms
     // Lua watchdog ticks could restore stock. Lua also writes MTESA0 on
     // every restoration, invalidating the ACK immediately.
     constexpr auto MaxAckAge = std::chrono::milliseconds(190);
-    if (age < -MaxAckAge || age > MaxAckAge) return false;
+    if (age < -MaxAckAge || age > MaxAckAge) {
+        report_lost_ack("ack_age_expired",
+            std::chrono::duration_cast<std::chrono::milliseconds>(age).count());
+        return false;
+    }
     std::ifstream response(m_ack, std::ios::binary);
     std::string tag, session, number, token, vehicle, asset, extra;
-    if (!(response >> tag >> session >> number >> token >> vehicle >> asset) ||
-        (response >> extra) || tag != "MTESA1" || session != m_session ||
-        token != m_token || vehicle != m_vehicleHex || asset != m_assetHex ||
-        number.empty() || number.size() > 20 ||
-        number.find_first_not_of("0123456789") != std::string::npos) return false;
+    if (!(response >> tag)) {
+        report_lost_ack("ack_malformed");
+        return false;
+    }
+    if (tag == "MTESA0") {
+        report_lost_ack("ack_revoked");
+        return false;
+    }
+    if (!(response >> session >> number >> token >> vehicle >> asset) ||
+        (response >> extra)) {
+        report_lost_ack("ack_malformed");
+        return false;
+    }
+    if (tag != "MTESA1" || session != m_session || token != m_token ||
+        vehicle != m_vehicleHex || asset != m_assetHex) {
+        report_lost_ack("ack_identity_mismatch");
+        return false;
+    }
+    if (number.empty() || number.size() > 20 ||
+        number.find_first_not_of("0123456789") != std::string::npos) {
+        report_lost_ack("ack_malformed");
+        return false;
+    }
     std::uint64_t acknowledged = 0;
     try { acknowledged = std::stoull(number); }
-    catch (...) { return false; }
-    if (acknowledged > m_sequence || m_sequence - acknowledged > 2) return false;
+    catch (...) {
+        report_lost_ack("ack_malformed");
+        return false;
+    }
+    if (acknowledged > m_sequence || m_sequence - acknowledged > 2) {
+        report_lost_ack("ack_sequence_gap");
+        return false;
+    }
     m_prepared = true;
+    m_hadConfirmedAck = true;
     return true;
 }
 
@@ -121,6 +175,7 @@ bool LuaMuteLeaseEmitter::restore() noexcept {
             " " + m_token);
         if (written) {
             m_requested = false;
+            m_hadConfirmedAck = false;
             // A new handoff may not replay an ACK from before this STOP.
             m_token += "A";
         }

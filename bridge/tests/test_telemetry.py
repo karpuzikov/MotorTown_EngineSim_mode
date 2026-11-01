@@ -148,7 +148,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.16', snapshot)
+        self.assertIn('v0.2.17', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
 
