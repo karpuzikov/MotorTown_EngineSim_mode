@@ -153,4 +153,27 @@ int main(int argc, char **argv) {
     slightlyOld.poll(start);
     assert(slightlyOld.current(start));
     assert(!slightlyOld.current(start + std::chrono::milliseconds(120)));
+
+    // MTES5: stock cue name plus Unreal's gain/pan/low-pass for the camera.
+    {
+        const auto mixed = parse_game_telemetry(
+            "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.6500 "
+            "536F756E64437565 0.4200 -0.3500 5000");
+        assert(mixed && mixed->engine_volume == 0.65);
+        assert(mixed->engine_cue == "SoundCue");
+        assert(mixed->mix && mixed->mix->gain == 0.42 && mixed->mix->pan == -0.35 &&
+            mixed->mix->lowpass_hz == 5000);
+        const auto unknown = parse_game_telemetry(
+            "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - -1 - -1 0.0000 0");
+        assert(unknown && !unknown->mix && unknown->engine_cue.empty() && !unknown->engine_volume);
+        for (const char* bad : {
+                "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.65 - 0.4 1.5 0",
+                "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.65 - 9 0 0",
+                "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.65 - 0.4 0 5",
+                "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.65 - 0.4 0",
+                "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.65 ZZ 0.4 0 0",
+                "MTES5 AABBCCDDEEFF0011 3 2400 0.8 1 3 54757363616E5F43 2 2900 - 0.65 - nan 0 0"}) {
+            assert(!parse_game_telemetry(bad));
+        }
+    }
 }

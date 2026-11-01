@@ -1,0 +1,6 @@
+// mtes-output-gain: 0.00207
+// V10 (Lexus LFA 1LR-GUE). Engine Simulator model, measured full-throttle level -14 dBFS.
+import "engine_sim.mr"
+import "engines/atg-video-2/10_lfa_v10.mr"
+
+main()

@@ -96,4 +96,39 @@ int main(int argc, char** argv) {
         assert(!catalog.reload() && !catalog.script_for(*first));
     }
     fs::remove(outside, error);
+
+    // Engine-family rules: every Motor Town engine without an exact entry,
+    // by its asset name, then by the stock cue the game chose for it.
+    std::ofstream(root / "profiles/v6.mr") << "// test engine script\n";
+    write(boxer + "\tprofiles/boxer.mr\n");
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "# comment\nasset\telectric\t-\n"
+              << "asset\t(^|[^a-z0-9])v6([^0-9]|$)\tprofiles/v6.mr\r\n"
+              << "cue\t/v8/\tprofiles/v8.mr\n";
+    }
+    assert(catalog.reload());
+    auto family = *first;
+    family.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/V6Sport_DOHC_200HP.V6Sport_DOHC_200HP";
+    assert(catalog.script_for(family) &&
+        fs::equivalent(*catalog.script_for(family), root / "profiles/v6.mr"));
+    assert(fs::equivalent(*catalog.script_for(*first), root / "profiles/boxer.mr")); // exact wins
+    family.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/Mystery.Mystery";
+    assert(!catalog.script_for(family));
+    family.engine_cue = "SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine";
+    assert(catalog.script_for(family) &&
+        fs::equivalent(*catalog.script_for(family), root / "profiles/v8.mr"));
+    family.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/Electric_V8ish.Electric";
+    assert(!catalog.script_for(family)); // "-" keeps stock sound, even with a V8 cue
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "asset\t(unclosed\tprofiles/v6.mr\n";
+    }
+    assert(!catalog.reload() && !catalog.script_for(*first));
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "asset\tv6\t../outside.mr\n";
+    }
+    assert(!catalog.reload());
+    fs::remove(root / "engine_families.tsv");
 }

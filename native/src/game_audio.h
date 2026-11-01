@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine_audio.h"
+#include "spatial_mix.h"
 
 #include <chrono>
 #include <cstddef>
@@ -34,6 +35,8 @@ public:
     virtual bool queue(const std::int16_t* pcm, std::size_t frames) = 0;
     virtual bool start() = 0;
     virtual void stop() noexcept = 0;
+    // Position/loudness of the stock sound this output replaces.
+    virtual void set_mix(const SpatialMix&) noexcept {}
 };
 
 // Fail-open handoff: never leave the stock emitter muted without complete
@@ -57,6 +60,7 @@ public:
         std::chrono::steady_clock::time_point when, double engineVolume,
         const std::function<bool()>& stillEligible = {});
     void stop() noexcept;
+    void set_mix(const SpatialMix& mix) noexcept { m_sink.set_mix(mix); }
     Status status() const noexcept { return m_status; }
 
 private:

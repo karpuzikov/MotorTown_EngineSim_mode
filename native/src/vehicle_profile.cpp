@@ -18,6 +18,32 @@ bool contained_in(const fs::path& file, const fs::path& root) {
     return true;
 }
 
+// Validates a manifest-relative .mr path and resolves it inside root.
+std::optional<std::string> packaged_script(const fs::path& root, const std::string& text) {
+    const fs::path relative(text);
+    if (relative.is_absolute() || relative.has_root_name() ||
+        relative.extension() != ".mr") return std::nullopt;
+    for (const auto& part : relative) {
+        if (part == "..") return std::nullopt;
+    }
+    std::error_code error;
+    const auto script = fs::weakly_canonical(root / relative, error);
+    if (error || !contained_in(script, root) ||
+        !fs::is_regular_file(script, error) || error) return std::nullopt;
+    return script.string();
+}
+
+std::vector<std::string> split_tabs(const std::string& line) {
+    std::vector<std::string> fields;
+    std::size_t start = 0;
+    while (true) {
+        const auto tab = line.find('\t', start);
+        fields.push_back(line.substr(start, tab - start));
+        if (tab == std::string::npos) return fields;
+        start = tab + 1;
+    }
+}
+
 } // namespace
 
 ExactVehicleProfiles::ExactVehicleProfiles(fs::path modRoot)
@@ -25,6 +51,7 @@ ExactVehicleProfiles::ExactVehicleProfiles(fs::path modRoot)
 
 bool ExactVehicleProfiles::reload() {
     m_profiles.clear(); // Always fail closed, including on partial file reads.
+    m_families.clear();
 
     std::error_code error;
     const auto root = fs::weakly_canonical(m_modRoot, error);
@@ -50,34 +77,69 @@ bool ExactVehicleProfiles::reload() {
             line.find('\t', separator + 1) != std::string::npos ||
             entries.size() >= 1000) return false;
         const auto key = line.substr(0, separator);
-        const auto relativeText = line.substr(separator + 1);
-        const fs::path relative(relativeText);
         if (key.size() > 512 ||
             std::any_of(key.begin(), key.end(), [](unsigned char c) {
                 return c < 0x20 || c == 0x7f;
             })) return false;
-        if (relative.is_absolute() || relative.has_root_name() ||
-            relative.extension() != ".mr") return false;
-        for (const auto& part : relative) {
-            if (part == "..") return false;
-        }
-
-        const auto script = fs::weakly_canonical(root / relative, error);
-        if (error || !contained_in(script, root) ||
-            !fs::is_regular_file(script, error) || error) return false;
-        if (!entries.emplace(key, script.string()).second) return false;
+        const auto script = packaged_script(root, line.substr(separator + 1));
+        if (!script || !entries.emplace(key, *script).second) return false;
     }
     if (file.bad()) return false;
+
+    std::vector<FamilyRule> families;
+    const auto familyManifest = root / "engine_families.tsv";
+    if (fs::exists(familyManifest, error)) {
+        std::ifstream rules(familyManifest, std::ios::binary);
+        if (!rules) return false;
+        while (std::getline(rules, line)) {
+            if (line.size() > 2048) return false;
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty() || line.front() == '#') continue;
+            const auto fields = split_tabs(line);
+            if (fields.size() != 3 || (fields[0] != "asset" && fields[0] != "cue") ||
+                fields[1].empty() || fields[1].size() > 512 ||
+                families.size() >= 1000) return false;
+            FamilyRule rule;
+            rule.cue = fields[0] == "cue";
+            try {
+                rule.pattern = std::regex(fields[1],
+                    std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
+            }
+            catch (const std::regex_error&) { return false; }
+            if (fields[2] != "-") {
+                const auto script = packaged_script(root, fields[2]);
+                if (!script) return false;
+                rule.script = *script;
+            }
+            families.push_back(std::move(rule));
+        }
+        if (rules.bad()) return false;
+    }
     m_profiles = std::move(entries);
+    m_families = std::move(families);
     return true;
+}
+
+std::optional<std::string> ExactVehicleProfiles::family_for(
+    const std::string& name, bool cue) const {
+    if (name.empty()) return std::nullopt;
+    for (const auto& rule : m_families) {
+        if (rule.cue != cue || !std::regex_search(name, rule.pattern)) continue;
+        if (rule.script.empty()) return std::string{}; // keep stock sound
+        return rule.script;
+    }
+    return std::nullopt;
 }
 
 std::optional<std::string> ExactVehicleProfiles::script_for(
     const GameTelemetrySample& sample) {
     if (sample.engine_asset.empty()) return std::nullopt;
     const auto it = m_profiles.find(sample.engine_asset);
-    if (it == m_profiles.end()) return std::nullopt;
-    return it->second;
+    if (it != m_profiles.end()) return it->second;
+    auto family = family_for(sample.engine_asset, false);
+    if (!family) family = family_for(sample.engine_cue, true);
+    if (!family || family->empty()) return std::nullopt;
+    return family;
 }
 
 } // namespace mtes

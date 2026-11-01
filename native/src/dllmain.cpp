@@ -5,6 +5,7 @@
 #include "audio_worker.h"
 #include "engine_sim_backend.h"
 #include "lua_mute_lease.h"
+#include "mod_settings.h"
 #include "vehicle_profile.h"
 #include "xaudio2_sink.h"
 
@@ -72,7 +73,7 @@ const wchar_t* audio_stage_name(mtes::NativeAudioPipeline::Stage stage) noexcept
     case Stage::StalePacket: return STR("telemetry replay or stale packet");
     case Stage::IgnitionOff: return STR("engine ignition off");
     case Stage::InvalidVolume: return STR("invalid game engine volume");
-    case Stage::NoProfile: return STR("no exact engine-asset profile match");
+    case Stage::NoProfile: return STR("no engine profile for this engine (stock sound kept)");
     case Stage::NoEmitter: return STR("no eligible stock engine emitter");
     case Stage::EngineLoadFailed: return STR("Engine Simulator script or assets failed to load");
     case Stage::EngineAdvanceFailed: return STR("Engine Simulator advance failed");
@@ -95,7 +96,7 @@ class MotorTownEngineSimMod final : public RC::CppUserModBase {
 public:
     MotorTownEngineSimMod() {
         ModName = STR("MotorTownEngineSim");
-        ModVersion = STR("0.3.5-dev");
+        ModVersion = STR("0.4.0-dev");
         ModDescription = STR("Native Motor Town engine audio (development only)");
         ModAuthors = STR("karpuzikov and contributors");
     }
@@ -108,6 +109,8 @@ public:
 
     auto on_unreal_init() -> void override {
         m_ready = true;
+        const auto settings = mtes::load_mod_settings(module_root());
+        m_sink.set_output_volume(settings.volume);
         m_profilesReady = m_profiles.reload();
         const bool workerStarted = m_profilesReady && m_worker.start();
         RC::Output::send<RC::LogLevel::Normal>(
@@ -116,7 +119,8 @@ public:
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native audio worker running: {}\n"), workerStarted);
         RC::Output::send<RC::LogLevel::Normal>(
-            STR("[MTES] Audio diagnostics v0.3.5 active (dual-cue lease, ACK diagnostics)\n"));
+            STR("[MTES] Audio v0.4.0 active (all-engine profiles, 3D mix); settings volume {}\n"),
+            settings.volume);
     }
 
     auto on_update() -> void override {
@@ -134,7 +138,7 @@ public:
             if (audible != m_wasPlaying) {
                 if (audible) {
                     RC::Output::send<RC::LogLevel::Normal>(
-                        STR("[MTES] Engine Simulator PCM active; stock V8 cue leased\n"));
+                        STR("[MTES] Engine Simulator PCM active; stock engine cue leased\n"));
                 } else {
                     RC::Output::send<RC::LogLevel::Normal>(
                         STR("[MTES] Engine Simulator PCM stopped: {}; stock cue restoring\n"),

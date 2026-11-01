@@ -1,0 +1,6 @@
+// mtes-output-gain: 0.00562
+// Inline-6 (Toyota 2JZ). Engine Simulator model, measured full-throttle level -14 dBFS.
+import "engine_sim.mr"
+import "engines/atg-video-2/03_2jz.mr"
+
+main()

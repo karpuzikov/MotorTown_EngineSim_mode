@@ -40,18 +40,21 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             for relative in (
                 'dlls/main.dll', 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll',
                 'Scripts/main.lua', 'enabled.txt',
-                'engine_profiles.tsv', 'ENGINE_SIM_LICENSE.txt',
-                'assets/dory_v8_prototype.mr',
+                'engine_profiles.tsv', 'engine_families.tsv', 'settings.ini',
+                'ENGINE_SIM_LICENSE.txt',
+                'assets/es_gm_ls.mr', 'assets/es_toyota_2jz.mr', 'assets/es_bmw_m52.mr',
                 'assets/engines/atg-video-2/07_gm_ls.mr',
                 'assets/sound-library/smooth/smooth_39.wav',
+                'assets/sound-library/new/mild_exhaust.wav',
                 'es/engine_sim.mr',
             ):
                 path = stage / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('staged:' + relative +
-                    ('\nExporter v0.2.18 active' if relative == 'Scripts/main.lua' else ''))
+                    ('\nExporter v0.2.19 active' if relative == 'Scripts/main.lua' else ''))
             (mod / 'dlls').mkdir(parents=True)
             (mod / 'dlls/main.dll').write_text('old-original-dll')
+            (mod / 'settings.ini').write_text('volume = 0.4\n')
             command = [PWSH, '-NoLogo', '-NoProfile', '-File', str(SCRIPT),
                        '-GameWin64', str(game), '-StageRoot', str(stage),
                        '-BackupRoot', str(backup)]
@@ -60,6 +63,9 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             self.assertEqual((mod / 'dlls/main.dll').read_text(), 'staged:dlls/main.dll')
             self.assertEqual((mod / 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll').read_text(),
                              'staged:dlls/boost_filesystem-vc143-mt-x64-1_92.dll')
-            self.assertIn('Exporter v0.2.18 active', (mod / 'Scripts/main.lua').read_text())
+            self.assertIn('Exporter v0.2.19 active', (mod / 'Scripts/main.lua').read_text())
             self.assertTrue((mod / 'assets/sound-library/smooth/smooth_39.wav').is_file())
+            self.assertTrue((mod / 'engine_families.tsv').is_file())
+            self.assertEqual((mod / 'settings.ini').read_text(), 'volume = 0.4\n',
+                             "An update must keep the player's volume setting")
             self.assertEqual(len(list(backup.glob('*/MotorTownEngineSim/dlls/main.dll'))), 1)

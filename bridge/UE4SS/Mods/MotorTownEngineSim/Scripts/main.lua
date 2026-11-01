@@ -1,7 +1,7 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.18, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
--- Changes only verified local engine/intake cue gains, and only with a live
--- native PCM mute lease. Never changes vehicle physics.
+-- v0.2.19, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- Changes only the local car's own engine/intake cue gains, and only with a
+-- live native PCM mute lease. Never changes vehicle physics.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
 -- Examples of PATH SYNTAX only (not verified Motor Town field names):
@@ -23,6 +23,7 @@ local DISCOVERY = TEMP .. "\\MotorTownEngineSim_discovery.txt"
 local AUDIO_TARGETS = TEMP .. "\\MotorTownEngineSim_audio_targets.txt"
 local MUTE_REQUEST = TEMP .. "\\MotorTownEngineSim_native_mute_request.txt"
 local MUTE_ACK = TEMP .. "\\MotorTownEngineSim_native_mute_ack.txt"
+local ENGINE_CATALOG = TEMP .. "\\MotorTownEngineSim_engine_catalog.txt"
 local lastVehicle = nil
 local mapping = nil
 local lastValue = ""
@@ -51,16 +52,21 @@ local leaseToken = nil
 local leaseSequence = 0
 local leaseIdleTicks = 0
 local lastAcceptedLeaseSequence = 0
-local KNOWN_ENGINE_CUE =
-    "SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine"
-local KNOWN_INTAKE_CUE =
-    "SoundCue /Game/Sounds/Vehicle/Intake/SC_Intake01.SC_Intake01"
 
 local function full_name(object)
     if not valid(object) then return nil end
     local ok, result = pcall(function() return object:GetFullName() end)
     if ok and type(result) == "string" then return result end
     return nil
+end
+
+-- Every car's own EngineComponent.AudioComponent / IntakeAudioComponent
+-- carries its engine sound, whatever cue Motor Town picked (V8, V6, truck...).
+-- The component identity proves it is engine sound; the cue name only
+-- detects a swap while leased.
+local function sound_name(component)
+    if not valid(component) then return nil end
+    return full_name(member(component, "Sound"))
 end
 
 local function hex_name(name)
@@ -166,12 +172,10 @@ local function mute_lease_tick(vehicle)
     local engine = member(vehicle, "EngineComponent")
     local data = valid(engine) and member(engine, "EngineData") or nil
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
-    local cue = valid(channel) and member(channel, "Sound") or nil
+    local cueName = sound_name(channel)
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
-    -- This verified Dory V8 profile needs BOTH cues; absence is not a
-    -- license to leave an unknown intake audible under native PCM.
-    local intakeVerified = valid(intake) and
-        full_name(member(intake, "Sound")) == KNOWN_INTAKE_CUE
+    if not valid(intake) then intake = nil end -- a car without intake sound
+    local intakeCueName = sound_name(intake)
     local channelAddress, intakeAddress = address_of(channel), address_of(intake)
     if leasedAudio then
         local changed = nil
@@ -179,14 +183,14 @@ local function mute_lease_tick(vehicle)
             changed = "engine audio component"
         elseif intakeAddress ~= leasedAudio.intakeAddress then
             changed = "intake audio component"
-        elseif not intakeVerified then
-            changed = "intake cue " .. tostring(full_name(member(intake, "Sound")))
+        elseif intakeCueName ~= leasedAudio.intakeCueName then
+            changed = "intake cue " .. tostring(intakeCueName)
         elseif hex_name(full_name(vehicle)) ~= leasedAudio.vehicleHex then
             changed = "vehicle"
         elseif hex_name(full_name(data)) ~= leasedAudio.assetHex then
             changed = "engine asset"
-        elseif full_name(cue) ~= KNOWN_ENGINE_CUE then
-            changed = "engine cue " .. tostring(full_name(cue))
+        elseif cueName ~= leasedAudio.cueName then
+            changed = "engine cue " .. tostring(cueName)
         end
         if changed then
             -- The verified owner/cue disappeared or changed. Revoke its ACK
@@ -198,7 +202,7 @@ local function mute_lease_tick(vehicle)
     local matching = session == nativeSession and sequence and sequence > 0 and
         hex_name(full_name(vehicle)) == vehicleHex and
         hex_name(full_name(data)) == assetHex and
-        full_name(cue) == KNOWN_ENGINE_CUE and valid(channel) and intakeVerified
+        cueName ~= nil and valid(channel)
 
     -- Remember the highest *accepted* sequence even after restoring stock.
     -- Otherwise a crashed DLL leaves MTESM1 on disk and its static request
@@ -217,8 +221,10 @@ local function mute_lease_tick(vehicle)
             leasedAudio = { channel = channel, gain = original,
                 intake = intake, intakeGain = intakeOriginal,
                 channelAddress = channelAddress, intakeAddress = intakeAddress,
+                cueName = cueName, intakeCueName = intakeCueName,
                 vehicleHex = vehicleHex, assetHex = assetHex }
-            log("Native PCM lease requested; muting verified engine/intake cues")
+            log("Native PCM lease requested; muting engine cue " .. tostring(cueName) ..
+                " and intake cue " .. tostring(intakeCueName))
         end
         if not set_gain(channel, 0.0) or
             (intake and not set_gain(intake, 0.0)) then
@@ -707,7 +713,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.18 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.19 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -770,11 +776,221 @@ local function engine_volume()
     return selected
 end
 
+-- Master Volume, found by its EMTUserSettingType name (never by a guessed
+-- number). Native XAudio2 output bypasses Unreal's mixer, so the game's
+-- master slider must be applied explicitly. nil when not verifiable.
+local masterVolumeKey = nil
+local nextMasterKeyProbe = 0
+local soundSettingNames = nil
+local function setting_keys()
+    if masterVolumeKey or os.time() < nextMasterKeyProbe then return masterVolumeKey end
+    nextMasterKeyProbe = os.time() + 10
+    local names = {}
+    pcall(function()
+        local enum = StaticFindObject("/Script/MotorTown.EMTUserSettingType")
+        if not valid(enum) then return end
+        enum:ForEachName(function(name, value)
+            local text = type(name) == "string" and name or name:ToString()
+            if text:find("Sound_", 1, true) then names[value] = text end
+            if text:find("Sound_MasterVolume", 1, true) then masterVolumeKey = value end
+        end)
+    end)
+    if next(names) then soundSettingNames = names end
+    return masterVolumeKey
+end
+
+local function setting_value(key)
+    if not key or not valid(cachedUserSettings) then return nil end
+    local settingsMap = member(cachedUserSettings, "Values")
+    local selected
+    pcall(function()
+        settingsMap:ForEach(function(entryKey, value)
+            if entryKey:get() == key then
+                local setting = value:get()
+                if member(setting, "ValueType") == 0 then
+                    selected = member(setting, "FloatValue")
+                end
+                return true
+            end
+        end)
+    end)
+    if type(selected) ~= "number" or selected ~= selected or
+        selected < 0 or selected > 1 then return nil end
+    return selected
+end
+
+local function vector_of(value)
+    local x, y, z = tonumber(member(value, "X")), tonumber(member(value, "Y")),
+        tonumber(member(value, "Z"))
+    if not (x and y and z) or x ~= x or y ~= y or z ~= z then return nil end
+    return x, y, z
+end
+
+-- FSoundAttenuationSettings Unreal uses for this component, in its own
+-- priority order. nil: the stock sound is not attenuated at all.
+local function attenuation_of(channel, cue)
+    if member(channel, "bOverrideAttenuation") == true then
+        return member(channel, "AttenuationOverrides")
+    end
+    local asset = member(channel, "AttenuationSettings")
+    if valid(asset) then return member(asset, "Attenuation") end
+    if valid(cue) then
+        if member(cue, "bOverrideAttenuation") == true then
+            return member(cue, "AttenuationOverrides")
+        end
+        asset = member(cue, "AttenuationSettings")
+        if valid(asset) then return member(asset, "Attenuation") end
+    end
+    return nil
+end
+
+-- FBaseAttenuationSettings::AttenuationEval (UE 5.5), sphere extents.
+local function distance_gain(settings, distance)
+    if member(settings, "bAttenuate") == false then return 1 end
+    local extents = member(settings, "AttenuationShapeExtents")
+    local radius = extents and tonumber(member(extents, "X")) or 0
+    local falloff = tonumber(member(settings, "FalloffDistance")) or 0
+    local d = math.max(0, distance - math.max(0, radius))
+    if falloff <= 0 then return d > 0 and 0 or 1 end
+    local alpha = math.min(1, d / falloff)
+    local algorithm = tonumber(member(settings, "DistanceAlgorithm")) or 0
+    local result
+    if algorithm == 1 then -- Logarithmic
+        result = alpha <= 0 and 1 or 0.5 * -math.log(alpha)
+    elseif algorithm == 2 then -- Inverse
+        result = alpha <= 0 and 1 or 0.02 / alpha
+    elseif algorithm == 3 then -- LogReverse
+        result = alpha >= 1 and 0 or 1 + 0.5 * math.log(1 - alpha)
+    elseif algorithm == 4 then -- NaturalSound
+        local atMax = tonumber(member(settings, "dBAttenuationAtMax")) or -60
+        result = 10 ^ (alpha * math.min(0, atMax) / 20)
+    else -- Linear, or Custom curve approximated linearly
+        result = 1 - alpha
+    end
+    return math.max(0, math.min(1, result))
+end
+
+local function lowpass_of(settings, distance)
+    if member(settings, "bAttenuateWithLPF") ~= true then return 0 end
+    local r0 = tonumber(member(settings, "LPFRadiusMin")) or 0
+    local r1 = tonumber(member(settings, "LPFRadiusMax")) or 0
+    local f0 = tonumber(member(settings, "LPFFrequencyAtMin")) or 20000
+    local f1 = tonumber(member(settings, "LPFFrequencyAtMax")) or 20000
+    local t = r1 > r0 and math.max(0, math.min(1, (distance - r0) / (r1 - r0))) or
+        (distance >= r1 and 1 or 0)
+    local hz = f0 + (f1 - f0) * t
+    if hz ~= hz or hz <= 0 then return 0 end
+    return math.max(10, math.min(30000, hz))
+end
+
+-- Where/how loud Unreal plays the car's stock engine cue for this camera:
+-- stock volume multipliers x distance attenuation x master volume, pan from
+-- the camera's right vector, distance low-pass. nil when unknown.
+local function stock_mix(pc, vehicle)
+    local engine = member(vehicle, "EngineComponent")
+    local channel = valid(engine) and member(engine, "AudioComponent") or nil
+    if not valid(channel) then return nil end
+    local cue = member(channel, "Sound")
+    local componentGain = leasedAudio and leasedAudio.channelAddress == address_of(channel)
+        and leasedAudio.gain or tonumber(member(channel, "VolumeMultiplier"))
+    if not componentGain or componentGain < 0 then return nil end
+    local cueGain = valid(cue) and tonumber(member(cue, "VolumeMultiplier")) or 1
+    local master = setting_value(setting_keys()) or 1
+    local gain = componentGain * (cueGain or 1) * master
+    local settings = attenuation_of(channel, cue)
+    if not settings then return math.min(8, gain), 0, 0 end
+    local okEmitter, emitter = pcall(function() return channel:K2_GetComponentLocation() end)
+    local camera = member(pc, "PlayerCameraManager")
+    if not okEmitter or not valid(camera) then return nil end
+    local okLocation, listener = pcall(function() return camera:GetCameraLocation() end)
+    local okRotation, rotation = pcall(function() return camera:GetCameraRotation() end)
+    if not okLocation or not okRotation then return nil end
+    local ex, ey, ez = vector_of(emitter)
+    local lx, ly, lz = vector_of(listener)
+    local yaw = tonumber(member(rotation, "Yaw"))
+    if not (ex and lx and yaw) then return nil end
+    local dx, dy, dz = ex - lx, ey - ly, ez - lz
+    local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    gain = gain * distance_gain(settings, distance)
+    local pan = 0
+    if member(settings, "bSpatialize") ~= false and distance > 1 then
+        local rad = math.rad(yaw)
+        pan = (dx * -math.sin(rad) + dy * math.cos(rad)) / distance
+        -- Unreal blends to unspatialized audio inside the non-spatialized radius.
+        local inner = tonumber(member(settings, "NonSpatializedRadiusEnd")) or
+            tonumber(member(settings, "OmniRadius")) or 0
+        if inner > 0 and distance < inner then pan = pan * distance / inner end
+        pan = math.max(-1, math.min(1, pan))
+    end
+    return math.min(8, gain), pan, lowpass_of(settings, distance)
+end
+
+-- One-time inventory of every Motor Town engine and the stock sound data the
+-- game uses, so each can be given an exact Engine Simulator profile.
+local catalogCount, nextCatalog = -1, 0
+local function write_engine_catalog(vehicle)
+    if os.time() < nextCatalog then return end
+    nextCatalog = os.time() + 30
+    local ok, assets = pcall(function() return FindAllOf("MHEngineDataAsset") end)
+    if not ok or type(assets) ~= "table" or #assets == catalogCount then return end
+    catalogCount = #assets
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.19" }
+    local engine = member(vehicle, "EngineComponent")
+    local channel = valid(engine) and member(engine, "AudioComponent") or nil
+    local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
+    lines[#lines + 1] = "current\t" .. tostring(full_name(vehicle)) .. "\t" ..
+        tostring(full_name(valid(engine) and member(engine, "EngineData") or nil)) ..
+        "\t" .. tostring(sound_name(channel)) .. "\t" .. tostring(sound_name(intake))
+    setting_keys()
+    for value, name in pairs(soundSettingNames or {}) do
+        lines[#lines + 1] = "setting\t" .. name .. "\t" .. tostring(value) .. "\t" ..
+            tostring(setting_value(value))
+    end
+    for i, asset in ipairs(assets) do
+        if i > 400 then break end
+        local name = full_name(asset)
+        if name and not name:find("Default__", 1, true) then
+            local property = member(asset, "EngineProperty")
+            local fields = {}
+            for _, field in ipairs({ "EngineType", "MaxRPM", "MaxTorque", "IdleRPM",
+                "StarterRPM", "FuelType" }) do
+                local v = property and member(property, field)
+                if type(v) == "number" or type(v) == "boolean" then
+                    fields[#fields + 1] = field .. "=" .. tostring(v)
+                end
+            end
+            pcall(function()
+                local count = 0
+                asset:GetClass():ForEachProperty(function(prop)
+                    count = count + 1
+                    if count > 60 then return true end
+                    local pname = prop:GetFName():ToString()
+                    local v = member(asset, pname)
+                    if type(v) == "number" or type(v) == "boolean" or type(v) == "string" then
+                        fields[#fields + 1] = pname .. "=" .. tostring(v)
+                    elseif valid(v) then
+                        fields[#fields + 1] = pname .. "=" .. tostring(full_name(v))
+                    end
+                end)
+            end)
+            lines[#lines + 1] = "engine\t" .. name .. "\t" .. table.concat(fields, " ")
+        end
+    end
+    local file = io.open(ENGINE_CATALOG, "w")
+    if file then
+        file:write(table.concat(lines, "\n"), "\n")
+        file:close()
+        log("Engine catalog: " .. tostring(#lines - 1) .. " lines -> " .. ENGINE_CATALOG)
+    end
+end
+
 -- Same-game-process native DLL feed. The companion's MTES1 packet is kept
 -- unchanged. A missing gear is -99, never a guessed neutral (0).
 -- MTES3 adds the full EngineData UObject name for exact per-engine matching.
 -- MTES4 adds the read-only engine-volume setting. -1 means unknown.
-local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
+-- MTES5 adds the stock engine cue name and where/how loud Unreal would play
+-- it (gain, pan, low-pass Hz); gain -1 means unknown.
+local function write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
     nativeSequence = nativeSequence + 1
     local name = ""
     if valid(vehicle) then
@@ -810,9 +1026,20 @@ local function write_native_telemetry(vehicle, rpm, throttle, running, gear)
         log("Engine Volume: " .. volumeField)
         lastReportedVolume = volumeField
     end
-    local packet = string.format("MTES4 %s %d %.3f %.4f %d %d %s %d %.3f %s %s\n",
+    local cueHex, mixField = "-", "-1 0.0000 0"
+    if valid(vehicle) then
+        local engine = member(vehicle, "EngineComponent")
+        cueHex = hex_name(sound_name(valid(engine) and member(engine, "AudioComponent") or nil)) or "-"
+        if pc then
+            local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
+            if ok and gain then
+                mixField = string.format("%.4f %.4f %.0f", gain, pan, lowpass)
+            end
+        end
+    end
+    local packet = string.format("MTES5 %s %d %.3f %.4f %d %d %s %d %.3f %s %s %s %s\n",
         nativeSession, nativeSequence, rpm, throttle, running and 1 or 0, gear or -99,
-        encoded, engineType, maxRpm, encodedAsset, volumeField)
+        encoded, engineType, maxRpm, encodedAsset, volumeField, cueHex, mixField)
     local file = io.open(NATIVE_TELEMETRY, "w")
     if file then file:write(packet); file:close() end
 end
@@ -912,13 +1139,14 @@ local function tick()
     local running
     if type(ignition) == "boolean" then running = ignition else running = rpm >= 100 end
     write_telemetry(rpm, throttle, running)
-    write_native_telemetry(vehicle, rpm, throttle, running, gear)
+    write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
+    pcall(write_engine_catalog, vehicle)
 end
 
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.18 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.19 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

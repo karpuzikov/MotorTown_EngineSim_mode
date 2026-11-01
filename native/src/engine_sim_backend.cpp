@@ -1,8 +1,11 @@
 #include "engine_sim_backend.h"
 #include "impulse_wav.h"
 #include "overrun_fuel_cut.h"
+#include "loudness_leveler.h"
+#include "profile_level.h"
 
 #include "compiler.h"
+#include "crankshaft.h"
 #include "engine.h"
 #include "exhaust_system.h"
 #include "ignition_module.h"
@@ -20,6 +23,19 @@
 
 namespace mtes {
 namespace {
+
+// Engine Simulator's starter turns the crank to -starter_speed: negative
+// v_theta for most models, positive for those scripted with a negative
+// starter speed (e.g. the Honda B18C). The dynamometer keeps whichever
+// direction the crank already turns, and drives a resting crank backwards.
+void spin_forward(Engine *engine, double speed) {
+    const double direction = engine->getStarterSpeed() < 0.0 ? 1.0 : -1.0;
+    const double forward = direction * std::max(std::abs(speed), units::rpm(1.0));
+    for (int i = 0; i < engine->getCrankshaftCount(); ++i) {
+        auto &body = engine->getCrankshaft(i)->m_body;
+        if (!(body.v_theta * direction > 0.0)) body.v_theta = forward;
+    }
+}
 
 class EngineSimBackend final : public EngineBackend {
 public:
@@ -69,6 +85,18 @@ public:
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             m_simulator->synthesizer().setAudioParameters(audio);
+            m_calibrated = false;
+            if (const auto gain = profile_output_gain(script)) {
+                // Linear output at the profile's measured gain; the built-in
+                // leveler only limits peaks above its target. Set before the
+                // render thread starts. LoudnessLeveler shapes dynamics.
+                auto &leveler = m_simulator->synthesizer().m_levelingFilter;
+                leveler.p_maxLevel = static_cast<float>(*gain);
+                leveler.p_minLevel = static_cast<float>(*gain * 0.001);
+                m_profileGain = *gain;
+                m_calibrated = true;
+                m_leveler.reset();
+            }
 
             const int exhausts = m_engine->getExhaustSystemCount();
             if (exhausts <= 0) {
@@ -119,6 +147,11 @@ public:
         // sound in game. Ramp from the previous target across this frame.
         const double target = units::rpm(rpm);
         const double from = m_lastDynoSpeed >= 0.0 ? m_lastDynoSpeed : target;
+        // The dynamometer drives a resting crankshaft BACKWARDS. Without a
+        // starter every model ran in reverse: intake valves pumped gas into
+        // a closed throttle (30 atm manifold), throttle response was inverted
+        // and coasting whined like a drill. Spin it forward first.
+        spin_forward(m_engine, from);
         if (m_transmission->getGear() != gear) m_transmission->changeGear(gear);
         m_transmission->setClutchPressure(0.0);
 
@@ -132,6 +165,15 @@ public:
         // pinned third-party library or changing the actual engine model.
         m_simulator->setTargetSynthesizerLatency(
             m_simulator->getSynthesizerInputLatency());
+#ifndef MTES_MEASURE_RAW_LEVELS // offline profile calibration measures fixed gain
+        if (m_calibrated) {
+            // The synthesizer's render thread reads this cap per sample, as
+            // it reads upstream's own setAudioParameters() values: a single
+            // aligned float store, changed slowly and smoothed per sample.
+            m_simulator->synthesizer().m_levelingFilter.p_maxLevel =
+                static_cast<float>(m_profileGain * m_leveler.update(seconds));
+        }
+#endif
         m_simulator->startFrame(seconds);
         const int steps = m_simulator->getFrameIterationCount();
         do {
@@ -149,8 +191,10 @@ public:
         if (!m_simulator || !dst || frames == 0) return 0;
         const auto count = static_cast<int>(std::min<std::size_t>(
             frames, std::numeric_limits<int>::max()));
-        return static_cast<std::size_t>(
+        const auto read = static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
+        if (m_calibrated) m_leveler.observe(dst, read);
+        return read;
     }
 
     void stop() noexcept override {
@@ -158,6 +202,7 @@ public:
         // Engine Simulator checkout: upstream forgets several allocations.
         m_lastDynoSpeed = -1.0;
         m_fuelCut.reset();
+        m_calibrated = false;
         if (m_simulator) {
             m_simulator->releaseSimulation();
             delete m_simulator;
@@ -181,6 +226,9 @@ private:
     Simulator *m_simulator = nullptr;
     double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
     OverrunFuelCut m_fuelCut;
+    LoudnessLeveler m_leveler;
+    double m_profileGain = 1.0;
+    bool m_calibrated = false;
 };
 
 } // namespace

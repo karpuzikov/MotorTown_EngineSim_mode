@@ -37,7 +37,7 @@ endif()
 get_property(mtes_engine_sim_stage GLOBAL PROPERTY MTES_ENGINE_SIM_SOURCE_DIR)
 if(NOT EXISTS "${mtes_engine_sim_stage}/es/engine_sim.mr" OR
    NOT EXISTS "${mtes_engine_sim_stage}/assets/engines/atg-video-2/07_gm_ls.mr" OR
-   NOT EXISTS "${mtes_engine_sim_stage}/assets/sound-library/smooth/smooth_39.wav")
+   NOT EXISTS "${mtes_engine_sim_stage}/es/sound-library/smooth/smooth_39.wav")
     message(FATAL_ERROR "Pinned Engine Simulator script or V8 impulse-response assets are unavailable for staging")
 endif()
 
@@ -81,6 +81,10 @@ if(MTES_VCPKG_RUNTIME_BIN)
 elseif(WIN32)
     message(FATAL_ERROR "Set MTES_VCPKG_RUNTIME_BIN to the active vcpkg triplet's bin directory")
 endif()
+file(GLOB mtes_profile_scripts CONFIGURE_DEPENDS "${mtes_profile_source}/es_*.mr")
+if(NOT mtes_profile_scripts)
+    message(FATAL_ERROR "No Engine Simulator profiles in ${mtes_profile_source}")
+endif()
 add_custom_target(mtes-stage-dev ALL
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -94,17 +98,18 @@ add_custom_target(mtes-stage-dev ALL
         "${mtes_bridge_source}/enabled.txt" "${mtes_stage_mod}/enabled.txt"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${mtes_profile_source}/engine_profiles.tsv" "${mtes_stage_mod}/engine_profiles.tsv"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_mod}/assets/engines/atg-video-2"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-        "${mtes_profile_source}/dory_v8_prototype.mr"
-        "${mtes_stage_mod}/assets/dory_v8_prototype.mr"
+        "${mtes_profile_source}/engine_families.tsv" "${mtes_stage_mod}/engine_families.tsv"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-        "${mtes_engine_sim_stage}/assets/engines/atg-video-2/07_gm_ls.mr"
-        "${mtes_stage_mod}/assets/engines/atg-video-2/07_gm_ls.mr"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_mod}/assets/sound-library/smooth"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-        "${mtes_engine_sim_stage}/assets/sound-library/smooth/smooth_39.wav"
-        "${mtes_stage_mod}/assets/sound-library/smooth/smooth_39.wav"
+        "${mtes_profile_source}/settings.ini" "${mtes_stage_mod}/settings.ini"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_mod}/assets"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${mtes_profile_scripts}
+        "${mtes_stage_mod}/assets/"
+    # Every bundled Engine Simulator engine model and its impulse responses.
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${mtes_engine_sim_stage}/assets/engines" "${mtes_stage_mod}/assets/engines"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${mtes_engine_sim_stage}/es/sound-library" "${mtes_stage_mod}/assets/sound-library"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es" "${mtes_stage_mod}/es"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different

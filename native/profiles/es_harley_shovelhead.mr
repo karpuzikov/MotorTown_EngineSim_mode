@@ -1,0 +1,6 @@
+// mtes-output-gain: 0.00195
+// 45-degree V-twin (Harley-Davidson Shovelhead). Engine Simulator model, measured full-throttle level -14 dBFS.
+import "engine_sim.mr"
+import "engines/atg-video-1/03_harley_davidson_shovelhead.mr"
+
+main()

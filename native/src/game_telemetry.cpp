@@ -32,32 +32,55 @@ std::optional<std::string> decode_name(const std::string &hex) {
     }
     return vehicle;
 }
+
+std::optional<double> number(const std::string &text) {
+    double value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(),
+        value, std::chars_format::general);
+    if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value))
+        return std::nullopt;
+    return value;
+}
 } // namespace
 
 std::optional<GameTelemetrySample> parse_game_telemetry(std::string_view line) {
-    if (line.size() > 2400) return std::nullopt;
+    if (line.size() > 3600) return std::nullopt;
     std::istringstream input{std::string(line)};
     input.imbue(std::locale::classic());
     std::string header, session, sequenceText, vehicleHex, assetHex, volumeText, extra;
+    std::string cueHex, gainText, panText, lowpassText;
     GameTelemetrySample sample;
     int ignition = -1;
     if (!(input >> header >> session >> sequenceText >> sample.state.rpm >>
         sample.state.throttle >> ignition >> sample.state.gear >> vehicleHex >>
         sample.engine_type >> sample.max_rpm)) return std::nullopt;
-    if (header == "MTES4") {
+    if (header == "MTES4" || header == "MTES5") {
         if (!(input >> assetHex >> volumeText)) return std::nullopt;
-        double volume = 0;
-        const auto [end, error] = std::from_chars(volumeText.data(),
-            volumeText.data() + volumeText.size(), volume, std::chars_format::general);
-        if (error != std::errc{} || end != volumeText.data() + volumeText.size() ||
-            !std::isfinite(volume) || (volume != -1 && (volume < 0 || volume > 1)))
+        const auto volume = number(volumeText);
+        if (!volume || (*volume != -1 && (*volume < 0 || *volume > 1)))
             return std::nullopt;
-        if (volume != -1) sample.engine_volume = volume;
+        if (*volume != -1) sample.engine_volume = *volume;
     }
     else if (header == "MTES3") {
         if (!(input >> assetHex)) return std::nullopt;
     }
     else if (header != "MTES2") return std::nullopt;
+    if (header == "MTES5") {
+        // -1 gain: Lua could not read the stock emitter's attenuation.
+        if (!(input >> cueHex >> gainText >> panText >> lowpassText)) return std::nullopt;
+        const auto gain = number(gainText);
+        const auto pan = number(panText);
+        const auto lowpass = number(lowpassText);
+        if (!gain || !pan || !lowpass || (*gain != -1 && (*gain < 0 || *gain > 8)) ||
+            *pan < -1 || *pan > 1 || (*lowpass != 0 && (*lowpass < 10 || *lowpass > 30000)))
+            return std::nullopt;
+        if (*gain != -1) sample.mix = SpatialMix{*gain, *pan, *lowpass};
+        if (cueHex != "-") {
+            const auto cue = decode_name(cueHex);
+            if (!cue) return std::nullopt;
+            sample.engine_cue = std::move(*cue);
+        }
+    }
     if (input >> extra) return std::nullopt;
     // Extraction into uint64_t accepts a minus sign on some standard
     // implementations, turning -1 into UINT64_MAX and poisoning the feed.

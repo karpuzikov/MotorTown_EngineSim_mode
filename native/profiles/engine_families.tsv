@@ -1,0 +1,26 @@
+# Motor Town engine family -> Engine Simulator profile. First match wins.
+# field	ECMAScript regex, case-insensitive	profile (- keeps the stock sound)
+# "asset" matches the EngineData full name, "cue" the stock engine SoundCue.
+asset	electric|battery|e-?motor|(^|[^a-z])ev([^a-z]|$)	-
+asset	2jz|1jz|rb2[56]	assets/es_toyota_2jz.mr
+asset	hayabusa	assets/es_hayabusa.mr
+asset	(^|[^a-z])(b1[68]|k2[04])|vtec	assets/es_honda_b18c.mr
+asset	(^|[^a-z])ej2[025]|boxer|flat-?4|(^|[^a-z0-9])h4([^0-9]|$)	assets/es_subaru_ej25.mr
+asset	lfa|(^|[^a-z0-9])v10([^0-9]|$)	assets/es_lfa_v10.mr
+asset	(^|[^a-z0-9])v12([^0-9]|$)	assets/es_ferrari_412.mr
+asset	f136|flat-?plane	assets/es_ferrari_f136.mr
+asset	454|big-?block	assets/es_chev_454.mr
+asset	(^|[^a-z0-9])v8([^0-9]|$)|smal+-?block|(^|[^a-z])ls[1-9]	assets/es_gm_ls.mr
+asset	(^|[^a-z0-9])v6([^0-9]|$)	assets/es_v6_60.mr
+asset	(^|[^a-z0-9])[il]5([^0-9]|$)|inline-?5|straight-?5|5-?cyl	assets/es_audi_i5.mr
+asset	(^|[^a-z0-9])[il]6([^0-9]|$)|inline-?6|straight-?6|6-?cyl	assets/es_bmw_m52.mr
+asset	(^|[^a-z0-9])[il]4([^0-9]|$)|inline-?4|straight-?4|4-?cyl	assets/es_honda_b18c.mr
+asset	v-?twin|harley	assets/es_harley_shovelhead.mr
+asset	single|1-?cyl|atv|scooter	assets/es_honda_trx520.mr
+asset	bike|motorcycle	assets/es_hayabusa.mr
+asset	diesel|truck|bus|semi|tractor	assets/es_bmw_m52.mr
+cue	/v8/|v8engine	assets/es_gm_ls.mr
+cue	v6	assets/es_v6_60.mr
+cue	(^|[^a-z0-9])[il]4|inline-?4|4-?cyl	assets/es_honda_b18c.mr
+cue	truck|bus|diesel	assets/es_bmw_m52.mr
+cue	bike|motorcycle	assets/es_hayabusa.mr

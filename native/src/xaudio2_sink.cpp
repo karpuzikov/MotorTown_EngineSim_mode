@@ -8,7 +8,10 @@
 #include <Windows.h>
 #include <xaudio2.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <vector>
 
 namespace mtes {
 
@@ -17,6 +20,8 @@ struct XAudio2Sink::Impl final : IXAudio2VoiceCallback {
     IXAudio2* engine = nullptr;
     IXAudio2MasteringVoice* master = nullptr;
     IXAudio2SourceVoice* source = nullptr;
+    UINT32 outputChannels = 0;
+    float appliedLeft = -1.0f, appliedRight = -1.0f, appliedFilter = -1.0f;
     std::atomic<bool> failed{false};
 
     ~Impl() {
@@ -34,6 +39,10 @@ struct XAudio2Sink::Impl final : IXAudio2VoiceCallback {
     bool open() {
         if (FAILED(XAudio2Create(&engine, 0, XAUDIO2_DEFAULT_PROCESSOR))) return false;
         if (FAILED(engine->CreateMasteringVoice(&master))) return false;
+        XAUDIO2_VOICE_DETAILS details{};
+        master->GetVoiceDetails(&details);
+        outputChannels = details.InputChannels;
+        if (outputChannels == 0 || outputChannels > XAUDIO2_MAX_AUDIO_CHANNELS) return false;
 
         WAVEFORMATEX format{};
         format.wFormatTag = WAVE_FORMAT_PCM;
@@ -43,7 +52,27 @@ struct XAudio2Sink::Impl final : IXAudio2VoiceCallback {
         format.nBlockAlign = sizeof(std::int16_t);
         format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
         return SUCCEEDED(engine->CreateSourceVoice(
-            &source, &format, 0, XAUDIO2_DEFAULT_FREQ_RATIO, this));
+            &source, &format, XAUDIO2_VOICE_USEFILTER, XAUDIO2_DEFAULT_FREQ_RATIO, this));
+    }
+
+    // Equal-power pan onto front left/right (mono output: summed power).
+    void apply(const SpatialMix& mix, double volume) noexcept {
+        if (!source) return;
+        const auto [left, right] = equal_power_gains(mix, volume);
+        if (std::abs(left - appliedLeft) > 0.0005f || std::abs(right - appliedRight) > 0.0005f) {
+            std::vector<float> matrix(outputChannels, 0.0f);
+            if (outputChannels == 1) matrix[0] = std::sqrt(left * left + right * right);
+            else { matrix[0] = left; matrix[1] = right; }
+            if (SUCCEEDED(source->SetOutputMatrix(master, 1, outputChannels, matrix.data()))) {
+                appliedLeft = left;
+                appliedRight = right;
+            }
+        }
+        const float frequency = xaudio2_lowpass_frequency(mix.lowpass_hz);
+        if (std::abs(frequency - appliedFilter) > 0.0005f) {
+            XAUDIO2_FILTER_PARAMETERS filter{LowPassFilter, frequency, 1.0f};
+            if (SUCCEEDED(source->SetFilterParameters(&filter))) appliedFilter = frequency;
+        }
     }
 
     void __stdcall OnVoiceProcessingPassStart(UINT32) noexcept override {}
@@ -68,6 +97,7 @@ bool XAudio2Sink::queue(const std::int16_t* pcm, std::size_t frames) {
         auto candidate = std::make_unique<Impl>();
         if (!candidate->open()) return false;
         m_impl = std::move(candidate);
+        m_impl->apply(m_mix, m_volume); // before any PCM becomes audible
     }
     if (m_impl->failed.load(std::memory_order_acquire)) return false;
 
@@ -91,6 +121,16 @@ bool XAudio2Sink::start() {
 
 void XAudio2Sink::stop() noexcept { m_impl.reset(); }
 
+void XAudio2Sink::set_mix(const SpatialMix& mix) noexcept {
+    m_mix = mix;
+    if (m_impl) m_impl->apply(m_mix, m_volume);
+}
+
+void XAudio2Sink::set_output_volume(double volume) noexcept {
+    m_volume = std::isfinite(volume) ? std::clamp(volume, 0.0, 4.0) : 1.0;
+    if (m_impl) m_impl->apply(m_mix, m_volume);
+}
+
 } // namespace mtes
 
 #else
@@ -103,6 +143,8 @@ XAudio2Sink::~XAudio2Sink() = default;
 bool XAudio2Sink::queue(const std::int16_t*, std::size_t) { return false; }
 bool XAudio2Sink::start() { return false; }
 void XAudio2Sink::stop() noexcept {}
+void XAudio2Sink::set_mix(const SpatialMix& mix) noexcept { m_mix = mix; }
+void XAudio2Sink::set_output_volume(double volume) noexcept { m_volume = volume; }
 
 } // namespace mtes
 

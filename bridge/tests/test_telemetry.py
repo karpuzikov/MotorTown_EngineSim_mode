@@ -38,7 +38,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_native_feed_exposes_real_gear_without_changing_legacy_packet(self):
         native = self.native_sample('deep_sound_and_gear')
-        self.assertEqual(native[0], 'MTES4')
+        self.assertEqual(native[0], 'MTES5')
         self.assertRegex(native[1], r'^[0-9A-F]{16}$')
         self.assertEqual(native[2:7], ['1', '2400.000', '0.8000', '1', '3'])
         self.assertEqual(bytes.fromhex(native[7]).decode(), 'DoryWrecker_C test object')
@@ -48,18 +48,18 @@ class TelemetryTests(unittest.TestCase):
 
     def test_native_feed_reads_only_sdk_engine_volume_key(self):
         native = self.native_sample('settings_volume')
-        self.assertEqual(native[0], 'MTES4')
-        self.assertEqual(len(native), 12)
-        self.assertEqual(native[-1], '0.6500') # master volume is 0.25
+        self.assertEqual(native[0], 'MTES5')
+        self.assertEqual(len(native), 16)
+        self.assertEqual(native[11], '0.6500') # master volume is 0.25
 
     def test_native_feed_preserves_zero_engine_volume(self):
         native = self.native_sample('settings_zero')
-        self.assertEqual(native[-1], '0.0000')
+        self.assertEqual(native[11], '0.0000')
 
     def test_native_feed_follows_slider_change(self):
         native = self.native_sample('settings_change')
         self.assertEqual(native[2], '2')
-        self.assertEqual(native[-1], '0.9500')
+        self.assertEqual(native[11], '0.9500')
 
     def test_diagnostics_record_initial_engine_volume_and_changes(self):
         _, diagnostics = self.sample('settings_change')
@@ -70,8 +70,8 @@ class TelemetryTests(unittest.TestCase):
         for case in ('settings_missing', 'settings_bad_type', 'settings_bad_range'):
             with self.subTest(case=case):
                 native = self.native_sample(case)
-                self.assertEqual(native[0], 'MTES4')
-                self.assertEqual(native[-1], '-1')
+                self.assertEqual(native[0], 'MTES5')
+                self.assertEqual(native[11], '-1')
 
     def test_native_feed_carries_engine_metadata_when_available(self):
         native = self.native_sample('crowded_audio_and_engine_profile')
@@ -82,7 +82,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_native_feed_does_not_invent_missing_engine_identity(self):
         native = self.native_sample('autopilot')
-        self.assertEqual(native[0], 'MTES4')
+        self.assertEqual(native[0], 'MTES5')
         self.assertEqual(native[10], '-')
 
     def test_native_feed_rejects_unknown_gear_instead_of_assuming_neutral(self):
@@ -91,7 +91,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_native_feed_discovers_transmission_loaded_after_engine(self):
         native = self.native_sample('late_gear')
-        self.assertEqual(native[0], 'MTES4')
+        self.assertEqual(native[0], 'MTES5')
         self.assertEqual(native[2], '2')
         self.assertEqual(native[6], '3')
 
@@ -148,7 +148,7 @@ class TelemetryTests(unittest.TestCase):
 
     def test_discovery_snapshot_records_a_component_that_appears_later(self):
         _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.18', snapshot)
+        self.assertIn('v0.2.19', snapshot)
         self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
         self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
 

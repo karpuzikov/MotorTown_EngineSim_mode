@@ -196,10 +196,40 @@ __test_mute(nil)
 assert(read(ack) == "MTESA0")
 assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75)
 
--- Dory's verified intake is mandatory. An absent component cannot grant a
--- partial engine-only mute lease that leaves unknown intake sound audible.
-engine.IntakeAudioComponent = nil
+-- Every car's own engine cue is leasable, not only the Dory's V8: a V6 car
+-- with a different intake cue mutes both of its own components.
+__test_mute(nil)
+assert(read(ack) == "MTESA0")
+local v6Cue = object("SoundCue /Game/Cars/Parts/Engine/Sound/V6Sport_02/SC_V6.SC_V6")
+local v6Intake = object("SoundCue /Game/Sounds/Vehicle/Intake/SC_Intake03.SC_Intake03")
+channel.Sound, intake.Sound = v6Cue, v6Intake
 lease(11, "BC66")
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0.63, "Missing intake cannot mute only engine")
-assert(read(ack) == "MTESA0", "Missing verified intake cannot authorize PCM")
+assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0,
+    "A non-V8 engine cue must be replaceable")
+assert(read(ack) == string.format("MTESA1 %s 11 BC66 %s %s", session,
+    hex(vehicleName), hex(assetName)))
+-- Its cue swapping to another while leased still revokes at once.
+intake.Sound = intakeCue
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0.63 and intake.VolumeMultiplier == 0.75,
+    "A swapped intake cue must revoke the lease")
+assert(read(ack) == "MTESA0")
+
+-- A car without an intake component has no intake sound to leave audible:
+-- its engine cue alone is leased.
+engine.IntakeAudioComponent = nil
+lease(12, "CD77")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0, "Engine-only cars must be replaceable")
+assert(read(ack) == string.format("MTESA1 %s 12 CD77 %s %s", session,
+    hex(vehicleName), hex(assetName)))
+__test_mute(nil)
+assert(channel.VolumeMultiplier == 0.63)
+
+-- No engine cue at all: nothing verified to replace.
+channel.Sound = nil
+lease(13, "DE88")
+__test_mute(vehicle)
+assert(channel.VolumeMultiplier == 0.63, "A component without a cue is not leased")
+assert(read(ack) == "MTESA0")

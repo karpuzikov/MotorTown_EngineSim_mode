@@ -1,6 +1,0 @@
-// Development-only Engine Simulator V8 sound trial for Motor Town's Dory.
-// The imported GM LS model is a temporary V8 proxy, NOT a Ford 302 match.
-import "engine_sim.mr"
-import "engines/atg-video-2/07_gm_ls.mr"
-
-main()

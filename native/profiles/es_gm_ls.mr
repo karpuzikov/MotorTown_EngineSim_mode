@@ -1,0 +1,6 @@
+// mtes-output-gain: 0.00211
+// Cross-plane V8 (GM LS). Engine Simulator model, measured full-throttle level -14 dBFS.
+import "engine_sim.mr"
+import "engines/atg-video-2/07_gm_ls.mr"
+
+main()

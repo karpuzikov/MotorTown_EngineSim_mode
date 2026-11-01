@@ -1,0 +1,6 @@
+// mtes-output-gain: 0.0111
+// Flat-plane V8 (Ferrari F136). Engine Simulator model, measured full-throttle level -14 dBFS.
+import "engine_sim.mr"
+import "engines/atg-video-2/08_ferrari_f136_v8.mr"
+
+main()

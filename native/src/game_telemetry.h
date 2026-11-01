@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine_audio.h"
+#include "spatial_mix.h"
 
 #include <chrono>
 #include <cstdint>
@@ -20,6 +21,8 @@ struct GameTelemetrySample {
     double max_rpm = 0;
     std::string engine_asset; // MTES3: exact EngineData UObject full name; empty if unknown
     std::optional<double> engine_volume; // MTES4: game Engine Volume [0,1]; absent if unverified
+    std::string engine_cue; // MTES5: stock engine SoundCue full name; empty if unknown
+    std::optional<SpatialMix> mix; // MTES5: stock sound position/loudness; absent if unknown
 };
 
 // Missing or unknown gear is rejected: guessing neutral caused the old bridge

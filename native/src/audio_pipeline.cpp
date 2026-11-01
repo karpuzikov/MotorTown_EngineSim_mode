@@ -184,6 +184,8 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
             m_pcm.resize(std::clamp(frames, std::size_t{1}, MaxPacketFrames));
         }
 
+        // Unreal would attenuate and pan the stock cue; XAudio2 must too.
+        m_output.set_mix(sample->mix.value_or(SpatialMix{}));
         if (!m_output.submit(sample->vehicle, stock, m_pcm.data(), m_pcm.size(),
                 now, gameEngineVolume, stillEligible)) {
             // PCM can legitimately underrun while the simulator warms up.
