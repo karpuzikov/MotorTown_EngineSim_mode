@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.20, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.21, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -831,7 +831,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.20 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.21 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -1052,7 +1052,7 @@ local function write_engine_catalog(vehicle)
     local ok, assets = pcall(function() return FindAllOf("MHEngineDataAsset") end)
     if not ok or type(assets) ~= "table" or #assets == catalogCount then return end
     catalogCount = #assets
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.20" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.21" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1162,7 +1162,65 @@ local function write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
     if file then file:write(packet); file:close() end
 end
 
+-- The player wants no stock engine sound at all, from any car: silence the
+-- shared engine/intake sound ASSETS themselves (every layer, every car,
+-- whatever component plays them). Kept stock: electric motors (no
+-- combustion to simulate), backfire/afterfire pops and jake brakes.
+local STOCK_ENGINE_DIRS = { "/game/cars/parts/engine/sound/", "/game/sounds/vehicle/intake/" }
+local KEEP_STOCK = { "/electric/", "backfire", "afterfire", "jakebrake" }
+local checkedStockSounds = {}
+local mutedStockSounds = 0
+local nextStockCueScan, nextStockWaveScan = 0, 0
+local function is_stock_engine_asset(name)
+    if type(name) ~= "string" or name:find("Default__", 1, true) then return false end
+    local lower = name:lower()
+    local inside = false
+    for _, dir in ipairs(STOCK_ENGINE_DIRS) do
+        if lower:find(dir, 1, true) then inside = true end
+    end
+    if not inside then return false end
+    for _, keep in ipairs(KEEP_STOCK) do
+        if lower:find(keep, 1, true) then return false end
+    end
+    return true
+end
+
+local function silence_class(className, property)
+    local ok, list = pcall(FindAllOf, className)
+    if not ok or type(list) ~= "table" then return end
+    for _, sound in ipairs(list) do
+        local address = address_of(sound)
+        if address and not checkedStockSounds[address] then
+            checkedStockSounds[address] = true
+            if is_stock_engine_asset(full_name(sound)) then
+                local set = pcall(function() sound[property] = 0.0 end)
+                if set and tonumber(member(sound, property)) == 0 then
+                    mutedStockSounds = mutedStockSounds + 1
+                else
+                    checkedStockSounds[address] = nil -- retry next scan
+                end
+            end
+        end
+    end
+end
+
+local function silence_stock_engine_sounds()
+    local before = mutedStockSounds
+    if os.time() >= nextStockCueScan then
+        nextStockCueScan = os.time() + 5
+        silence_class("SoundCue", "VolumeMultiplier")
+    end
+    if os.time() >= nextStockWaveScan then
+        nextStockWaveScan = os.time() + 20
+        silence_class("SoundWave", "Volume")
+    end
+    if mutedStockSounds ~= before then
+        log("Silenced stock engine sound assets: " .. tostring(mutedStockSounds))
+    end
+end
+
 local function tick()
+    pcall(silence_stock_engine_sounds)
     local pc = nil
     local success, result = pcall(function()
         local helpers = require("UEHelpers")
@@ -1264,7 +1322,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.20 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.21 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

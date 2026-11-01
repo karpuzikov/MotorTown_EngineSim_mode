@@ -281,3 +281,33 @@ lease(22, "F1BB")
 __test_mute(vehicle)
 assert(read(ack) == string.format("MTESA1 %s 22 F1BB %s %s", session,
     hex(vehicleName), hex(assetName)), "A stuck restore must give up eventually")
+
+-- No stock engine sound from any car: the shared engine/intake assets are
+-- silenced; electric motors, backfire, jake brake and unrelated sounds stay.
+local counter = 0x9000
+local function asset(name, field, value)
+    counter = counter + 1
+    local address = counter
+    local o = object(name, { [field] = value })
+    o.GetAddress = function() return address end
+    return o
+end
+local v8 = asset("SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine", "VolumeMultiplier", 1.0)
+local v6Wave = asset("SoundWave /Game/Cars/Parts/Engine/Sound/V6Sport/V6Sport_02/Exhaust_3000.Exhaust_3000", "Volume", 0.8)
+local intakeWave = asset("SoundCue /Game/Sounds/Vehicle/Intake/SC_Intake01.SC_Intake01", "VolumeMultiplier", 0.7)
+local electric = asset("SoundCue /Game/Cars/Parts/Engine/Sound/Electric/SC_ElectricMotor.SC_ElectricMotor", "VolumeMultiplier", 1.0)
+local backfire = asset("SoundCue /Game/Cars/Parts/Engine/Sound/Backfire/SC_Backfire.SC_Backfire", "VolumeMultiplier", 1.0)
+local jake = asset("SoundCue /Game/Sounds/Vehicle/Brake/JakeBrake/SC_JakeBrake_01.SC_JakeBrake_01", "VolumeMultiplier", 1.0)
+local hornCue = asset("SoundCue /Game/Sounds/Vehicle/Horn/SC_Horn.SC_Horn", "VolumeMultiplier", 1.0)
+local cdo = asset("SoundCue /Script/Engine.Default__SoundCue", "VolumeMultiplier", 1.0)
+FindAllOf = function(class)
+    if class == "SoundCue" then return { v8, intakeWave, electric, backfire, jake, hornCue, cdo } end
+    if class == "SoundWave" then return { v6Wave } end
+    return nil
+end
+__test_silence()
+assert(v8.VolumeMultiplier == 0 and intakeWave.VolumeMultiplier == 0, "Stock engine/intake cues silenced")
+assert(v6Wave.Volume == 0, "Stock engine sound-data waves silenced")
+assert(electric.VolumeMultiplier == 1.0, "Electric motors keep their sound")
+assert(backfire.VolumeMultiplier == 1.0 and jake.VolumeMultiplier == 1.0, "Pops and jake brake stay")
+assert(hornCue.VolumeMultiplier == 1.0 and cdo.VolumeMultiplier == 1.0)

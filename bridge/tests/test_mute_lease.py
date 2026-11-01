@@ -28,7 +28,7 @@ class MuteLeaseLuaTests(unittest.TestCase):
             anchor = 'local function tick()'
             self.assertEqual(script.count(anchor), 1)
             script = script.replace(anchor,
-                '_G.__test_mute = mute_lease_tick\n_G.__test_session = nativeSession\n' + anchor)
+                '_G.__test_mute = mute_lease_tick\n_G.__test_session = nativeSession\n_G.__test_silence = silence_stock_engine_sounds\n' + anchor)
             program = temp / 'test.lua'
             program.write_text('''LoopInGameThreadWithDelay = function() end
 ''' + script + '\n' + HARNESS.read_text())
