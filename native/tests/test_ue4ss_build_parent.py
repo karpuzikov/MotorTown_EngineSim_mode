@@ -18,11 +18,16 @@ CMAKE = os.environ.get('MTES_TEST_CMAKE') or shutil.which('cmake')
 
 @unittest.skipUnless(CMAKE, 'Requires CMake and a C++ compiler')
 class UE4SSParentBuildTests(unittest.TestCase):
-    def configure(self, ue4ss, native, build, runtime_bin=None):
+    def configure(self, ue4ss, native, build, runtime_bin=None, shipping=False):
         command = [
             CMAKE, '-S', str(PARENT), '-B', str(build),
             f'-DMTES_UE4SS_SOURCE={ue4ss}', f'-DMTES_NATIVE_SOURCE={native}',
         ]
+        if shipping:
+            command.extend([
+                '-DCMAKE_BUILD_TYPE=Game__Shipping__Win64',
+                '-DCMAKE_CONFIGURATION_TYPES=Game__Shipping__Win64;Release',
+            ])
         if runtime_bin is not None:
             command.append(f'-DMTES_VCPKG_RUNTIME_BIN={runtime_bin}')
         return subprocess.run(command, text=True, capture_output=True, timeout=30)
@@ -57,14 +62,24 @@ class UE4SSParentBuildTests(unittest.TestCase):
                 f'set_property(GLOBAL PROPERTY MTES_ENGINE_SIM_SOURCE_DIR "{sim.as_posix()}")\n'
                 'add_library(MotorTownEngineSim SHARED mod.cpp)\n'
                 'target_link_libraries(MotorTownEngineSim PRIVATE UE4SS)\n'
+                'add_library(ImportedBoost STATIC IMPORTED)\n'
+                'set_target_properties(ImportedBoost PROPERTIES\n'
+                '  IMPORTED_CONFIGURATIONS "DEBUG;RELEASE"\n'
+                '  IMPORTED_LOCATION_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug-boost.lib"\n'
+                '  IMPORTED_LOCATION_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release-boost.lib")\n'
+                'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/boost-$<CONFIG>.txt"\n'
+                '  CONTENT "$<TARGET_FILE:ImportedBoost>")\n'
             )
             runtime_bin = temp / 'vcpkg deps/bin'
             runtime_bin.mkdir(parents=True)
             boost_dll = 'boost_filesystem-vc143-mt-x64-1_92.dll'
             (runtime_bin / boost_dll).write_bytes(b'fake Boost dynamic runtime')
             (runtime_bin / 'not-a-runtime.txt').write_text('do not bundle me')
-            configured = self.configure(ue4ss, native, build, runtime_bin)
+            configured = self.configure(ue4ss, native, build, runtime_bin, shipping=True)
             self.assertEqual(configured.returncode, 0, configured.stdout + configured.stderr)
+            selected = build / 'boost-Game__Shipping__Win64.txt'
+            self.assertEqual(Path(selected.read_text()).name, 'release-boost.lib',
+                             'Shipping must never import the debug Boost runtime')
             compiled = subprocess.run([CMAKE, '--build', str(build), '--config', 'Release',
                                        '--target', 'mtes-stage-dev'],
                                       text=True, capture_output=True, timeout=30)

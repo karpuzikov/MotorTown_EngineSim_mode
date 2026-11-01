@@ -21,6 +21,11 @@ add_subdirectory("${MTES_UE4SS_SOURCE}" "${CMAKE_BINARY_DIR}/UE4SS")
 if(NOT TARGET UE4SS)
     message(FATAL_ERROR "The selected UE4SS source did not define a UE4SS target")
 endif()
+# UE4SS's custom Shipping configuration has no matching vcpkg Boost config.
+# Without an explicit mapping CMake arbitrarily picks DEBUG, importing a
+# boost_*gd*.dll that cannot load with the game's release CRT. Apply only to
+# third-party imported targets created within the native mod subtree.
+set(CMAKE_MAP_IMPORTED_CONFIG_GAME__SHIPPING__WIN64 Release)
 add_subdirectory("${MTES_NATIVE_SOURCE}" "${CMAKE_BINARY_DIR}/MotorTownEngineSim")
 if(NOT TARGET MotorTownEngineSim)
     message(FATAL_ERROR "MotorTownEngineSim must be a shared library target")
