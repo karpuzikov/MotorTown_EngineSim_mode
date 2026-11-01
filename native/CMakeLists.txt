@@ -8,6 +8,11 @@ option(MTES_HEADLESS_SMOKE "Build only a Windows headless Engine Simulator PCM s
 
 include(FetchContent)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# Re-run the vetted build-only core patch whenever its implementation changes.
+# On an existing UE4SS build, CMake reconfigures and recompiles the updated
+# synthesizer automatically without requiring a fresh SDK or build directory.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/patch_engine_sim_core.py")
 
 # Pin the known Engine Simulator fork. FetchContent places the checkout inside
 # the build directory, so the compatibility patch never modifies a developer's

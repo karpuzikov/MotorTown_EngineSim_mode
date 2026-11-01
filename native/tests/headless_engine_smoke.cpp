@@ -4,6 +4,7 @@
 #include "engine_sim_backend.h"
 
 #include <array>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -37,6 +38,30 @@ int main(int argc, char **argv) {
         }
         std::cout << argv[profile] << " audible PCM samples: " << audible << "\n";
         if (audible < 100) return 4;
+
+        // Reproduce the *real* in-game consumer. The old synth rendering
+        // thread capped its ring buffer at 2000 frames, so an otherwise
+        // healthy 882-frame desktop smoke passed while every 2205-frame
+        // Motor Town packet failed open with a permanent underrun.
+        std::array<std::int16_t, 2205> gamePcm{};
+        int completeGamePackets = 0;
+        for (int frame = 0; frame < 80; ++frame) {
+            const auto now = start + std::chrono::milliseconds(2400 + frame * 50);
+            if (!audio.update("native-test-vehicle-" + std::to_string(profile),
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance Motor Town-size PCM packet\n";
+                return 6;
+            }
+            if (audio.render(gamePcm.data(), gamePcm.size(), now) == gamePcm.size() &&
+                std::any_of(gamePcm.begin(), gamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; })) {
+                ++completeGamePackets;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::cout << argv[profile] << " complete Motor Town PCM packets: "
+                  << completeGamePackets << "\n";
+        if (completeGamePackets < 5) return 7;
     }
     audio.stop();
     if (audio.is_replacing_stock()) return 5;

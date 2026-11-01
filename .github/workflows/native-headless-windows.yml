@@ -57,6 +57,13 @@ jobs:
             -DMTES_HEADLESS_SMOKE=ON `
             -DCMAKE_TOOLCHAIN_FILE='C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
 
+      - name: Verify pinned synth packet limit and previous build patch upgrade
+        shell: pwsh
+        run: |
+          $env:MTES_ENGINE_SIM_SOURCE = (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path
+          python -m unittest native.tests.test_core_patch -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build genuine Engine Simulator PCM source
         shell: pwsh
         run: cmake --build native/build-windows --config Release --target mtes-headless-smoke --parallel 4

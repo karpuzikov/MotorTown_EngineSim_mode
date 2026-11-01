@@ -1,6 +1,8 @@
 """Safely patch a build-only Engine Simulator checkout for repeated vehicle swaps."""
 import os
 from pathlib import Path
+import hashlib
+import re
 import shutil
 import sys
 import tempfile
@@ -59,7 +61,7 @@ class CorePatchTests(unittest.TestCase):
         self.assertIn("delete[] m_inputChannels[i].transferBuffer;", synth)
         self.assertIn("std::lock_guard<std::mutex> lock(m_lock0);", synth)
         self.assertNotIn("std::unique_lock<std::mutex> lk(m_inputLock);", synth)
-        self.assertIn("std::array<int16_t, 2000> rendered", synth)
+        self.assertIn("std::array<int16_t, 4096> rendered", synth)
         self.assertIn("delete[] m_history;", jitter)
         self.assertNotIn("assert(m_antialiasingFilters == nullptr);", piston)
         self.assertIn("m_compiler->addSearchPath(scriptLibrary.toString());", compiler)
@@ -93,6 +95,72 @@ class CorePatchTests(unittest.TestCase):
         bad.write_text(bad.read_text().replace("delete[] m_dynoTorqueSamples;", "// allocation leaked;"))
         with self.assertRaises(ValueError):
             patcher.patch(self.root)
+
+    def test_known_legacy_audio_limit_upgrades_existing_build_tree(self):
+        patcher.patch(self.root)
+        sound = self.root / 'src/synthesizer.cpp'
+        modern = sound.read_text()
+        old = modern.replace('4096', '2000')
+        self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
+                         patcher.LEGACY_SYNTHESIZER_PATCHED_SHA)
+        sound.write_text(old)
+        patcher.patch(self.root)
+        self.assertEqual(sound.read_text(), modern)
+        patcher.patch(self.root)  # Upgrade is idempotent.
+
+
+class SynthesizerPacketCapacityTests(unittest.TestCase):
+    def test_existing_build_upgrades_previous_synth_limit(self):
+        legacy = (
+            'm_audioBuffer.size() < 2000;\n'
+            'std::max(0, 2000 - (int)m_audioBuffer.size()),\n'
+            'std::array<int16_t, 2000> rendered;\n'
+        )
+        modern = patcher.upgrade_legacy_synthesizer(legacy)
+        self.assertEqual(modern.count('4096'), 3)
+        self.assertNotIn('2000', modern)
+
+    def test_cmake_reconfigures_when_core_patch_changes(self):
+        cmake = (ROOT / 'CMakeLists.txt').read_text()
+        self.assertIn('CMAKE_CONFIGURE_DEPENDS', cmake)
+        self.assertIn('patch_engine_sim_core.py', cmake)
+
+    def test_real_windows_smoke_exercises_motor_town_packet_geometry(self):
+        source = (ROOT / 'tests/headless_engine_smoke.cpp').read_text()
+        self.assertIn('std::array<std::int16_t, 2205> gamePcm', source)
+        self.assertIn('completeGamePackets', source)
+
+    def test_windows_ci_runs_full_pinned_patch_migration(self):
+        workflow = (ROOT.parent / '.github/workflows/native-headless-windows.yml').read_text()
+        self.assertIn('MTES_ENGINE_SIM_SOURCE', workflow)
+        self.assertIn('python -m unittest native.tests.test_core_patch -v', workflow)
+
+    def test_patched_audio_thread_can_fill_a_50ms_2205_sample_packet(self):
+        # Minimal exact excerpts from the pinned engine-sim synthesizer.
+        # The old 2000-sample limit can never satisfy our 2205-frame PCM
+        # request, even if the audio thread has unlimited CPU time.
+        vendor = (
+            '#include <cassert>\n'
+            '    m_inputSamplesRead = 0;\n\n    m_audioBufferSize = 0;\n'
+            '        m_inputChannels[i].data.destroy();\n'
+            'void Synthesizer::writeInput(const double *data) {\n'
+            '    std::unique_lock<std::mutex> lk(m_inputLock);\n'
+            '            && m_audioBuffer.size() < 2000;\n'
+            '        std::max(0, 2000 - (int)m_audioBuffer.size()),\n'
+            '    for (int i = 0; i < n; ++i) {\n'
+            '        m_audioBuffer.write(renderAudio(i));\n'
+            '    }\n'
+        )
+        modified = patcher.transformed('synthesizer.cpp', vendor)
+        for pattern in (
+            r'm_audioBuffer\.size\(\) < (\d+)',
+            r'std::max\(0, (\d+) - \(int\)m_audioBuffer\.size\(\)\)',
+            r'std::array<int16_t, (\d+)> rendered',
+        ):
+            match = re.search(pattern, modified)
+            self.assertIsNotNone(match, f'Synthesizer limit absent: {pattern}')
+            self.assertGreaterEqual(int(match.group(1)), 2205,
+                'The renderer cannot produce one complete Motor Town PCM packet')
 
 
 if __name__ == "__main__":
