@@ -33,6 +33,40 @@ if ($PlanOnly) {
     exit 0
 }
 
+function Get-CMakeCacheValue([string]$CachePath, [string]$Name) {
+    if (-not (Test-Path -LiteralPath $CachePath -PathType Leaf)) { return $null }
+    foreach ($line in [IO.File]::ReadLines($CachePath)) {
+        if ($line -match ('^' + [regex]::Escape($Name) + ':[A-Za-z]+=(.*)$')) { return $Matches[1].Trim() }
+    }
+    return $null
+}
+
+function Test-SamePath([string]$Left, [string]$Right) {
+    if (-not $Left -or -not $Right) { return $false }
+    $a = $Left.Replace('/', '\').TrimEnd('\')
+    $b = $Right.Replace('/', '\').TrimEnd('\')
+    return [string]::Equals($a, $b, [StringComparison]::OrdinalIgnoreCase)
+}
+
+# vcpkg.cmake caches its root (Z_VCPKG_ROOT_DIR) on the first configure and never
+# re-detects it, and CMake ignores a changed CMAKE_TOOLCHAIN_FILE in an existing
+# cache. A build directory first configured with another vcpkg therefore keeps
+# calling that vcpkg.exe in every post-build z-applocal step (MSB3073, exit 9009).
+function Get-StaleVcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
+    $cache = [IO.Path]::Combine($BuildDir, 'CMakeCache.txt')
+    if (-not (Test-Path -LiteralPath $cache -PathType Leaf)) { return $null }
+    $toolchain = $VcpkgRoot.TrimEnd('\', '/') + '\scripts\buildsystems\vcpkg.cmake'
+    $cachedToolchain = Get-CMakeCacheValue $cache 'CMAKE_TOOLCHAIN_FILE'
+    if (-not (Test-SamePath $cachedToolchain $toolchain)) {
+        return "toolchain '$cachedToolchain'"
+    }
+    $cachedRoot = Get-CMakeCacheValue $cache 'Z_VCPKG_ROOT_DIR'
+    if ($cachedRoot -and -not (Test-SamePath $cachedRoot $VcpkgRoot)) {
+        return "vcpkg root '$cachedRoot'"
+    }
+    return $null
+}
+
 function Invoke-Checked {
     param([string]$Description, [string]$Executable, [string[]]$Arguments)
     Write-Host "`n==> $Description" -ForegroundColor Cyan
@@ -108,6 +142,9 @@ try {
             Invoke-Checked 'Bootstrap local vcpkg' (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
         }
     }
+    # Every vcpkg/CMake step below must see the vcpkg selected above, not an
+    # inherited VCPKG_ROOT that may point at a removed installation.
+    $env:VCPKG_ROOT = $vcpkgRoot
     Invoke-Checked 'Install original SDL2 and Boost build dependencies' (Join-Path $vcpkgRoot 'vcpkg.exe') @(
         'install', 'sdl2:x64-windows', 'sdl2-image:x64-windows', 'boost-filesystem:x64-windows')
 
@@ -147,6 +184,12 @@ try {
         "-DCMAKE_TOOLCHAIN_FILE=$(Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake')",
         "-DFLEX_EXECUTABLE=$flexExe", "-DBISON_EXECUTABLE=$bisonExe"
     )
+    $staleVcpkg = Get-StaleVcpkgConfiguration $buildDir $vcpkgRoot
+    if ($staleVcpkg) {
+        # --fresh (CMake 3.24+) rebuilds only the cache; compiled objects are kept.
+        Write-Host "Build directory was configured with another vcpkg ($staleVcpkg). Reconfiguring from scratch." -ForegroundColor Yellow
+        $cmakeArgs = @('--fresh') + $cmakeArgs
+    }
     Invoke-Checked 'Configure native UE4SS + Engine Simulator DLL' 'cmake' $cmakeArgs
     Invoke-Checked 'Compile and stage native UE4SS DLL' 'cmake' @(
         '--build', $buildDir, '--config', 'Game__Shipping__Win64',

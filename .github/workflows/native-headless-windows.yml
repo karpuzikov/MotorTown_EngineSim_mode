@@ -25,6 +25,9 @@ jobs:
           if ($errors.Count -gt 0) { $errors | Format-List; throw 'PowerShell parse failed' }
           & (Resolve-Path 'native/ue4ss-parent/build-local.ps1').Path -PlanOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Includes the stale vcpkg CMake cache checks, executed by Windows pwsh.
+          python -m unittest native.tests.test_local_windows_builder -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify native UE4SS parent CMake wiring (stand-in SDK only)
         shell: pwsh
