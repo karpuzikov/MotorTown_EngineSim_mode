@@ -356,10 +356,22 @@ int main() {
     assert(emitted == 6615);
     assert(slowSource->last_seconds >= 0.149);
 
+    // A 200-ms hitch exceeds the bounded 8192-frame audio budget; never
+    // overrun the fixed pool or silently submit a larger single block.
+    const auto s6 = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 6 2600 0.5 1 2 43617241 2 6500 - 1.0");
+    assert(s6);
+    const auto beforeHitch = slowSink.packet_sizes.size();
+    assert(slowPipeline.process(s6, t + std::chrono::milliseconds(610)));
+    assert(slowSink.packet_sizes.size() == beforeHitch + 2);
+    assert(slowSink.packet_sizes[beforeHitch] == 4096);
+    assert(slowSink.packet_sizes[beforeHitch + 1] == 4096);
+    assert(slowSource->last_seconds <= 8192.0 / 44100.0 + 0.001);
+
     // Direct XAudio2 output has no automatic Unreal background suspension.
     // Leaving/minimizing the game must stop that voice and restore stock
     // ownership rather than play the engine indefinitely on the desktop.
-    assert(!slowPipeline.process(s5, t + std::chrono::milliseconds(420), false));
+    assert(!slowPipeline.process(s6, t + std::chrono::milliseconds(620), false));
     assert(slowPipeline.stage() == NativeAudioPipeline::Stage::Background);
     assert(!slowSink.started &&
         !std::static_pointer_cast<TraceEmitter>(slowEmitters.car_a)->muted);

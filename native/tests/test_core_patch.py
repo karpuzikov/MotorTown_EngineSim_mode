@@ -61,7 +61,7 @@ class CorePatchTests(unittest.TestCase):
         self.assertIn("delete[] m_inputChannels[i].transferBuffer;", synth)
         self.assertIn("std::lock_guard<std::mutex> lock(m_lock0);", synth)
         self.assertNotIn("std::unique_lock<std::mutex> lk(m_inputLock);", synth)
-        self.assertIn("std::array<int16_t, 4096> rendered", synth)
+        self.assertIn("std::array<int16_t, 8192> rendered", synth)
         self.assertIn("delete[] m_history;", jitter)
         self.assertNotIn("assert(m_antialiasingFilters == nullptr);", piston)
         self.assertIn("m_compiler->addSearchPath(scriptLibrary.toString());", compiler)
@@ -100,13 +100,24 @@ class CorePatchTests(unittest.TestCase):
         patcher.patch(self.root)
         sound = self.root / 'src/synthesizer.cpp'
         modern = sound.read_text()
-        old = modern.replace('4096', '2000')
+        old = modern.replace('8192', '2000')
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
                          patcher.LEGACY_SYNTHESIZER_PATCHED_SHA)
         sound.write_text(old)
         patcher.patch(self.root)
         self.assertEqual(sound.read_text(), modern)
         patcher.patch(self.root)  # Upgrade is idempotent.
+
+    def test_current_4096_audio_patch_upgrades_existing_windows_build(self):
+        patcher.patch(self.root)
+        sound = self.root / 'src/synthesizer.cpp'
+        modern = sound.read_text()
+        old = modern.replace('8192', '4096')
+        self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
+                         patcher.PREVIOUS_SYNTHESIZER_PATCHED_SHA)
+        sound.write_text(old)
+        patcher.patch(self.root)
+        self.assertEqual(sound.read_text(), modern)
 
 
 class SynthesizerPacketCapacityTests(unittest.TestCase):
@@ -117,8 +128,18 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
             'std::array<int16_t, 2000> rendered;\n'
         )
         modern = patcher.upgrade_legacy_synthesizer(legacy)
-        self.assertEqual(modern.count('4096'), 3)
+        self.assertEqual(modern.count('8192'), 3)
         self.assertNotIn('2000', modern)
+
+    def test_current_windows_build_patch_upgrades_to_150ms_capacity(self):
+        legacy = (
+            'm_audioBuffer.size() < 4096;\n'
+            'std::max(0, 4096 - (int)m_audioBuffer.size()),\n'
+            'std::array<int16_t, 4096> rendered;\n'
+        )
+        modern = patcher.upgrade_legacy_synthesizer(legacy, 4096)
+        self.assertEqual(modern.count('8192'), 3)
+        self.assertNotIn('4096', modern)
 
     def test_cmake_reconfigures_when_core_patch_changes(self):
         cmake = (ROOT / 'CMakeLists.txt').read_text()
@@ -137,10 +158,11 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         self.assertIn('MTES_ENGINE_SIM_SOURCE', workflow)
         self.assertIn('python -m unittest native.tests.test_core_patch -v', workflow)
 
-    def test_patched_audio_thread_can_fill_a_50ms_2205_sample_packet(self):
+    def test_patched_audio_thread_can_fill_a_150ms_6615_sample_packet(self):
         # Minimal exact excerpts from the pinned engine-sim synthesizer.
-        # The old 2000-sample limit can never satisfy our 2205-frame PCM
-        # request, even if the audio thread has unlimited CPU time.
+        # The old 2000-sample limit cannot satisfy 50-ms PCM, and the
+        # intermediate 4096-sample limit cannot supply 150-ms PCM (6615)
+        # because upstream renders only once per simulation input block.
         vendor = (
             '#include <cassert>\n'
             '    m_inputSamplesRead = 0;\n\n    m_audioBufferSize = 0;\n'
@@ -161,8 +183,8 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         ):
             match = re.search(pattern, modified)
             self.assertIsNotNone(match, f'Synthesizer limit absent: {pattern}')
-            self.assertGreaterEqual(int(match.group(1)), 2205,
-                'The renderer cannot produce one complete Motor Town PCM packet')
+            self.assertGreaterEqual(int(match.group(1)), 6615,
+                'The renderer cannot produce one complete 150-ms Motor Town PCM packet')
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ PATCHED_HASHES = {
     "engine.cpp": "939ee10e9d80ea2c075a91ee49be110889d9be25d71513c5d7ab0f4c27567932",
     "jitter_filter.cpp": "fca57c9efa6745a007eaf8582cb6923aac49de0c589cfa77a30128c3175781a5",
     "simulator.cpp": "73c2d9b2e2f29ff00a83c43e19a0d81ccd2ca6cfc6cecf20eb3997318e611d24",
-    "synthesizer.cpp": "c7482d8cb0a8f40bff8db53ead2ed3cb0e991f1c16126229c55a90b7a129d41f",
+    "synthesizer.cpp": "a0b6942cc93910e86b6f336fff73a82e546a36a1d8b37550ddf072a59abc1199",
     "piston_engine_simulator.cpp": "1ef3ae113cdf14ddbb33b21cd3948f3bafd6dce25e775812db74044550ba2a0b",
     "compiler.cpp": "d60cc3f5df0762cafec2f439149490d3235b1954ab31783e14ef2e1f4b0106d7",
     "piranha_path.cpp": "906ffcfc170abf8d4ff778dfdbf5185d388e4481243fcacb865b8d97cf7f1c53",
@@ -34,15 +34,18 @@ PATCHED_HASHES = {
 # synthesizer patch. Upgrade only that audited revision; never overwrite an
 # unknown or hand-edited Engine Simulator checkout.
 LEGACY_SYNTHESIZER_PATCHED_SHA = "d04cae09d0da700a77561426d53a843fb498d33e735b78f3681cf74ac70d2c45"
+PREVIOUS_SYNTHESIZER_PATCHED_SHA = "c7482d8cb0a8f40bff8db53ead2ed3cb0e991f1c16126229c55a90b7a129d41f"
 
 
-def upgrade_legacy_synthesizer(source: str) -> str:
+def upgrade_legacy_synthesizer(source: str, old_capacity: int = 2000) -> str:
+    if old_capacity not in (2000, 4096):
+        raise ValueError("Unsupported legacy Engine Simulator render capacity")
     upgrades = (
-        ("m_audioBuffer.size() < 2000;", "m_audioBuffer.size() < 4096;"),
-        ("std::max(0, 2000 - (int)m_audioBuffer.size()),",
-         "std::max(0, 4096 - (int)m_audioBuffer.size()),"),
-        ("std::array<int16_t, 2000> rendered;",
-         "std::array<int16_t, 4096> rendered;"),
+        (f"m_audioBuffer.size() < {old_capacity};", "m_audioBuffer.size() < 8192;"),
+        (f"std::max(0, {old_capacity} - (int)m_audioBuffer.size()),",
+         "std::max(0, 8192 - (int)m_audioBuffer.size()),"),
+        (f"std::array<int16_t, {old_capacity}> rendered;",
+         "std::array<int16_t, 8192> rendered;"),
     )
     for old, new in upgrades:
         if source.count(old) != 1:
@@ -97,18 +100,18 @@ def transformed(name: str, source: str) -> str:
              "    std::lock_guard<std::mutex> lock(m_lock0);\n"),
             ("    std::unique_lock<std::mutex> lk(m_inputLock);",
              "    std::unique_lock<std::mutex> lk(m_lock0);"),
-            # Motor Town consumes 2205 samples every 50 ms. The original
-            # renderer refuses to fill beyond 2000 and so can *never* return
-            # a full packet after its startup silence has drained. Keep the
-            # wake threshold, render quota and stack buffer in agreement.
+            # The renderer produces at most ONE batch per simulation frame
+            # (m_processed waits for endInputBlock). A 150-ms game frame
+            # needs 6615 samples, so its entire output batch must fit before
+            # the next frame. Keep wake, render quota and stack in agreement.
             ("m_audioBuffer.size() < 2000;",
-             "m_audioBuffer.size() < 4096;"),
+             "m_audioBuffer.size() < 8192;"),
             ("std::max(0, 2000 - (int)m_audioBuffer.size()),",
-             "std::max(0, 4096 - (int)m_audioBuffer.size()),"),
+             "std::max(0, 8192 - (int)m_audioBuffer.size()),"),
             ("    for (int i = 0; i < n; ++i) {\n"
              "        m_audioBuffer.write(renderAudio(i));\n"
              "    }",
-             "    std::array<int16_t, 4096> rendered;\n"
+             "    std::array<int16_t, 8192> rendered;\n"
              "    for (int i = 0; i < n; ++i) {\n"
              "        rendered[i] = renderAudio(i);\n"
              "    }\n"
@@ -201,8 +204,11 @@ def patch(root: Path) -> None:
             if digest == PATCHED_HASHES[name]:
                 existing += 1
                 continue
-            if name == "synthesizer.cpp" and digest == LEGACY_SYNTHESIZER_PATCHED_SHA:
-                upgraded = upgrade_legacy_synthesizer(source)
+            if name == "synthesizer.cpp" and digest in (
+                LEGACY_SYNTHESIZER_PATCHED_SHA, PREVIOUS_SYNTHESIZER_PATCHED_SHA
+            ):
+                old_capacity = 2000 if digest == LEGACY_SYNTHESIZER_PATCHED_SHA else 4096
+                upgraded = upgrade_legacy_synthesizer(source, old_capacity)
                 if hashlib.sha256(upgraded.encode("utf-8")).hexdigest() != PATCHED_HASHES[name]:
                     raise ValueError("Legacy Engine Simulator upgrade produced unexpected bytes")
                 newline = "\r\n" if b"\r\n" in raw else "\n"
