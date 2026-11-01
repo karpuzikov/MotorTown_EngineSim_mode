@@ -375,4 +375,47 @@ int main() {
     assert(slowPipeline.stage() == NativeAudioPipeline::Stage::Background);
     assert(!slowSink.started &&
         !std::static_pointer_cast<TraceEmitter>(slowEmitters.car_a)->muted);
+
+    // The real UE4SS native worker is clocked every 20 ms, independently of
+    // Unreal/Lua's sometimes-delayed telemetry sequence. Keeping the same
+    // fresh telemetry must continue feeding the XAudio2 queue at that pace.
+    std::vector<std::string> workerClockEvents;
+    auto clockBackend = std::make_unique<TraceBackend>(workerClockEvents);
+    auto* clockSource = clockBackend.get();
+    EngineAudio clockEngine(std::move(clockBackend));
+    TraceSink clockSink(workerClockEvents);
+    GameAudioOutput clockOutput(clockEngine, clockSink);
+    Profiles clockProfiles;
+    Emitters clockEmitters;
+    auto clockEmitter = std::make_shared<TraceEmitter>(workerClockEvents, "clock");
+    clockEmitters.car_a = clockEmitter;
+    NativeAudioPipeline clockPipeline(clockEngine, clockOutput,
+        clockProfiles, clockEmitters, NativeAudioPipeline::NominalPacketFrames,
+        NativeAudioPipeline::Pacing::WorkerClock);
+    const auto clockSample = parse_game_telemetry(
+        "MTES4 1234567890ABCDEF 1 2400 0.5 1 2 43617241 2 6500 - 0.8");
+    assert(clockSample);
+    assert(!clockPipeline.process(clockSample, t)); // Prime one time.
+    assert(clockSource->advances == 1 && clockSink.queues == 0);
+    assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(10)));
+    assert(clockSource->advances == 1 && clockSink.queues == 0);
+    assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(25)));
+    assert(clockSink.queues == 1 && clockSink.last.size() == 1103);
+    assert(clockEmitter->muted && clockSink.started);
+    assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(45)));
+    assert(clockSource->advances == 3 && clockSink.queues == 2);
+    assert(clockSink.last.size() == 882 && clockSource->last_seconds < 0.021);
+    for (int ms : {65, 85, 105, 125, 145}) {
+        assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(ms)));
+    }
+    assert(clockSink.queues == 7 && clockEmitter->muted);
+    // Even with a cached packet still fresh, losing game focus must stop the
+    // independent voice, never wait for an Unreal tick or a new sequence.
+    assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(165), false));
+    assert(!clockEmitter->muted && !clockSink.started);
+    assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(170)));
+    assert(clockPipeline.stage() == NativeAudioPipeline::Stage::Priming);
+    assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(260)));
+    assert(clockPipeline.stage() == NativeAudioPipeline::Stage::StalePacket);
+    assert(!clockEmitter->muted && !clockSink.started);
 }

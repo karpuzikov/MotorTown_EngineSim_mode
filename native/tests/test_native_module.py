@@ -30,7 +30,7 @@ class NativeModTests(unittest.TestCase):
         self.assertTrue(source.is_file())
         text = source.read_text()
         self.assertIn('STR("MotorTownEngineSim")', text)
-        self.assertIn('STR("0.3.2-dev")', text)
+        self.assertIn('STR("0.3.3-dev")', text)
         self.assertNotIn("CreateProcess", text)
         self.assertNotIn("ShellExecute", text)
         self.assertNotIn("SDL_CreateWindow", text)

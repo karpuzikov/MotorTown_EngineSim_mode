@@ -25,8 +25,11 @@ bool eventually(Predicate predicate, std::chrono::milliseconds limit = 1500ms) {
 }
 
 struct SlowBackend final : EngineBackend {
-    explicit SlowBackend(std::thread::id caller) : main_thread(caller) {}
+    explicit SlowBackend(std::thread::id caller,
+        std::chrono::milliseconds physicsCost = 70ms)
+        : main_thread(caller), cost(physicsCost) {}
     const std::thread::id main_thread;
+    const std::chrono::milliseconds cost;
     std::atomic<bool> advanced_off_main{false};
     std::atomic<int> advances{0};
     std::size_t available = 0;
@@ -35,7 +38,7 @@ struct SlowBackend final : EngineBackend {
     bool advance(double seconds, double, double, int) override {
         advanced_off_main.store(std::this_thread::get_id() != main_thread);
         ++advances;
-        std::this_thread::sleep_for(70ms);
+        std::this_thread::sleep_for(cost);
         // Avoid a fake-backend 1-frame floor/round mismatch with the
         // pipeline's lround() packet size; this test is about ownership.
         available += static_cast<std::size_t>(seconds * 44100) + 2;
@@ -183,4 +186,38 @@ int main(int argc, char** argv) {
     assert(eventually([&] { return backend->advances > before_shutdown; }));
     worker.stop();
     assert(!worker.playing() && !sink.playing && !emitters.emitter->muted);
+
+    // An unmodified Lua file remains a fresh packet for 250ms. The native
+    // worker must keep producing short PCM blocks from it every 20ms, with
+    // no game callback and no further telemetry file writes.
+    auto continuousSource = std::make_unique<SlowBackend>(
+        std::this_thread::get_id(), 0ms);
+    auto* continuousBackend = continuousSource.get();
+    EngineAudio continuousEngine(std::move(continuousSource));
+    Sink continuousSink;
+    GameAudioOutput continuousOutput(continuousEngine, continuousSink);
+    Profiles continuousProfiles;
+    Emitters continuousEmitters;
+    NativeAudioPipeline continuousPipeline(continuousEngine, continuousOutput,
+        continuousProfiles, continuousEmitters,
+        NativeAudioPipeline::NominalPacketFrames,
+        NativeAudioPipeline::Pacing::WorkerClock);
+    std::atomic<bool> continuousForeground{true};
+    std::atomic<int> continuousCancels{0};
+    NativeAudioWorker continuousWorker(file, continuousPipeline,
+        [&] { return continuousForeground.load(); },
+        [&] { ++continuousCancels; });
+    packet(file, 13);
+    assert(continuousWorker.start());
+    assert(eventually([&] { return continuousWorker.playing(); }));
+    const int firstQueueCount = continuousSink.queues.load();
+    assert(eventually([&] { return continuousSink.queues >= firstQueueCount + 3; },
+        200ms));
+    assert(continuousBackend->advances >= firstQueueCount + 3);
+    assert(continuousSink.playing && continuousEmitters.emitter->muted);
+    continuousForeground = false;
+    assert(eventually([&] { return !continuousWorker.playing() &&
+        !continuousSink.playing && !continuousEmitters.emitter->muted; }, 500ms));
+    assert(continuousCancels > 0);
+    continuousWorker.stop();
 }

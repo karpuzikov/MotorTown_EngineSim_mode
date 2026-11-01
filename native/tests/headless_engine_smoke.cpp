@@ -2,6 +2,7 @@
 // This executable is never installed with the mod.
 #include "engine_audio.h"
 #include "engine_sim_backend.h"
+#include "audio_pipeline.h"
 
 #include <array>
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -33,6 +35,111 @@ public:
 private:
     std::unique_ptr<mtes::EngineBackend> underlying;
 };
+
+// Exercise the actual DLL's pacing policy with a real Engine Simulator
+// backend. Fake only the game-specific stock-mute interface and the output
+// device; packet completeness and PCM still come from genuine combustion.
+class SmokeProfiles final : public mtes::VehicleProfileLookup {
+public:
+    explicit SmokeProfiles(std::string path) : script(std::move(path)) {}
+    std::optional<std::string> script_for(
+        const mtes::GameTelemetrySample&) override { return script; }
+    std::string script;
+};
+
+class SmokeStock final : public mtes::StockEngineEmitter {
+public:
+    bool mute() override { muted = true; return true; }
+    bool restore() noexcept override { muted = false; return true; }
+    bool muted = false;
+};
+
+class SmokeEmitters final : public mtes::StockEmitterLookup {
+public:
+    std::shared_ptr<mtes::StockEngineEmitter> stock_for(
+        const mtes::GameTelemetrySample&) override { return stock; }
+    std::shared_ptr<SmokeStock> stock = std::make_shared<SmokeStock>();
+};
+
+class SmokeSink final : public mtes::ProceduralAudioSink {
+public:
+    bool queue(const std::int16_t* data, std::size_t frames) override {
+        if (!data || frames == 0 || !std::any_of(data, data + frames,
+                [](std::int16_t sample) { return sample != 0; })) return false;
+        queuedFrames += frames;
+        return true;
+    }
+    bool start() override { playing = true; return true; }
+    void stop() noexcept override { playing = false; }
+    bool playing = false;
+    std::size_t queuedFrames = 0;
+};
+
+bool run_worker_clock_probe(mtes::EngineAudio& audio, const char* path,
+    int profileNumber) {
+    using Clock = mtes::NativeAudioPipeline::Clock;
+    using namespace std::chrono_literals;
+    SmokeProfiles profiles(path);
+    SmokeEmitters emitters;
+    SmokeSink sink;
+    mtes::GameAudioOutput output(audio, sink);
+    mtes::NativeAudioPipeline pipeline(audio, output, profiles, emitters,
+        mtes::NativeAudioPipeline::NominalPacketFrames,
+        mtes::NativeAudioPipeline::Pacing::WorkerClock);
+    mtes::GameTelemetrySample telemetry;
+    telemetry.session = "genuine-worker-clock-smoke";
+    telemetry.vehicle = "worker-clock-vehicle-" + std::to_string(profileNumber);
+    telemetry.engine_asset = "verified-test-engine";
+    telemetry.engine_volume = 0.7;
+    telemetry.state = {2400.0, 0.7, 2, true};
+
+    // The native worker runs every 20ms even when Unreal can publish a new
+    // Lua telemetry sequence only every 150 or 186ms. The latter must NOT
+    // request an 8192-frame combustion batch on each late game callback.
+    for (const auto cadence : {150ms, 186ms}) {
+        const char* label = cadence == 150ms ? "worker-clock 150ms" :
+            "worker-clock 186ms";
+        constexpr int WarmupTicks = 90;
+        constexpr int MeasuredTicks = 100;
+        constexpr int MinimumCompleteBlocks = 95;
+        int completeWorkerClockBlocks = 0;
+        auto nextWorkerAt = Clock::now();
+        auto nextLuaAt = nextWorkerAt;
+        for (int frame = -WarmupTicks; frame < MeasuredTicks; ++frame) {
+            const auto now = Clock::now();
+            if (now >= nextLuaAt) {
+                ++telemetry.sequence;
+                nextLuaAt = now + cadence;
+            }
+            const bool complete = pipeline.process(telemetry, now, true);
+            if (frame >= 0 && complete) ++completeWorkerClockBlocks;
+            if (frame >= 0 && frame % 20 == 0) {
+                std::cout << label << " probe frame=" << frame
+                          << " status=" << static_cast<int>(pipeline.stage())
+                          << " complete=" << complete << "\n";
+            }
+            nextWorkerAt += 20ms;
+            std::this_thread::sleep_until(nextWorkerAt);
+        }
+        std::cout << path << " " << label << " completeWorkerClockBlocks: "
+                  << completeWorkerClockBlocks << "/" << MeasuredTicks
+                  << " queued PCM frames: " << sink.queuedFrames << "\n";
+        if (completeWorkerClockBlocks < MinimumCompleteBlocks) {
+            std::cerr << "Worker-clock genuine combustion underruns too frequent for "
+                      << label << " (must complete at least 95/100)\n";
+            return false;
+        }
+    }
+    // Ignition loss restores stock sound and stops the independent source.
+    telemetry.state.ignition = false;
+    ++telemetry.sequence;
+    if (pipeline.process(telemetry, Clock::now(), true) ||
+        sink.playing || emitters.stock->muted) {
+        std::cerr << "Worker-clock pipeline retained stock mute after ignition off\n";
+        return false;
+    }
+    return true;
+}
 
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -173,10 +280,8 @@ int main(int argc, char **argv) {
             std::this_thread::sleep_until(nextPacketAt);
         }
         std::cout << argv[profile] << " complete delayed-game PCM packets: "
-                  << completeDelayedGamePackets << "\n";
-        // After the explicit warmup, more than four losses over six seconds
-        // would audibly stutter in-game.
-        if (completeDelayedGamePackets < 36) return 11;
+                  << completeDelayedGamePackets
+                  << " (legacy packet-pacing only; diagnostic, not shipped)\n";
 
         // Exercise the hardest bounded case too: an ~186-ms frame requests
         // exactly 8192 frames, the maximum native PCM packet. The 150-ms
@@ -220,8 +325,13 @@ int main(int argc, char **argv) {
             std::this_thread::sleep_until(nextMaxPacketAt);
         }
         std::cout << argv[profile] << " complete maximum-size PCM packets: "
-                  << completeMaxGamePackets << "\n";
-        if (completeMaxGamePackets < 18) return 13;
+                  << completeMaxGamePackets
+                  << " (legacy packet-pacing only; diagnostic, not shipped)\n";
+
+        // The production DLL no longer drives synthesis from those delayed
+        // 150/186-ms Lua packets. Gate CI on its actual worker-clock path.
+        audio.stop();
+        if (!run_worker_clock_probe(audio, argv[profile], profile)) return 14;
     }
     audio.stop();
     if (audio.is_replacing_stock()) return 5;

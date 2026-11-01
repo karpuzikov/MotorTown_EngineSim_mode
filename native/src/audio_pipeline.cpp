@@ -13,9 +13,10 @@ static_assert(NativeAudioPipeline::MaxPacketFrames <=
 
 NativeAudioPipeline::NativeAudioPipeline(EngineAudio& engine,
     GameAudioOutput& output, VehicleProfileLookup& profiles,
-    StockEmitterLookup& emitters, std::size_t framesPerPacket)
+    StockEmitterLookup& emitters, std::size_t framesPerPacket, Pacing pacing)
     : m_engine(engine), m_output(output), m_profiles(profiles), m_emitters(emitters),
-      m_pcm(framesPerPacket), m_autoPacketDuration(framesPerPacket == NominalPacketFrames) {
+      m_pcm(framesPerPacket), m_autoPacketDuration(framesPerPacket == NominalPacketFrames),
+      m_pacing(pacing) {
     if (m_autoPacketDuration) m_pcm.reserve(MaxPacketFrames);
 }
 
@@ -30,6 +31,8 @@ void NativeAudioPipeline::silence() noexcept {
     m_activeScript.clear();
     m_loaded = false;
     m_running = false;
+    m_lastAudioTickAt = {};
+    m_hasAudioTick = false;
 }
 
 void NativeAudioPipeline::stop() noexcept {
@@ -127,8 +130,22 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
             silence();
         // Volume and live emitter identity are checked on EVERY frame, but
         // simulation and PCM remain once-per-sequence.
-        if (duplicate) return m_running;
+        if (m_pacing == Pacing::TelemetryPackets && duplicate) return m_running;
+        if (m_pacing == Pacing::WorkerClock && m_hasAudioTick) {
+            if (now < m_lastAudioTickAt) {
+                silence();
+                m_stage = Stage::StalePacket;
+                return false;
+            }
+            // The worker polls every 20 ms, but new Lua packets can arrive
+            // between polls. Playback follows the worker's own clock, not
+            // the cadence or sequence count of the Lua exporter.
+            if (now - m_lastAudioTickAt < std::chrono::milliseconds(15))
+                return m_running;
+        }
 
+        const bool hadAudioTick = m_hasAudioTick;
+        const auto previousAudioTickAt = m_lastAudioTickAt;
         const bool newlyLoaded = !m_loaded;
         if (!m_engine.update(sample->vehicle, *script, sample->state, now)) {
             m_stage = m_engine.update_status() == EngineAudio::UpdateStatus::LoadFailed
@@ -141,6 +158,8 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         m_activeScript = *script;
         m_activeEmitter = stock;
         m_loaded = true;
+        m_lastAudioTickAt = now;
+        m_hasAudioTick = true;
 
         // A new Engine Simulator model has advanced only 5 ms. Give its
         // asynchronous synth thread another packet to fill a 50-ms buffer;
@@ -154,9 +173,11 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
             // Lua timers run on whole Unreal game frames; a 50-ms Lua tick
             // can arrive 67+ ms later. Produce that much sound or the
             // audio device necessarily runs dry between callbacks.
-            const double elapsed = sameSession
-                ? std::chrono::duration<double>(now - previousPacketAt).count()
-                : static_cast<double>(NominalPacketFrames) / 44100.0;
+            const double elapsed = m_pacing == Pacing::WorkerClock && hadAudioTick
+                ? std::chrono::duration<double>(now - previousAudioTickAt).count()
+                : sameSession
+                    ? std::chrono::duration<double>(now - previousPacketAt).count()
+                    : static_cast<double>(NominalPacketFrames) / 44100.0;
             const auto duration = std::clamp(elapsed, 0.005,
                 static_cast<double>(MaxPacketFrames) / 44100.0);
             const auto frames = static_cast<std::size_t>(std::lround(duration * 44100.0));

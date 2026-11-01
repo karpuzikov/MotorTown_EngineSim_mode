@@ -217,6 +217,16 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         self.assertIn('186ms probe frame=', source)
         self.assertIn('completeMaxGamePackets', source)
 
+    def test_windows_smoke_gates_worker_clock_not_obsolete_lua_burst_pacing(self):
+        source = (ROOT / 'tests/headless_engine_smoke.cpp').read_text()
+        self.assertIn('NativeAudioPipeline::Pacing::WorkerClock', source)
+        self.assertIn('worker-clock 150ms', source)
+        self.assertIn('worker-clock 186ms', source)
+        self.assertIn('completeWorkerClockBlocks', source)
+        self.assertIn('legacy packet-pacing only', source)
+        self.assertNotIn('if (completeDelayedGamePackets < 36) return 11;', source)
+        self.assertNotIn('if (completeMaxGamePackets < 18) return 13;', source)
+
     def test_windows_ci_runs_full_pinned_patch_migration(self):
         workflow = (ROOT.parent / '.github/workflows/native-headless-windows.yml').read_text()
         self.assertIn('MTES_ENGINE_SIM_SOURCE', workflow)

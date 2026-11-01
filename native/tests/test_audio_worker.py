@@ -11,6 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('g++'), 'Requires C++20 compiler')
 class AudioWorkerTests(unittest.TestCase):
+    def test_ue4ss_mod_wires_real_worker_to_continuous_pcm_pacing(self):
+        # The native worker integration test exercises real PCM polling, but
+        # this guard protects the production DLL's constructor wiring too.
+        dll = (ROOT / 'src/dllmain.cpp').read_text()
+        self.assertIn('NativeAudioPipeline::Pacing::WorkerClock', dll)
+
     def test_windows_audio_worker_initializes_com_on_its_own_thread(self):
         # Windows XAudio2Create requires COM initialization on the caller's
         # thread. The Unreal thread's COM state does not transfer to jthread.

@@ -94,7 +94,7 @@ class MotorTownEngineSimMod final : public RC::CppUserModBase {
 public:
     MotorTownEngineSimMod() {
         ModName = STR("MotorTownEngineSim");
-        ModVersion = STR("0.3.2-dev");
+        ModVersion = STR("0.3.3-dev");
         ModDescription = STR("Native Motor Town engine audio (development only)");
         ModAuthors = STR("karpuzikov and contributors");
     }
@@ -115,7 +115,7 @@ public:
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native audio worker running: {}\n"), workerStarted);
         RC::Output::send<RC::LogLevel::Normal>(
-            STR("[MTES] Audio diagnostics v0.3.2 active (stage updates every 5 seconds while driving)\n"));
+            STR("[MTES] Audio diagnostics v0.3.3 active (worker-clock PCM, stage updates every 5 seconds while driving)\n"));
     }
 
     auto on_update() -> void override {
@@ -192,7 +192,11 @@ private:
     mtes::GameAudioOutput m_output{m_engine, m_sink};
     mtes::ExactVehicleProfiles m_profiles{module_root()};
     mtes::LuaMuteLeaseLookup m_emitters{game_telemetry_path().parent_path()};
-    mtes::NativeAudioPipeline m_pipeline{m_engine, m_output, m_profiles, m_emitters};
+    // Lua packets carry state and stock-mute identity; the 20-ms native
+    // worker is the PCM clock, even when a game frame delays Lua updates.
+    mtes::NativeAudioPipeline m_pipeline{m_engine, m_output, m_profiles,
+        m_emitters, mtes::NativeAudioPipeline::NominalPacketFrames,
+        mtes::NativeAudioPipeline::Pacing::WorkerClock};
     mtes::NativeAudioWorker m_worker{game_telemetry_path(), m_pipeline,
         [] { return game_in_foreground(); }, [this] { m_emitters.cancel(); }};
     std::string m_lastVehicle;

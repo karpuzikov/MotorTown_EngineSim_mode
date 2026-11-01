@@ -38,6 +38,7 @@ public:
 // ticks produce larger packets to keep the XAudio2 queue continuously fed.
 class NativeAudioPipeline final {
 public:
+    enum class Pacing { TelemetryPackets, WorkerClock };
     enum class Stage {
         NoTelemetry, Background, StalePacket, IgnitionOff, InvalidVolume, NoProfile,
         NoEmitter, EngineLoadFailed, EngineAdvanceFailed, Priming,
@@ -51,7 +52,8 @@ public:
 
     NativeAudioPipeline(EngineAudio& engine, GameAudioOutput& output,
         VehicleProfileLookup& profiles, StockEmitterLookup& emitters,
-        std::size_t framesPerPacket = NominalPacketFrames);
+        std::size_t framesPerPacket = NominalPacketFrames,
+        Pacing pacing = Pacing::TelemetryPackets);
     ~NativeAudioPipeline();
 
     NativeAudioPipeline(const NativeAudioPipeline&) = delete;
@@ -83,6 +85,9 @@ private:
     StockEmitterLookup& m_emitters;
     std::vector<std::int16_t> m_pcm;
     bool m_autoPacketDuration = false;
+    Pacing m_pacing = Pacing::TelemetryPackets;
+    Clock::time_point m_lastAudioTickAt{};
+    bool m_hasAudioTick = false;
     std::shared_ptr<StockEngineEmitter> m_activeEmitter;
     std::string m_activeVehicle;
     std::string m_activeScript;
