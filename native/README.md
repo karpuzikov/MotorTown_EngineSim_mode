@@ -134,6 +134,32 @@ no installer, actual Unreal PCM playback, stock engine muting or in-game load
 verification is supplied by this workflow. It deliberately cannot publish
 a GitHub release.
 
+### One-command local build (no GitHub Actions secret)
+
+If a Windows user's GitHub account can open the private
+`https://github.com/Re-UE4SS/UEPseudo` repository, they can try a local build
+instead. This can use Git Credential Manager's normal browser login and does
+not require adding a personal token to GitHub Actions. In PowerShell 7:
+
+```powershell
+$script = Join-Path $env:TEMP 'MotorTownEngineSim-build-local.ps1'
+Invoke-WebRequest 'https://raw.githubusercontent.com/karpuzikov/MotorTown_EngineSim_mode/feat/native-engine-audio/native/ue4ss-parent/build-local.ps1' -OutFile $script
+pwsh -NoProfile -ExecutionPolicy Bypass -File $script
+```
+
+The downloaded script is reviewable in this repository. It detects the
+existing Visual Studio/CMake tools, clones the pinned matching UE4SS revision,
+downloads private submodules with the user's own Git credentials, prepares
+local vcpkg and checksummed Flex/Bison dependencies, builds the real DLL, and
+prints the staged DLL and transcript log paths. It uses a separate
+`Documents\Karpuzikov Tools\MotorTown EngineSim Mod` directory rather than
+changing the user's UE4SS `MyMods` tutorial or Motor Town installation. The
+first download/build can take substantial time and disk space; Git may ask the
+user to authenticate through their browser. Add `-PlanOnly` to preview paths
+without downloading/building anything. The Windows Actions workflow checks
+the helper's syntax and plan-only mode, but **the actual private-source build still needs a
+live Windows run** to confirm it succeeds. Its output remains development-only.
+
 The output is staged as
 `native/build-ue4ss/dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls/main.dll`.
 This is a **development artifact only**, not an installer or verified working

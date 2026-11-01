@@ -15,6 +15,17 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Verify local one-command Windows build helper parses and plans safely
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'native/ue4ss-parent/build-local.ps1').Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'PowerShell parse failed' }
+          & (Resolve-Path 'native/ue4ss-parent/build-local.ps1').Path -PlanOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Verify native UE4SS parent CMake wiring (stand-in SDK only)
         shell: pwsh
         run: python -m unittest native.tests.test_ue4ss_build_parent -v
