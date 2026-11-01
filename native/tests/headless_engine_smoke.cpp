@@ -101,32 +101,50 @@ bool run_worker_clock_probe(mtes::EngineAudio& audio, const char* path,
             "worker-clock 186ms";
         constexpr int WarmupTicks = 90;
         constexpr int MeasuredTicks = 100;
-        constexpr int MinimumCompleteBlocks = 95;
+        constexpr int MinimumCompleteBlocks = 70;
         int completeWorkerClockBlocks = 0;
         auto nextWorkerAt = Clock::now();
         auto nextLuaAt = nextWorkerAt;
+        auto measuredFrom = nextWorkerAt;
+        std::size_t queuedBefore = sink.queuedFrames;
         for (int frame = -WarmupTicks; frame < MeasuredTicks; ++frame) {
             const auto now = Clock::now();
+            if (frame == 0) {
+                measuredFrom = now;
+                queuedBefore = sink.queuedFrames;
+            }
             if (now >= nextLuaAt) {
                 ++telemetry.sequence;
                 nextLuaAt = now + cadence;
             }
+            const auto beforeTick = sink.queuedFrames;
             const bool complete = pipeline.process(telemetry, now, true);
-            if (frame >= 0 && complete) ++completeWorkerClockBlocks;
+            const bool newPcm = complete && sink.queuedFrames > beforeTick;
+            if (frame >= 0 && newPcm) ++completeWorkerClockBlocks;
             if (frame >= 0 && frame % 20 == 0) {
                 std::cout << label << " probe frame=" << frame
                           << " status=" << static_cast<int>(pipeline.stage())
-                          << " complete=" << complete << "\n";
+                          << " queued_new_pcm=" << newPcm << "\n";
             }
             nextWorkerAt += 20ms;
             std::this_thread::sleep_until(nextWorkerAt);
         }
+        const auto expectedWorkerClockFrames = static_cast<std::size_t>(
+            std::chrono::duration<double>(Clock::now() - measuredFrom).count() * 44100.0);
+        const auto actualFrames = sink.queuedFrames - queuedBefore;
         std::cout << path << " " << label << " completeWorkerClockBlocks: "
                   << completeWorkerClockBlocks << "/" << MeasuredTicks
-                  << " queued PCM frames: " << sink.queuedFrames << "\n";
-        if (completeWorkerClockBlocks < MinimumCompleteBlocks) {
+                  << " queued PCM frames: " << actualFrames << "/"
+                  << expectedWorkerClockFrames << "\n";
+        // If the worker misses a 20ms wake but catches up next tick, one
+        // longer buffer is acceptable. But a persistent 5% shortage of
+        // produced samples would audibly underrun XAudio2 despite a
+        // process() return of true on skipped (<15ms) polls.
+        if (completeWorkerClockBlocks < MinimumCompleteBlocks ||
+            expectedWorkerClockFrames == 0 ||
+            static_cast<double>(actualFrames) < 0.95 * expectedWorkerClockFrames) {
             std::cerr << "Worker-clock genuine combustion underruns too frequent for "
-                      << label << " (must complete at least 95/100)\n";
+                      << label << " (at least 70 new blocks and 95% PCM coverage required)\n";
             return false;
         }
     }

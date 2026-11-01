@@ -223,6 +223,8 @@ class SynthesizerPacketCapacityTests(unittest.TestCase):
         self.assertIn('worker-clock 150ms', source)
         self.assertIn('worker-clock 186ms', source)
         self.assertIn('completeWorkerClockBlocks', source)
+        self.assertIn('queuedFrames - queuedBefore', source)
+        self.assertIn('expectedWorkerClockFrames', source)
         self.assertIn('legacy packet-pacing only', source)
         self.assertNotIn('if (completeDelayedGamePackets < 36) return 11;', source)
         self.assertNotIn('if (completeMaxGamePackets < 18) return 13;', source)
