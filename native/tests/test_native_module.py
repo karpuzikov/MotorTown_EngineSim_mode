@@ -14,6 +14,13 @@ import os
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME = [
+    'game_telemetry.cpp', 'audio_pipeline.cpp', 'engine_audio.cpp',
+    'game_audio.cpp', 'lua_mute_lease.cpp', 'vehicle_profile.cpp',
+    'xaudio2_sink.cpp',
+]
+RUNTIME_SOURCES = [str(ROOT / 'src' / name) for name in RUNTIME]
+FAKE_ENGINE = str(ROOT / 'tests/fake_engine_sim_backend.cpp')
 
 
 @unittest.skipUnless(shutil.which("g++"), "Requires a C++ compiler")
@@ -59,7 +66,7 @@ struct Output {
             result = subprocess.run(
                 ["g++", "-std=c++20", "-shared", "-fPIC", "-I", temp,
                  '-I', str(ROOT / 'src'), str(source),
-                 str(ROOT / 'src/game_telemetry.cpp'), "-o", str(target)],
+                 *RUNTIME_SOURCES, FAKE_ENGINE, "-o", str(target)],
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -125,7 +132,7 @@ struct Output {
                 '-I', str(root), '-I', str(ROOT / 'src'),
                 str(ROOT / 'tests/ue4ss_telemetry_test.cpp'),
                 str(ROOT / 'src/dllmain.cpp'),
-                str(ROOT / 'src/game_telemetry.cpp'), '-o', str(exe),
+                *RUNTIME_SOURCES, FAKE_ENGINE, '-o', str(exe),
             ], text=True, capture_output=True)
             self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
             run = subprocess.run([str(exe)], env={**os.environ, 'TMP': temp,

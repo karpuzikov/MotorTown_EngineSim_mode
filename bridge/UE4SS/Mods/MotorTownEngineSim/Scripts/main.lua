@@ -1,6 +1,7 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.15, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
--- Does not change vehicle physics or write any game properties.
+-- v0.2.16, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- Changes only the verified local vehicle V8 engine cue's audio gain, and
+-- only with a live native PCM mute lease. Never changes vehicle physics.
 
 -- Optional: Set exact reflected paths after looking at the diagnostic log.
 -- Examples of PATH SYNTAX only (not verified Motor Town field names):
@@ -20,6 +21,8 @@ local NATIVE_TELEMETRY = TEMP .. "\\MotorTownEngineSim_native_telemetry.txt"
 local DEBUG_LOG = TEMP .. "\\MotorTownEngineSim_diagnostics.txt"
 local DISCOVERY = TEMP .. "\\MotorTownEngineSim_discovery.txt"
 local AUDIO_TARGETS = TEMP .. "\\MotorTownEngineSim_audio_targets.txt"
+local MUTE_REQUEST = TEMP .. "\\MotorTownEngineSim_native_mute_request.txt"
+local MUTE_ACK = TEMP .. "\\MotorTownEngineSim_native_mute_ack.txt"
 local lastVehicle = nil
 local mapping = nil
 local lastValue = ""
@@ -37,8 +40,127 @@ local lastReportedVolume = nil
 -- a sequence restart without trusting decreasing counters in one session.
 local nativeSession = string.format("%08X%08X",
     math.random(0, 0x7FFFFFFF), math.random(0, 0x7FFFFFFF))
+local log, valid, member
 
-local function log(line)
+-- This handshake is intentionally separate from telemetry. Only the native
+-- synthesizer can request a lease; Lua validates the exact *local* vehicle,
+-- engine asset and SoundCue on the Unreal game thread before acknowledging.
+-- If the native module stops/crashes, four exporter ticks restore stock audio.
+local leasedAudio = nil
+local leaseToken = nil
+local leaseSequence = 0
+local leaseIdleTicks = 0
+local KNOWN_ENGINE_CUE =
+    "SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine"
+
+local function full_name(object)
+    if not valid(object) then return nil end
+    local ok, result = pcall(function() return object:GetFullName() end)
+    if ok and type(result) == "string" then return result end
+    return nil
+end
+
+local function hex_name(name)
+    if type(name) ~= "string" or #name == 0 or #name > 512 then return nil end
+    if name:find("[%c]") then return nil end
+    return name:gsub(".", function(c) return string.format("%02X", c:byte()) end)
+end
+
+local function set_gain(channel, volume)
+    if not valid(channel) then return false end
+    local fn = member(channel, "SetVolumeMultiplier")
+    if not fn then return false end
+    local ok = pcall(fn, channel, volume)
+    local actual = tonumber(member(channel, "VolumeMultiplier"))
+    return ok and actual and math.abs(actual - volume) <= 0.001 or false
+end
+
+local function restore_leased_engine()
+    if leasedAudio then
+        if valid(leasedAudio.channel) then
+            if not set_gain(leasedAudio.channel, leasedAudio.gain) then
+                log("WARNING: Could not restore original engine gain; retrying")
+                return false
+            end
+        end
+        leasedAudio = nil
+        log("Restored stock V8 engine audio")
+    end
+    leaseToken = nil
+    leaseSequence = 0
+    leaseIdleTicks = 0
+    return true
+end
+
+local function mute_lease_tick(vehicle)
+    local f = io.open(MUTE_REQUEST, "r")
+    local line = f and f:read("*l") or nil
+    if f then f:close() end
+
+    if not valid(vehicle) then
+        restore_leased_engine()
+        return
+    end
+
+    -- STOP belongs only to the session that produced our telemetry. A STOP
+    -- from an older lease must not unmute a new active replacement.
+    local stopSession, stopToken
+    if line then
+        stopSession, stopToken = line:match("^MTESM0 ([0-9A-F]+) ([0-9A-F]+)$")
+    end
+    if stopSession == nativeSession and stopToken == leaseToken then
+        restore_leased_engine()
+        return
+    end
+
+    local session, sequenceText, token, vehicleHex, assetHex
+    if line then
+        session, sequenceText, token, vehicleHex, assetHex = line:match(
+            "^MTESM1 ([0-9A-F]+) (%d+) ([0-9A-F]+) ([0-9A-F]+) ([0-9A-F]+)$")
+    end
+    local sequence = tonumber(sequenceText)
+    local engine = member(vehicle, "EngineComponent")
+    local data = valid(engine) and member(engine, "EngineData") or nil
+    local channel = valid(engine) and member(engine, "AudioComponent") or nil
+    local cue = valid(channel) and member(channel, "Sound") or nil
+    local matching = session == nativeSession and sequence and sequence > 0 and
+        hex_name(full_name(vehicle)) == vehicleHex and
+        hex_name(full_name(data)) == assetHex and
+        full_name(cue) == KNOWN_ENGINE_CUE and valid(channel)
+
+    if matching and (token ~= leaseToken or sequence > leaseSequence) then
+        if leasedAudio and (leasedAudio.channel ~= channel or leaseToken ~= token) then
+            if not restore_leased_engine() then return end
+        end
+        if not leasedAudio then
+            local original = tonumber(member(channel, "VolumeMultiplier"))
+            if not original or original < 0 or original > 4 then return end
+            leasedAudio = { channel = channel, gain = original }
+            log("Native PCM lease requested; muting verified V8 engine cue only")
+        end
+        if not set_gain(channel, 0.0) then
+            restore_leased_engine()
+            return
+        end
+        local ack = io.open(MUTE_ACK, "w")
+        if not ack then
+            restore_leased_engine()
+            return
+        end
+        ack:write("MTESA1 ", session, " ", sequenceText, " ", token,
+            " ", vehicleHex, " ", assetHex, "\n")
+        ack:close()
+        leaseToken, leaseSequence, leaseIdleTicks = token, sequence, 0
+        return
+    end
+
+    -- Duplicate requests are not fresh heartbeats. No reliable wall-clock
+    -- monotonic millisecond timer is needed on this UE4SS Lua game thread.
+    leaseIdleTicks = leaseIdleTicks + 1
+    if leaseIdleTicks >= 4 then restore_leased_engine() end
+end
+
+log = function(line)
     local f = io.open(DEBUG_LOG, "a")
     if f then
         f:write(os.date("%Y-%m-%d %H:%M:%S "), line, "\n")
@@ -47,13 +169,13 @@ local function log(line)
     print("[MotorTownEngineSim] " .. line .. "\n")
 end
 
-local function valid(obj)
+valid = function(obj)
     if obj == nil then return false end
     local ok, v = pcall(function() return obj:IsValid() end)
     return ok and v == true
 end
 
-local function member(obj, name)
+member = function(obj, name)
     local ok, result = pcall(function() return obj[name] end)
     if ok then return result end
     return nil
@@ -488,7 +610,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.15 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.16 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -607,6 +729,7 @@ local function tick()
     if success and valid(result) then pc = result end
     if not pc then pc = FindFirstOf("MotorTownPlayerController") end
     if not valid(pc) then
+        restore_leased_engine()
         write_telemetry(0, 0, false)
         write_native_telemetry(nil, 0, 0, false, nil)
         lastVehicle, mapping, lastGear = nil, nil, nil
@@ -614,6 +737,7 @@ local function tick()
     end
     local ok, vehicle = pcall(function() return pc:K2_GetPawn() end)
     if not ok or not valid(vehicle) then
+        restore_leased_engine()
         write_telemetry(0, 0, false)
         write_native_telemetry(nil, 0, 0, false, nil)
         lastVehicle, mapping, lastGear = nil, nil, nil
@@ -623,11 +747,13 @@ local function tick()
         if not vehicle:IsA("/Script/MotorTown.MTVehicle") then error("Not vehicle") end
     end)
     if not isVehicle then
+        restore_leased_engine()
         write_telemetry(0, 0, false)
         write_native_telemetry(nil, 0, 0, false, nil)
         lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
+    mute_lease_tick(vehicle)
     local addr = vehicle:GetAddress()
     if addr ~= lastVehicle then
         lastVehicle = addr
@@ -695,9 +821,12 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.15 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.16 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
-        if not ok then log("Sample failed: " .. tostring(err)) end
+        if not ok then
+            restore_leased_engine()
+            log("Sample failed: " .. tostring(err))
+        end
     end)
 end

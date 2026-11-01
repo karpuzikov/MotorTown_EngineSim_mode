@@ -16,6 +16,9 @@ namespace mtes {
 class StockEngineEmitter {
 public:
     virtual ~StockEngineEmitter() = default;
+    // An asynchronous adapter may request a precise game-thread mute and
+    // return false while waiting for acknowledgment. PCM must stay silent.
+    virtual bool prepare() { return true; }
     virtual bool mute() = 0;
     // False means restoring a still-owned channel failed temporarily. The
     // game adapter must retain this owner and retry on later game ticks.

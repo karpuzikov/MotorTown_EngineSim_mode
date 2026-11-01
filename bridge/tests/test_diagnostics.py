@@ -46,6 +46,8 @@ class DiagnosticReportTests(unittest.TestCase):
         tempdir = root / "Temp with spaces"
         tempdir.mkdir()
         (tempdir / "MotorTownEngineSim_diagnostics.txt").write_text("Exporter active. Synthetic diagnostic\n")
+        (tempdir / "MotorTownEngineSim_native_mute_request.txt").write_text("MTESM1 TEST FIXTURE\n")
+        (tempdir / "MotorTownEngineSim_native_mute_ack.txt").write_text("MTESA1 TEST FIXTURE\n")
         if flood_log:
             (tempdir / "MotorTownEngineSim_diagnostics.txt").write_text("Retry mapping: missing\n" * 1000)
         (tempdir / "MotorTownEngineSim_discovery.txt").write_text("Exporter v0.2.9\nMember RetainedEngineState = 5678\n")
@@ -90,6 +92,8 @@ exit $LASTEXITCODE
             self.assertIn("LIVE game telemetry: RPM=1750", report)
             self.assertIn("Synthetic exporter load failure", report)
             self.assertIn("Synthetic diagnostic", report)
+            self.assertIn('Native engine mute lease request', report)
+            self.assertIn('MTESA1 TEST FIXTURE', report)
             self.assertIn("MotorTownEngineSim : 1", report)
             self.assertIn("Exporter SHA256:", report)
             self.assertIn("MTES_STARTUP_READY", report)

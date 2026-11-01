@@ -20,6 +20,9 @@ FetchContent_GetProperties(mtes_engine_sim)
 if(NOT mtes_engine_sim_POPULATED)
     FetchContent_Populate(mtes_engine_sim)
 endif()
+# The enclosing UE4SS packaging target needs this location after returning
+# from add_subdirectory(); ordinary child-scope variables do not propagate.
+set_property(GLOBAL PROPERTY MTES_ENGINE_SIM_SOURCE_DIR "${mtes_engine_sim_SOURCE_DIR}")
 
 execute_process(
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/patch_engine_sim_core.py"
@@ -43,6 +46,7 @@ set(MTES_AUDIO_SOURCES
     src/engine_audio.cpp
     src/game_audio.cpp
     src/stock_engine_emitters.cpp
+    src/lua_mute_lease.cpp
     src/pcm_block_pool.cpp
     src/xaudio2_sink.cpp
     src/game_telemetry.cpp

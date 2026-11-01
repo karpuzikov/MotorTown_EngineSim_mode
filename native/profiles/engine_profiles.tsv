@@ -1,0 +1,4 @@
+# Development-only: exact Motor Town EngineData -> compatible Engine Simulator script.
+# This Dory 302 test profile currently uses the upstream GM LS V8 combustion
+# model as an audible prototype, not an authentic Ford 302 calibration.
+MHEngineDataAsset /Game/Cars/Parts/Engine/FordSmalBlock302_V8_5L_140HP.FordSmalBlock302_V8_5L_140HP	assets/dory_v8_prototype.mr

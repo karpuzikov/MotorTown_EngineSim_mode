@@ -36,6 +36,12 @@ class UE4SSParentBuildTests(unittest.TestCase):
                 'add_library(UE4SS INTERFACE)\n'
             )
             native.mkdir()
+            sim = native / 'sim-fixture'
+            (sim / 'es/sound-library').mkdir(parents=True)
+            (sim / 'assets/engines/atg-video-2').mkdir(parents=True)
+            (sim / 'es/engine_sim.mr').write_text('// fake script library\n')
+            (sim / 'assets/engines/atg-video-2/07_gm_ls.mr').write_text('// fake V8\n')
+            (sim / 'LICENSE').write_text('// fake license\n')
             (native / 'mod.cpp').write_text(
                 '#if defined(_WIN32)\n'
                 '#define MTES_TEST_EXPORT __declspec(dllexport)\n'
@@ -45,6 +51,7 @@ class UE4SSParentBuildTests(unittest.TestCase):
                 'extern "C" MTES_TEST_EXPORT int native_entry() { return 7; }\n'
             )
             (native / 'CMakeLists.txt').write_text(
+                f'set_property(GLOBAL PROPERTY MTES_ENGINE_SIM_SOURCE_DIR "{sim.as_posix()}")\n'
                 'add_library(MotorTownEngineSim SHARED mod.cpp)\n'
                 'target_link_libraries(MotorTownEngineSim PRIVATE UE4SS)\n'
             )
@@ -59,6 +66,15 @@ class UE4SSParentBuildTests(unittest.TestCase):
             staged = build / 'dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls' / ('main' + suffix)
             self.assertTrue(staged.is_file(), f'Missing staged C++ mod: {staged}')
             self.assertGreater(staged.stat().st_size, 0)
+            package = staged.parent.parent
+            self.assertTrue((package / 'Scripts/main.lua').is_file())
+            self.assertTrue((package / 'engine_profiles.tsv').is_file())
+            self.assertIn('FordSmalBlock302_V8_5L_140HP',
+                          (package / 'engine_profiles.tsv').read_text())
+            self.assertTrue((package / 'assets/dory_v8_prototype.mr').is_file())
+            self.assertTrue((package / 'assets/engines/atg-video-2/07_gm_ls.mr').is_file())
+            self.assertTrue((package / 'es/engine_sim.mr').is_file())
+            self.assertTrue((package / 'ENGINE_SIM_LICENSE.txt').is_file())
             self.assertFalse((temp / 'MotorTown').exists(), 'Build must not modify a game installation')
 
     def test_rejects_missing_sdk_source_and_incompatible_targets(self):

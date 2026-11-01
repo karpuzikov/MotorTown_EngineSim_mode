@@ -29,9 +29,14 @@ class FakeEmitter final : public StockEngineEmitter {
 public:
     std::vector<std::string>* events = nullptr;
     bool muted = false;
+    bool ready = true;
     bool allow_mute = true;
     bool allow_restore = true;
     int restores = 0;
+    bool prepare() override {
+        if (events) events->push_back("prepare");
+        return ready;
+    }
     bool mute() override {
         if (events) events->push_back("mute");
         if (!allow_mute) return false;
@@ -101,8 +106,8 @@ int main() {
     assert(!second->muted && !sink.started);
     events.clear();
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
-    assert((std::vector<std::string>(events.end() - 3, events.end()) ==
-        std::vector<std::string>{"queue", "mute", "start"}));
+    assert((std::vector<std::string>(events.end() - 4, events.end()) ==
+        std::vector<std::string>{"prepare", "queue", "mute", "start"}));
     assert(first->muted && !unrelated_horn_muted);
     assert(sink.started && sink.starts == 1 && sink.last.size() == 16);
     assert(sink.last[0] == 4096);
@@ -116,13 +121,13 @@ int main() {
     events.clear();
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
     assert(first->muted && sink.starts == 1);
-    assert((events == std::vector<std::string>{"mute", "queue"}));
+    assert((events == std::vector<std::string>{"prepare", "mute", "queue"}));
 
     // Losing permission to mute during playback is a fail-open stop.
     first->allow_mute = false;
     events.clear();
     assert(!game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
-    assert((events == std::vector<std::string>{"mute", "stop", "restore"}));
+    assert((events == std::vector<std::string>{"prepare", "mute", "stop", "restore"}));
     assert(!first->muted && !sink.started);
     first->allow_mute = true;
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
@@ -155,6 +160,21 @@ int main() {
     second->allow_restore = true;
     game.stop(); // failed restore must retain ownership and retry
     assert(!second->muted && !sink.started);
+
+    // An asynchronous game-thread mute handshake must be acknowledged before
+    // PCM can be queued or a sound source started. A pending ACK is retryable.
+    assert(engine.update("Tuscan", "tuscan.mr", {1400, 0.4, 2, true},
+        t + std::chrono::seconds(2)));
+    first->ready = false;
+    events.clear();
+    assert(!game.submit("Tuscan", first, scratch.data(), scratch.size(),
+        t + std::chrono::seconds(2), 1.0));
+    assert(events.back() == "prepare");
+    assert(!sink.started && !first->muted);
+    first->ready = true;
+    assert(game.submit("Tuscan", first, scratch.data(), scratch.size(),
+        t + std::chrono::seconds(2), 1.0));
+    game.stop();
 
     // A sink that cannot queue playback must never mute the stock engine.
     assert(engine.update("Atlas", "atlas.mr", {950, 0.5, 1, true}, t + std::chrono::seconds(2)));

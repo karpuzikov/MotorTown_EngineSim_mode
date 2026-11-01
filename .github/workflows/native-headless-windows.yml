@@ -67,5 +67,10 @@ jobs:
               [System.Text.UTF8Encoding]::new($false))
             $profiles += $path
           }
+          # Exercise the exact .mr wrapper shipped for the first in-game
+          # Dory V8 trial; passing the generic GM LS fixture is insufficient.
+          $dory = Join-Path $assets 'mtes-dory-prototype.mr'
+          Copy-Item 'native/profiles/dory_v8_prototype.mr' $dory
+          $profiles += $dory
           & 'native/build-windows/Release/mtes-headless-smoke.exe' @profiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

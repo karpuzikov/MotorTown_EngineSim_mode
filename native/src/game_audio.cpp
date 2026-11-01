@@ -43,6 +43,12 @@ bool GameAudioOutput::submit(const std::string& vehicle,
         return false;
     }
     try {
+        // Do not queue or start a second audio source while a game-thread
+        // stock-emitter mute request is still pending acknowledgment.
+        if (!stock->prepare()) {
+            if (m_playing) stop();
+            return false;
+        }
         // Motor Town can update active audio component volumes on its own
         // ticks. Keep stock engine/exhaust muted without recapturing its
         // original gain; if the target is gone, immediately fail open.
