@@ -1,189 +1,237 @@
--- Unreal boundary double; executes the actual exporter with real Lua/file I/O.
+-- UE4SS/Motor Town boundary double. Runs the actual exporter with real Lua file I/O.
+-- Modeled on UE4SS behavior (src/LuaType/LuaUStruct.cpp, LuaUScriptStruct.cpp):
+--  * ForEachProperty exists on UStruct/UClass objects only. A struct VALUE read
+--    from a property (e.g. vehicle.NetLC_EngineHotState) has no ForEachProperty;
+--    unknown members of it read as nil.
+--  * An iterator callback returning false loses the callback (reported failure).
+--  * A StructProperty exposes its layout through GetStruct().
+-- Field names follow published AMTVehicle dumps (MotorTownMods docs).
 local exporter, scenario = arg[1], arg[2]
+
 if scenario == 'iterator_contract' then
     assert(type(UE4SS_ForEach) == 'function', 'Native iteration boundary required')
     local count = 0
     local ok, err = pcall(function()
-        UE4SS_ForEach(function() count = count + 1; return false end, {1,2,3})
+        UE4SS_ForEach(function() count = count + 1; return false end, {1, 2, 3})
     end)
     assert(not ok and count == 1 and tostring(err):find('nil value'), 'False must reproduce the reported binding failure')
     count = 0
-    UE4SS_ForEach(function() count = count + 1 end, {1,2,3})
+    UE4SS_ForEach(function() count = count + 1 end, {1, 2, 3})
     assert(count == 3, 'Nil must continue through every member')
     count = 0
-    UE4SS_ForEach(function() count = count + 1; return true end, {1,2,3})
+    UE4SS_ForEach(function() count = count + 1; return true end, {1, 2, 3})
     assert(count == 1, 'True must stop iteration')
     return
 end
-local native_open, native_time = io.open, os.time
-io.open = function(path, mode) return native_open(path:gsub('\\', '/'), mode) end
+
+local native_open = io.open
+io.open = function(path, mode) return native_open((path:gsub('\\', '/')), mode) end
 local clock = 1790000000
 os.time = function() return clock end
-local next_address = 1
-local state = { rpm = 2400, throttle = 0.65, running = true, unsafe_calls = 0 }
 
-local function object(fields, kind)
-    local value = io.tmpfile()
-    value:close() -- the closed userdata is only an Unreal boundary double
-    next_address = next_address + 1
-    local address = next_address
-    fields.type = function() return kind or 'UObject' end
-    fields.IsValid = function() return fields.ready ~= false end
-    fields.GetAddress = function() return address end
-    fields.GetStructAddress = function() return address end
-    fields.GetFullName = fields.GetFullName or function() return 'DoryWrecker_C test object' end
-    debug.setmetatable(value, {
-        __index = fields,
-        __newindex = function() error('Exporter must not write Unreal properties') end,
-        __call = fields.call,
-    })
-    return value, fields
+local writes, next_address = 0, 100
+
+local function each(values, callback)
+    if UE4SS_ForEach then return UE4SS_ForEach(callback, values) end
+    for _, value in ipairs(values) do
+        local result = callback(value)
+        if result == true then break end
+        if result == false then error('attempt to call a nil value (UE4SS iterator lost its callback)') end
+    end
 end
 
 local function fname(name) return { ToString = function() return name end } end
-local function prop(name) return { GetFName = function() return fname(name) end } end
-local function each(values, callback)
-    if UE4SS_ForEach then return UE4SS_ForEach(callback, values) end
-    for _, value in ipairs(values) do if callback(value) then break end end
-end
-local function schema(properties, functions)
-    local result = object({
-        ForEachProperty = function(self, callback)
-            local values = {}
-            for _, name in ipairs(properties or {}) do values[#values + 1] = prop(name) end
-            each(values, callback)
+
+-- UObject double: methods plus live reflected fields; writes are recorded.
+local function uobject(methods, fields)
+    next_address = next_address + 1
+    local address = next_address
+    methods.IsValid = methods.IsValid or function() return true end
+    methods.GetAddress = function() return address end
+    methods.GetFullName = methods.GetFullName or function() return 'Object test' end
+    methods.type = function() return 'UObject' end
+    return setmetatable({}, {
+        __index = function(_, key)
+            if methods[key] ~= nil then return methods[key] end
+            if type(fields) == 'function' then return fields(key) end
+            return fields and fields[key]
         end,
-        ForEachFunction = function(self, callback)
-            each(functions or {}, callback)
-        end,
-        GetSuperStruct = function() return nil end,
-    }, 'UClass')
-    return result
-end
-local function getter(name, callback, inputs)
-    return object({
-        GetFName = function() return fname(name) end,
-        GetFunctionFlags = function() return 0x50000000 end, -- BlueprintPure + Const
-        ForEachProperty = function(self, visit)
-            local values = {}
-            for _, input in ipairs(inputs or {}) do values[#values + 1] = prop(input) end
-            values[#values + 1] = prop('ReturnValue')
-            each(values, visit)
-        end,
-        call = callback,
-    }, 'UFunction')
+        __newindex = function() writes = writes + 1 end,
+    })
 end
 
-local rpm = getter('GetEngineRPM', function()
-    if scenario == 'getter_error' then error('Synthetic RPM getter failure') end
-    return state.rpm
+-- Struct VALUE double (LuaUScriptStruct): no ForEachProperty, unknown keys are nil.
+local function struct_value(fields)
+    local methods = {
+        IsValid = function() return true end,
+        GetBaseAddress = function() return 1 end,
+        GetStructAddress = function() return 2 end,
+        IsMappedToObject = function() return true end,
+        type = function() return 'UScriptStruct' end,
+    }
+    return setmetatable({}, {
+        __index = function(_, key)
+            if methods[key] ~= nil then return methods[key] end
+            return fields[key]
+        end,
+        __newindex = function() writes = writes + 1 end,
+    })
+end
+
+local function property(name, kind, layout)
+    local p = {
+        GetFName = function() return fname(name) end,
+        GetClass = function() return { GetFName = function() return fname(kind) end } end,
+    }
+    if kind == 'StructProperty' then p.GetStruct = function() return layout end end
+    return p
+end
+
+local function ustruct(name, props, super)
+    return uobject({
+        GetFName = function() return fname(name) end,
+        ForEachProperty = function(_, callback) each(props, callback) end,
+        GetSuperStruct = function() return super end,
+    })
+end
+
+local actorClass = ustruct('Actor', { property('bHidden', 'BoolProperty') })
+local pawnClass = ustruct('Pawn', { property('BaseEyeHeight', 'FloatProperty') }, actorClass)
+local MTVehicle = ustruct('MTVehicle', {}, pawnClass)
+
+-- Live game state the scenarios change between samples.
+local state = { rpm = 2400, throttle = 0.65, ignition = true, starter = false }
+
+local hotLayout = ustruct('MTVehicleEngineHotState', {
+    property('bStarterOn', 'BoolProperty'), property('CurrentRPM', 'FloatProperty'),
+    property('JakeBrake', 'ByteProperty'), property('bIgnitionOn', 'BoolProperty'),
+    property('CoolantTemp', 'ByteProperty'), property('RegenBrake', 'ByteProperty'),
+})
+
+local function make_vehicle(name, renamed, rpmOffset)
+    local props, fields = {}, {}
+    rpmOffset = rpmOffset or 0
+    local function hot()
+        return struct_value(setmetatable({}, { __index = function(_, key)
+            if key == 'CurrentRPM' then return state.rpm + rpmOffset end
+            if key == 'bIgnitionOn' then return state.ignition end
+            if key == 'bStarterOn' then return state.starter end
+            if key == 'CoolantTemp' then return 80 end
+            if key == 'JakeBrake' then return 0 end
+            if key == 'RegenBrake' then return 1 end
+        end }))
+    end
+    if renamed then
+        local layout = ustruct('EngineStateRenamed', {
+            property('MaxRPM', 'FloatProperty'), property('EngineRPM', 'FloatProperty'),
+            property('bIgnitionOn', 'BoolProperty'),
+        })
+        props = {
+            property('Net_PTOThrottle', 'FloatProperty'), property('Clutch', 'FloatProperty'),
+            property('EngineState', 'StructProperty', layout), property('ThrottleInput', 'FloatProperty'),
+            property('Wheels', 'ArrayProperty'),
+        }
+        fields = function(key)
+            if key == 'Net_PTOThrottle' then return 0.2 end
+            if key == 'Clutch' then return 0 end
+            if key == 'ThrottleInput' then return state.throttle end
+            if key == 'EngineState' then
+                return struct_value(setmetatable({}, { __index = function(_, k)
+                    if k == 'MaxRPM' then return 7000 end
+                    if k == 'EngineRPM' then return state.rpm end
+                    if k == 'bIgnitionOn' then return state.ignition end
+                end }))
+            end
+        end
+    else
+        props = {
+            property('Net_PTOThrottle', 'FloatProperty'), property('Clutch', 'FloatProperty'),
+            property('NetLC_EngineHotState', 'StructProperty', hotLayout),
+            property('Throttle', 'FloatProperty'), property('Brake', 'FloatProperty'),
+        }
+        fields = function(key)
+            if key == 'Throttle' then return state.throttle end
+            if key == 'NetLC_EngineHotState' then return hot() end
+            if key == 'Net_PTOThrottle' then return 0.2 end
+            if key == 'Clutch' or key == 'Brake' then return 0 end
+        end
+    end
+    local cls = ustruct(name .. '_C', props, MTVehicle)
+    return uobject({
+        GetFullName = function() return name .. '_C /Game/Test.' .. name end,
+        GetClass = function() return cls end,
+        IsA = function(_, target) return target == MTVehicle end,
+    }, fields)
+end
+
+local vehicle = make_vehicle('DoryWrecker', scenario == 'renamed_fields')
+local otherVehicle = make_vehicle('Jemusi', false, 600)
+local seat = uobject({})
+local character = uobject({
+    GetFullName = function() return 'MTCharacter_C test' end,
+    IsA = function() return false end,
+}, function(key) if key == 'Net_Seat' and scenario == 'seated' then return seat end end)
+
+local pawn = (scenario == 'on_foot' or scenario == 'seated') and character or vehicle
+local controller = uobject({
+    IsLocalController = function() return true end,
+}, function(key)
+    if key == 'Pawn' then return pawn end
+    if key == 'LastVehicle' then return vehicle end
 end)
-local throttle = getter('GetEngineThrottle', function() return state.throttle end)
-local ignition = getter('IsEngineRunning', function() return state.running end)
-local unsafe = getter('GetEngineRPMWithOffset', function() state.unsafe_calls = state.unsafe_calls + 1; return 9999 end, {'Offset'})
-local engine, engine_fields = object({
-    GetEngineRPM = rpm, GetEngineThrottle = throttle, IsEngineRunning = ignition,
-    GetEngineRPMWithOffset = unsafe,
-    ThrottleInput = 0, -- autopilot is driving; no keyboard input
-    GetClass = function() return schema({'ThrottleInput'}, {rpm, throttle, ignition, unsafe}) end,
-})
-local struct_fields = { CurrentRPM = state.rpm, ActualThrottle = state.throttle, bEngineOn = true }
-local struct, struct_members = object(struct_fields, 'UScriptStruct')
-struct_members.ForEachProperty = function(self, visit)
-    each({prop('CurrentRPM'),prop('ActualThrottle'),prop('bEngineOn')}, visit)
+
+function StaticFindObject(path)
+    if path == '/Script/MotorTown.MTVehicle' then return MTVehicle end
+    return nil
 end
-struct_members.ForEachFunction = function() end
-struct_members.GetSuperStruct = function() return nil end
--- A struct's GetClass is its metaclass, not its reflected data layout.
-struct_members.GetClass = function() return schema({}, {}) end
-local component = object({ RuntimeState = struct, GetClass = function() return schema({'RuntimeState'}, {}) end })
-local vehicle, vehicle_fields = object({
-    VehicleSimulation = engine, ThrottleInput = 0,
-    IsA = function(self, name) return name == '/Script/MotorTown.MTVehicle' end,
-    GetClass = function() return schema({'VehicleSimulation','ThrottleInput'}, {}) end,
-})
-if scenario == 'struct' then vehicle_fields.VehicleSimulation = component end
-if scenario == 'struct_alias' then
-    struct_members.GetStructAddress = function() return 4242 end
-    local outer, outer_fields = object({ EngineState = struct }, 'UScriptStruct')
-    outer_fields.GetStructAddress = function() return 4242 end
-    outer_fields.ForEachProperty = function(self, visit) visit(prop('EngineState')) end
-    outer_fields.ForEachFunction = function() end
-    outer_fields.GetSuperStruct = function() return nil end
-    vehicle_fields.VehicleSimulation = outer
+function FindAllOf(className)
+    if className == 'MotorTownPlayerController' then return { controller } end
+    return nil
 end
-if scenario == 'late_component' then engine_fields.ready = false end
-if scenario == 'late_actual_throttle' then
-    engine_fields.ready = false
-    vehicle_fields.EngineRPM = state.rpm
-    vehicle_fields.GetClass = function() return schema({'EngineRPM','VehicleSimulation','ThrottleInput'}, {}) end
+
+local loop, asyncLoop
+function LoopInGameThreadWithDelay(ms, callback)
+    if scenario == 'timer_fallback' then error('Neither EngineTick nor ProcessEvent hooks are available') end
+    assert(ms <= 100, 'Telemetry must be sampled at 10 Hz or faster')
+    loop = callback
+    return 1
 end
-if scenario == 'ignition_initially_off' then state.running = false end
-local reflected_count = 0
-if scenario == 'metadata_budget' then
-    vehicle_fields.GetClass = function()
-        return object({
-            ForEachProperty = function(self, visit)
-                for i = 1, 5000 do
-                    reflected_count = reflected_count + 1
-                    if visit(prop('Unused' .. i)) then break end
-                end
-            end,
-            ForEachFunction = function() end,
-            GetSuperStruct = function() return nil end,
-        }, 'UClass')
-    end
-end
-if scenario == 'truncated_getter' then
-    local properties = {'VehicleSimulation'}
-    for i = 1, 1997 do properties[#properties + 1] = 'Unused' .. i end
-    vehicle_fields.GetClass = function() return schema(properties, {}) end
-    local partial = getter('GetEngineRPM', function()
-        state.unsafe_calls = state.unsafe_calls + 1
-        return 9999
-    end)
-    -- A return-first signature must not hide its later input at the budget edge.
-    getmetatable(partial).__index.ForEachProperty = function(self, visit)
-        if visit(prop('ReturnValue')) then return end
-        visit(prop('Offset'))
-    end
-    engine_fields.GetEngineRPM = partial
-    engine_fields.GetClass = function() return schema({}, {partial}) end
-end
-if scenario == 'reflection_error' then
-    vehicle_fields.GetClass = function() error('Synthetic reflection failure') end
-end
-local controller = object({ K2_GetPawn = function() return vehicle end })
-package.preload['UEHelpers'] = function() return { GetPlayerController = function() return controller end } end
-FindFirstOf = function() error('Must use the local player controller') end
-local tick = nil
-LoopInGameThreadWithDelay = function(delay, callback) assert(delay == 50); tick = callback end
+function LoopAsync(ms, callback) asyncLoop = callback return 2 end
+function ExecuteInGameThread(callback) callback() end
+
 dofile(exporter)
-assert(tick, 'Exporter did not start its game-thread loop')
+
+local function tick()
+    if loop then loop() else assert(asyncLoop, 'Exporter scheduled no loop')() end
+end
+
 tick()
-if scenario == 'late_component' or scenario == 'late_actual_throttle' then
-    engine_fields.ready = true
-    clock = clock + 2
-    tick()
-elseif scenario == 'autopilot' then
+if scenario == 'startup_delay' then return end   -- Nothing may be sampled during boot.
+clock = clock + 31
+tick()
+
+if scenario == 'autopilot' then
+    -- AI drives the player's vehicle: control input and engine state come from the game.
     state.rpm, state.throttle = 4100, 0.8
-    clock = clock + 1
     tick()
 elseif scenario == 'ignition_off' then
-    state.running = false -- residual RPM must not override explicit ignition off
-    clock = clock + 1
+    state.rpm, state.throttle, state.ignition = 0, 0, false
     tick()
-elseif scenario == 'changed_throttle_getter' then
-    local replacement = getter('GetActualThrottle', function() return 0.75 end)
-    vehicle_fields.VehicleSimulation = object({
-        GetEngineRPM = rpm, GetActualThrottle = replacement,
-        IsEngineRunning = ignition,
-        GetClass = function() return schema({}, {rpm, replacement, ignition}) end,
-    })
-    clock = clock + 2
-    tick() -- old throttle getter is unavailable
-    clock = clock + 1
-    tick() -- discover the replacement getter
+elseif scenario == 'engine_stopping' then
+    state.ignition = false   -- residual RPM while spinning down
+    tick()
+elseif scenario == 'rpm_follows' then
+    for _, rpm in ipairs({ 900, 1800, 3100 }) do
+        state.rpm = rpm
+        clock = clock + 1
+        tick()
+    end
+elseif scenario == 'vehicle_switch' then
+    pawn = otherVehicle
+    tick()
+elseif scenario == 'leave_vehicle' then
+    pawn = character
+    tick()
 end
-assert(state.unsafe_calls == 0, 'A getter with input parameters was called')
-assert(reflected_count <= 2000, 'Metadata enumeration exceeded budget: ' .. reflected_count)
+
+assert(writes == 0, 'Exporter must never write game properties')

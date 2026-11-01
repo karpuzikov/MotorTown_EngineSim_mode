@@ -1,4 +1,4 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.11)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.3.0)
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
@@ -18,6 +18,52 @@ Runtime rendering, telemetry and audio synchronization remain unverified.
 Synchronization must use the vehicle's live engine state, including RPM and engine
 throttle under autopilot. Keyboard or WASD state is not a substitute for telemetry.
 Autopilot integration remains unverified until game-side values are captured.
+
+## Direct engine-state fields (v0.3.0)
+
+Motor Town stores the live engine state the game itself replicates for engine sound
+on every `AMTVehicle` (published dumps: MotorTownMods `docs/Webhooks.md`,
+`docs/LuaHttpServer/VehicleManagement.md`):
+
+| Signal   | Path                                   | Type          |
+|----------|----------------------------------------|---------------|
+| RPM      | `NetLC_EngineHotState.CurrentRPM`      | float, RPM    |
+| Ignition | `NetLC_EngineHotState.bIgnitionOn`     | bool          |
+| Throttle | `Throttle`                             | float, 0..1   |
+
+The exporter reads these paths directly every 50 ms. No reflection runs on the
+hot path, and no getters are called.
+
+Why v0.2.9-v0.2.11 never found RPM: RPM sits inside the struct
+`NetLC_EngineHotState`. A struct *value* in UE4SS (`LuaUScriptStruct`) has only
+`GetBaseAddress/GetStructAddress/IsValid/GetProperty/type`; unknown members read
+as nil, so `struct:ForEachProperty(...)` raised "attempt to call a nil value".
+v0.2.11's `false` -> `nil` callback fix was also correct (UE4SS `LuaUStruct.cpp`
+consumes a returned `false` twice), but the struct failure remained.
+
+If a game update renames a field, the exporter falls back to a bounded scan of
+the vehicle's numeric/bool fields. Struct layouts come from
+`StructProperty:GetStruct()`. The scan writes every field it read to
+`%TEMP%\MotorTownEngineSim_discovery.txt`. Exact paths can still be set in
+`RPM_PATH`, `THROTTLE_PATH` and `IGNITION_PATH` at the top of `main.lua`.
+
+Other changes, based on lessons from other Motor Town UE4SS mods:
+- Sampling starts 30 s after the mod loads. Polling during boot crashed the game for MTSpawner.
+- The local controller is found with `FindAllOf("MotorTownPlayerController")` +
+  `IsLocalController()`, and `MTVehicle` via `StaticFindObject` + `IsA`.
+- A player seated in a vehicle without possessing it uses `LastVehicle`.
+- If `LoopInGameThreadWithDelay` is unavailable, sampling falls back to
+  `LoopAsync` + `ExecuteInGameThread`.
+
+Simulator side (`MTES_BRIDGE_V2`): a missing or torn packet (mid-write, or the file held by
+antivirus) reuses the last good packet for up to 15 frames, about 0.25 s, before muting.
+Before, one bad read cut ignition and audio for a frame. RPM eases toward each 20 Hz
+sample instead of stepping. The installer upgrades v0.2.10/v0.2.11 sources in place,
+with a backup.
+
+Tests model the UE4SS boundary as it actually behaves: struct values without
+`ForEachProperty`, and `false` from an iterator callback breaking iteration. Every
+exporter scenario also runs through the native UE4SS iterator stack operations.
 
 ## UE4SS iteration compatibility (v0.2.11)
 
@@ -78,10 +124,10 @@ input is zero, late component availability, and ignition-off behavior. These tes
 do not verify the live game's field names, sound synchronization, or stock muting.
 
 ## Limitations
-- Motor Town RPM/throttle property paths are **not yet verified** on game 0.7.19.
-  Auto-discovery may choose the wrong property or none. Inspect
-  `%TEMP%\MotorTownEngineSim_diagnostics.txt` and set `RPM_PATH`, `THROTTLE_PATH`,
-  `IGNITION_PATH` in `main.lua` if necessary.
+- The field paths come from published dumps of current Motor Town builds and
+  have not yet been checked by a drive test with this bridge. Whether `Throttle` follows
+  autopilot is unverified. `%TEMP%\MotorTownEngineSim_discovery.txt` shows the
+  values read for the current vehicle.
 - Only the player's vehicle, not AI traffic, has Engine Simulator sound.
 - The sound plays outside Motor Town, therefore no in-game 3D positioning,
   doppler, interior muffling or occlusion. In-game engine audio must be muted
