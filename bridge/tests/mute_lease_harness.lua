@@ -322,8 +322,21 @@ assert(electric.VolumeMultiplier == 1.0, "Electric motors keep their sound")
 assert(backfire.VolumeMultiplier == 1.0 and jake.VolumeMultiplier == 1.0, "Pops and jake brake stay")
 assert(hornCue.VolumeMultiplier == 1.0 and cdo.VolumeMultiplier == 1.0)
 
--- The replacement must play at the silenced cue's ORIGINAL loudness (in game
--- 2026-11-02 the mix used the silenced 0: no engine sound at all).
+-- Distance makes engines quieter like in real life: -6 dB per doubling past
+-- the 7.5 m their loudness is rated at, at most +8 dB at 3 m (in game the
+-- stock attenuation kept a car 30 m away as loud as sitting in it).
 channel.Sound = v8
-local gain = __test_mix({}, vehicle)
-assert(gain and gain > 0.5, "Mix gain uses the stock cue's original volume: " .. tostring(gain))
+local engineAt = 1500
+channel.K2_GetComponentLocation = function() return { X = engineAt, Y = 0, Z = 0 } end
+local camera = object("PlayerCameraManager Camera", {
+    GetCameraLocation = function() return { X = 0, Y = 0, Z = 0 } end,
+    GetCameraRotation = function() return { Yaw = 0 } end,
+})
+local pc = { PlayerCameraManager = camera }
+local at15 = __test_mix(pc, vehicle)
+engineAt = 3000
+local at30 = __test_mix(pc, vehicle)
+engineAt = 100
+local inside = __test_mix(pc, vehicle)
+assert(at15 and math.abs(at15 / at30 - 2) < 1e-6, "Spherical spreading: " .. tostring(at15) .. " " .. tostring(at30))
+assert(math.abs(inside / at15 - 5) < 1e-6, "Capped at 3 m: " .. tostring(inside))

@@ -32,10 +32,11 @@ class AudioMixTests(unittest.TestCase):
         self.assertLess(backend.index('spin_forward(m_engine, from);'),
                         backend.index('m_simulator->startFrame(seconds);'))
         self.assertIn('profile_rpm_scale(script)', backend)  # two-strokes
-        # Loudness is Engine Simulator's own (as in its demo); no extra
-        # compressor or per-profile gain pulls it down in game.
+        # Timbre from Engine Simulator's leveler; level from the vehicle's
+        # real-world loudness, engine speed and load (no compressor).
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
-        self.assertNotIn('leveler.p_maxLevel', backend)
+        self.assertIn('engine_loudness_gain_db(', backend)
+        self.assertNotIn('LoudnessLeveler', backend)
 
     def test_every_packaged_profile_is_a_complete_engine(self):
         profiles = sorted((ROOT / 'profiles').glob('es_*.mr'))

@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.27, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.28, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -846,7 +846,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.27 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.28 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -912,7 +912,6 @@ end
 -- Master Volume, found by its EMTUserSettingType name (never by a guessed
 -- number). Native XAudio2 output bypasses Unreal's mixer, so the game's
 -- master slider must be applied explicitly. nil when not verifiable.
-local stockSoundVolumes = {} -- silenced stock sound asset address -> original volume
 local masterVolumeKey = nil
 local nextMasterKeyProbe = 0
 local soundSettingNames = nil
@@ -978,31 +977,6 @@ local function attenuation_of(channel, cue)
     return nil
 end
 
--- FBaseAttenuationSettings::AttenuationEval (UE 5.5), sphere extents.
-local function distance_gain(settings, distance)
-    if member(settings, "bAttenuate") == false then return 1 end
-    local extents = member(settings, "AttenuationShapeExtents")
-    local radius = extents and tonumber(member(extents, "X")) or 0
-    local falloff = tonumber(member(settings, "FalloffDistance")) or 0
-    local d = math.max(0, distance - math.max(0, radius))
-    if falloff <= 0 then return d > 0 and 0 or 1 end
-    local alpha = math.min(1, d / falloff)
-    local algorithm = tonumber(member(settings, "DistanceAlgorithm")) or 0
-    local result
-    if algorithm == 1 then -- Logarithmic
-        result = alpha <= 0 and 1 or 0.5 * -math.log(alpha)
-    elseif algorithm == 2 then -- Inverse
-        result = alpha <= 0 and 1 or 0.02 / alpha
-    elseif algorithm == 3 then -- LogReverse
-        result = alpha >= 1 and 0 or 1 + 0.5 * math.log(1 - alpha)
-    elseif algorithm == 4 then -- NaturalSound
-        local atMax = tonumber(member(settings, "dBAttenuationAtMax")) or -60
-        result = 10 ^ (alpha * math.min(0, atMax) / 20)
-    else -- Linear, or Custom curve approximated linearly
-        result = 1 - alpha
-    end
-    return math.max(0, math.min(1, result))
-end
 
 local function lowpass_of(settings, distance)
     if member(settings, "bAttenuateWithLPF") ~= true then return 0 end
@@ -1017,27 +991,22 @@ local function lowpass_of(settings, distance)
     return math.max(10, math.min(30000, hz))
 end
 
--- Where/how loud Unreal plays the car's stock engine cue for this camera:
--- stock volume multipliers x distance attenuation x master volume, pan from
--- the camera's right vector, distance low-pass. nil when unknown.
+-- Where the engine is for this camera, and how loud the distance makes it.
+-- The engine's own loudness (dB(A) by RPM and load) is applied natively;
+-- here: master volume x spherical spreading, -6 dB per doubling beyond the
+-- 7.5 m the loudness is rated at, at most +8 dB at 3 m (in or by the car).
+-- (The stock attenuation curve barely fell over tens of metres: in game a
+-- car 30 m away sounded as if you sat in it.) Pan from the camera's right
+-- vector; the stock distance low-pass when the cue has one. nil if unknown.
+local LOUDNESS_RATED_DISTANCE = 750 -- Unreal units (cm)
+local NEAREST_LISTENING_DISTANCE = 300
 local function stock_mix(pc, vehicle)
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
-    if not valid(channel) then return nil end
-    local cue = member(channel, "Sound")
-    local componentGain = leasedAudio and leasedAudio.channelAddress == address_of(channel)
-        and leasedAudio.gain or tonumber(member(channel, "VolumeMultiplier"))
-    if not componentGain or componentGain < 0 then return nil end
-    -- The stock cue asset itself is silenced (silence_stock_engine_sounds):
-    -- use the volume it had, never the 0 we set (in game: total silence).
-    local cueGain = valid(cue) and (stockSoundVolumes[address_of(cue)] or
-        tonumber(member(cue, "VolumeMultiplier"))) or 1
-    if not cueGain or cueGain <= 0 then cueGain = 1 end
-    local master = setting_value(setting_keys()) or 1
-    local gain = componentGain * (cueGain or 1) * master
-    local settings = attenuation_of(channel, cue)
-    if not settings then return math.min(8, gain), 0, 0 end
-    local okEmitter, emitter = pcall(function() return channel:K2_GetComponentLocation() end)
+    local okEmitter, emitter = pcall(function()
+        if valid(channel) then return channel:K2_GetComponentLocation() end
+        return vehicle:K2_GetActorLocation()
+    end)
     local camera = member(pc, "PlayerCameraManager")
     if not okEmitter or not valid(camera) then return nil end
     local okLocation, listener = pcall(function() return camera:GetCameraLocation() end)
@@ -1049,18 +1018,18 @@ local function stock_mix(pc, vehicle)
     if not (ex and lx and yaw) then return nil end
     local dx, dy, dz = ex - lx, ey - ly, ez - lz
     local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
-    gain = gain * distance_gain(settings, distance)
+    local master = setting_value(setting_keys()) or 1
+    local gain = master * LOUDNESS_RATED_DISTANCE / math.max(distance, NEAREST_LISTENING_DISTANCE)
     local pan = 0
-    if member(settings, "bSpatialize") ~= false and distance > 1 then
+    if distance > 1 then
         local rad = math.rad(yaw)
         pan = (dx * -math.sin(rad) + dy * math.cos(rad)) / distance
-        -- Unreal blends to unspatialized audio inside the non-spatialized radius.
-        local inner = tonumber(member(settings, "NonSpatializedRadiusEnd")) or
-            tonumber(member(settings, "OmniRadius")) or 0
-        if inner > 0 and distance < inner then pan = pan * distance / inner end
+        -- Inside the car the engine is around you, not to one side.
+        if distance < NEAREST_LISTENING_DISTANCE then pan = pan * distance / NEAREST_LISTENING_DISTANCE end
         pan = math.max(-1, math.min(1, pan))
     end
-    return math.min(8, gain), pan, lowpass_of(settings, distance)
+    local settings = valid(channel) and attenuation_of(channel, member(channel, "Sound")) or nil
+    return math.min(8, gain), pan, settings and lowpass_of(settings, distance) or 0
 end
 
 -- One-time inventory of every Motor Town engine and the stock sound data the
@@ -1082,7 +1051,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.27" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.28" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1224,7 +1193,7 @@ end
 
 -- Running engines of other vehicles near the camera (traffic, parked cars
 -- left idling): the native side synthesizes the nearest few.
-local TRAFFIC_VOICE_LIMIT = 3 -- native TrafficEngineVoices::MaxVoices
+local TRAFFIC_VOICE_LIMIT = 2 -- native TrafficEngineVoices::MaxVoices
 local TRAFFIC_AUDIBLE_RADIUS = 15000 -- Unreal units (150 m)
 local trafficVehicles, nextTrafficScan, trafficSequence = {}, 0, 0
 local function camera_location(pc)
@@ -1282,7 +1251,7 @@ end
 
 local function write_traffic_telemetry(pc, playerVehicle)
     if os.time() >= nextTrafficScan then
-        nextTrafficScan = os.time() + 1
+        nextTrafficScan = os.time() + 2 -- FindAllOf over every vehicle is a game-thread cost
         trafficVehicles = scan_running_traffic(pc, playerVehicle)
     end
     trafficSequence = trafficSequence + 1
@@ -1330,8 +1299,6 @@ local function silence_class(className, property)
         if address and not checkedStockSounds[address] then
             checkedStockSounds[address] = true
             if is_stock_engine_asset(full_name(sound)) then
-                local original = tonumber(member(sound, property))
-                if original and original > 0 then stockSoundVolumes[address] = original end
                 local set = pcall(function() sound[property] = 0.0 end)
                 if set and tonumber(member(sound, property)) == 0 then
                     mutedStockSounds = mutedStockSounds + 1
@@ -1465,7 +1432,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.27 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.28 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

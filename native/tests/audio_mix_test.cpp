@@ -34,11 +34,28 @@ int main() {
     // A vehicle's exhaust rides along with its engine script.
     {
         const auto plain = parse_engine_sound_spec("C:/mod/assets/es_volvo_d13.mr");
-        assert(plain.script == "C:/mod/assets/es_volvo_d13.mr" && plain.exhaustImpulse.empty());
+        assert(plain && plain->script == "C:/mod/assets/es_volvo_d13.mr" &&
+            plain->exhaustImpulse.empty() && !plain->fullThrottleLoudnessDba);
         const auto truck = parse_engine_sound_spec(
-            "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
-        assert(truck.script == "C:/mod/assets/es_volvo_d13.mr");
-        assert(truck.exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
+            "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav#loudness=88");
+        assert(truck && truck->script == "C:/mod/assets/es_volvo_d13.mr");
+        assert(truck->exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
+        assert(truck->fullThrottleLoudnessDba && near(*truck->fullThrottleLoudnessDba, 88, 1e-12));
+        assert(!parse_engine_sound_spec("a.mr#loudness=88x"));
+        assert(!parse_engine_sound_spec("a.mr#loudness=-1"));
+    }
+
+    // Real-world loudness: a semi is louder than a hatchback; idle ~20 dB
+    // under full throttle (Engine Simulator alone: 56 dB); lifting off at
+    // the same RPM takes 6 dB, smoothly (no sudden drop).
+    {
+        const double semi = engine_loudness_gain_db(88, 1680, 2100, 1.0);
+        const double hatchback = engine_loudness_gain_db(74, 5200, 6500, 1.0);
+        assert(near(semi - hatchback, 14, 1e-9));
+        const double idle = engine_loudness_gain_db(74, 850, 6500, 0.0);
+        assert(hatchback - idle > 18 && hatchback - idle < 30);
+        assert(near(hatchback - engine_loudness_gain_db(74, 5200, 6500, 0.0), 6, 1e-9));
+        assert(engine_loudness_gain_db(130, 9000, 6500, 1.0) == 0.0); // never above full scale
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

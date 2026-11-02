@@ -32,7 +32,6 @@ DENSITY = 0.55           # kg/m^3 at ~350 C
 IMPULSE_SECONDS = 0.22   # Engine Simulator uses the first 10000 samples
 MEAN_FLOW_MACH = 0.1     # exhaust gas speed / sound speed at cruise
 WALL_TURBULENCE = 3.0    # rough hot pipes with flow lose more than Kirchhoff's smooth tube
-LOSS_ROLL_OFF_HZ = 2000.0
 
 # Element kinds: pipe(length, diameter); cat(length, diameter, absorption);
 # chamber(length, diameter): a chambered muffler box - inlet and outlet tubes
@@ -69,7 +68,7 @@ PROFILES = {
     "offroad_vintage": [("pipe", 1.4, 0.04), ("chamber", 0.35, 0.10), ("pipe", 0.25, 0.04)],
     "truck_medium": [("pipe", 1.4, 0.09), ("chamber", 0.6, 0.25), ("pipe", 0.4, 0.09)],
     "military_stack": [("pipe", 1.0, 0.10), ("chamber", 0.45, 0.20), ("pipe", 1.2, 0.10)],
-    "truck_stack": [("pipe", 2.2, 0.127), ("absorb", 0.9, 0.127, 0.5), ("pipe", 2.3, 0.127)],
+    "truck_stack": [("pipe", 2.2, 0.127), ("absorb", 0.9, 0.127, 1.5), ("pipe", 1.8, 0.127)],
     "truck_euro": [("pipe", 2.0, 0.11), ("chamber", 0.7, 0.40), ("pipe", 0.25, 0.11)],
     "bus_rear": [("pipe", 0.7, 0.10), ("chamber", 1.0, 0.35), ("pipe", 0.25, 0.10)],
     "motorcycle_twin": [("pipe", 0.9, 0.038), ("absorb", 0.4, 0.05, 0.5), ("pipe", 0.05, 0.038)],
@@ -170,7 +169,8 @@ def element(f, kind, args, pipe_diameter):
     raise ValueError(kind)
 
 
-def frequency_response(layout):
+def physical_response(layout):
+    """Tailpipe volume velocity per unit valve flow (transfer-matrix model)."""
     f = frequencies()
     matrices = []
     pipe_diameter = layout[0][2]
@@ -194,19 +194,82 @@ def frequency_response(layout):
     # sound that would otherwise reflect back and make the tailpipe ring.
     radiation = tail_impedance * (0.25 * ka ** 2 + MEAN_FLOW_MACH + 1j * 0.6133 * ka)
     tail_flow = 1 / (total[1, 0] * radiation + total[1, 1])  # U_tail / U_valve
-    # Radiated sound rises 6 dB/octave from the tailpipe flow (j*omega);
-    # flow and wall losses of hot, turbulent gas and the distance to the
-    # listener roll it off again above ~2 kHz (9 dB/octave).
-    # shortcut: one roll-off for every system, set so in-game engine output
-    # keeps 1-4 kHz ~30 dB under the firing tone like Engine Simulator's
-    # default response (500 Hz made cars as dull as the muffled templates).
-    response = 1j * f / 1000.0 * tail_flow / (1 + (f / LOSS_ROLL_OFF_HZ) ** 2) ** 0.75
+    tail_flow[0] = 0
+    return tail_flow
+
+
+# The physics above gives each system its resonances, damping and delays,
+# but leaves out radiation, flow noise, shell and body sound, the ground and
+# the listener. Those set the broad tone, taken from a recording - Engine
+# Simulator's default exhaust response (sound-library/smooth/smooth_39.wav),
+# octave levels in dB re 1 kHz below - tilted per vehicle class: big diesels
+# deeper, small engines thinner. Each system is corrected to its class
+# curve octave by octave; its physics stays within the octaves. (Before:
+# the raw physics made the Dory a lawn mower and buses thin.)
+OCTAVE_CENTRES_HZ = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+RECORDED_EXHAUST_OCTAVES_DB = [-1.0, -2.9, 1.4, 4.5, 8.7, 0.0, -6.5, -17.7, -28.6, -40.5]
+CLASS_TILT_DB = {
+    "big_diesel": [4, 6, 6, 3, 0, 0, -2, -4, -6, -6],
+    "car": [0] * 10,
+    "vintage": [0, 1, 1, 0, 0, 0, 0, 0, -1, -2],  # flathead/air-cooled burble, no catalyst
+    "small": [-3, -3, -1, 0, 0, 0, 2, 2, 1, 0],
+    "sport": [-2, -2, 0, 0, 0, 0, 2, 3, 2, 0],
+    "two_stroke": [-6, -6, -3, 0, 0, 0, 3, 4, 3, 0],
+}
+PROFILE_CLASS = {
+    "vintage_single": "vintage", "classic_v8": "car", "muscle_glasspack": "sport",
+    "car_modern": "car", "luxury_quiet": "car", "sports_modern": "sport",
+    "turbo_sport": "sport", "supercar": "sport", "economy_small": "small",
+    "soviet_two_box": "small", "kei_small": "small", "aircooled_box": "vintage",
+    "pickup_van": "car", "offroad_vintage": "vintage", "truck_medium": "big_diesel",
+    "military_stack": "big_diesel", "truck_stack": "big_diesel", "truck_euro": "big_diesel",
+    "bus_rear": "big_diesel", "motorcycle_twin": "sport", "sportbike": "sport",
+    "scooter_2t": "two_stroke", "kart": "two_stroke",
+}
+
+
+# Full-throttle pass-by loudness at 7.5 m, dB(A), of the vehicles with each
+# system (typical measured values: modern car ~74, semi ~88, superbike and
+# supercar ~90): the native side scales Engine Simulator to it by RPM and load.
+FULL_THROTTLE_LOUDNESS_DBA = {
+    "vintage_single": 78, "classic_v8": 82, "muscle_glasspack": 88, "car_modern": 74,
+    "luxury_quiet": 71, "sports_modern": 79, "turbo_sport": 82, "supercar": 90,
+    "economy_small": 75, "soviet_two_box": 78, "kei_small": 76, "aircooled_box": 80,
+    "pickup_van": 77, "offroad_vintage": 80, "truck_medium": 84, "military_stack": 88,
+    "truck_stack": 88, "truck_euro": 84, "bus_rear": 82, "motorcycle_twin": 86,
+    "sportbike": 88, "scooter_2t": 80, "kart": 92,
+}
+
+
+def octave_levels_db(response):
+    f = frequencies()
+    power = np.abs(response) ** 2
+    levels = [10 * np.log10(power[(f >= c / np.sqrt(2)) & (f < c * np.sqrt(2))].mean() + 1e-30)
+              for c in OCTAVE_CENTRES_HZ]
+    return np.array(levels) - levels[OCTAVE_CENTRES_HZ.index(1000)]
+
+
+def minimum_phase(magnitude):
+    """Causal filter with this rfft magnitude (cepstral method)."""
+    log_magnitude = np.log(np.maximum(magnitude, 1e-8))
+    cepstrum = np.fft.irfft(log_magnitude, N)
+    fold = np.zeros(N)
+    fold[0], fold[1:N // 2], fold[N // 2] = 1, 2, 1
+    return np.exp(np.fft.rfft(cepstrum * fold))
+
+
+def frequency_response(profile):
+    physical = physical_response(PROFILES[profile])
+    target = np.array(RECORDED_EXHAUST_OCTAVES_DB) + CLASS_TILT_DB[PROFILE_CLASS[profile]]
+    correction_db = target - octave_levels_db(physical)
+    gains_db = np.interp(np.log(frequencies()), np.log(OCTAVE_CENTRES_HZ), correction_db)
+    response = physical * minimum_phase(10 ** (gains_db / 20))
     response[0] = 0
     return response
 
 
-def impulse_response(layout):
-    response = np.fft.irfft(frequency_response(layout), N)
+def impulse_response(profile):
+    response = np.fft.irfft(frequency_response(profile), N)
     length = int(IMPULSE_SECONDS * FS)
     response = response[:length].copy()
     fade = int(0.3 * length)
@@ -215,7 +278,7 @@ def impulse_response(layout):
 
 
 def write(profile):
-    samples = np.round(impulse_response(PROFILES[profile]) * 32767).astype("<i2")
+    samples = np.round(impulse_response(profile) * 32767).astype("<i2")
     with wave.open(str(OUT / f"{profile}.wav"), "wb") as out:
         out.setnchannels(1)
         out.setsampwidth(2)

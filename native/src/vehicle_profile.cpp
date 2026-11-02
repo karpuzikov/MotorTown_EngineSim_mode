@@ -54,11 +54,16 @@ std::optional<std::string> packaged_impulse(const fs::path& root, const std::str
 // "<engine.mr>" or "<engine.mr>#exhaust=<exhaust.wav>" (profile_level.h).
 std::optional<std::string> packaged_script(const fs::path& root, const std::string& text) {
     const auto spec = parse_engine_sound_spec(text);
-    const auto script = packaged_mr(root, spec.script);
-    if (!script || spec.exhaustImpulse.empty()) return script;
-    const auto impulse = packaged_impulse(root, spec.exhaustImpulse);
-    if (!impulse) return std::nullopt;
-    return *script + ExhaustSpecMarker + *impulse;
+    if (!spec) return std::nullopt;
+    auto script = packaged_mr(root, spec->script);
+    if (!script) return std::nullopt;
+    if (!spec->exhaustImpulse.empty()) {
+        const auto impulse = packaged_impulse(root, spec->exhaustImpulse);
+        if (!impulse) return std::nullopt;
+        *script += ExhaustSpecMarker + *impulse;
+    }
+    if (spec->fullThrottleLoudnessDba) *script += text.substr(text.find(LoudnessSpecMarker));
+    return script;
 }
 
 std::vector<std::string> split_tabs(const std::string& line) {

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from real_engines import (DEFAULT_EXHAUST, ENGINE_FAMILIES, ENGINES, FALLBACK,
     FALLBACK_EXHAUSTS, VEHICLE_EXHAUSTS, VEHICLES)
-from make_exhausts import PROFILES as EXHAUST_PROFILES
+from make_exhausts import FULL_THROTTLE_LOUDNESS_DBA, PROFILES as EXHAUST_PROFILES
 
 OUT = Path(__file__).resolve().parents[1]
 INCH = 25.4
@@ -433,7 +433,10 @@ def rule_lines(field, pattern, engine, exhaust=None):
         assert key == "-" or key in ENGINES, key
         if key == "-":
             return "-"
-        return f"assets/es_{key}.mr" + (f"#exhaust=mtes-exhaust/{exhaust}.wav" if exhaust else "")
+        if not exhaust:
+            return f"assets/es_{key}.mr"
+        return (f"assets/es_{key}.mr#exhaust=mtes-exhaust/{exhaust}.wav"
+                f"#loudness={FULL_THROTTLE_LOUDNESS_DBA[exhaust]}")
     if isinstance(engine, tuple):
         return [f"{field}\t{pattern}\t{script(key)}\t{hp}" for key, hp in horsepower_ranges(*engine)]
     return [f"{field}\t{pattern}\t{script(engine)}"]

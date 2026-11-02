@@ -72,9 +72,12 @@ bool game_in_foreground() noexcept {
 // "es_volvo_d13.mr + exhaust truck_stack.wav" for the log.
 std::string engine_sound_name(const std::string& engineSoundSpec) {
     const auto spec = mtes::parse_engine_sound_spec(engineSoundSpec);
-    auto name = std::filesystem::path(spec.script).filename().string();
-    if (!spec.exhaustImpulse.empty())
-        name += " + exhaust " + std::filesystem::path(spec.exhaustImpulse).filename().string();
+    if (!spec) return "malformed " + engineSoundSpec;
+    auto name = std::filesystem::path(spec->script).filename().string();
+    if (!spec->exhaustImpulse.empty())
+        name += " + exhaust " + std::filesystem::path(spec->exhaustImpulse).filename().string();
+    if (spec->fullThrottleLoudnessDba)
+        name += " @ " + std::to_string(static_cast<int>(*spec->fullThrottleLoudnessDba)) + " dB(A)";
     return name;
 }
 

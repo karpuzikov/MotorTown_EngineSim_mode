@@ -118,6 +118,9 @@ void TrafficEngineVoices::run_voice(Voice& voice, std::stop_token token) noexcep
 #ifdef _WIN32
     // XAudio2Create needs COM on this thread (see NativeAudioWorker).
     if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return;
+    // Traffic yields to the game and the player's own engine (in game the
+    // extra simulators made the game lag).
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
 #endif
     while (!token.stop_requested()) {
         const auto now = Clock::now();
@@ -176,6 +179,15 @@ void TrafficEngineVoices::play(Voice& voice, const GameTelemetrySample& sample,
         sample.engine_volume.value_or(1.0), sample.vehicle);
     if (rendered != frames) return; // underrun: a short gap, never partial PCM
     voice.sink.set_mix(sample.mix.value_or(SpatialMix{}));
+    if (!voice.started) {
+        // 60 ms of lead: a late 20-ms tick drains this, not the speaker
+        // (in game traffic glitched on every scheduling hiccup).
+        std::vector<std::int16_t> lead(2646, 0);
+        if (!voice.sink.queue(lead.data(), lead.size())) {
+            silence(voice);
+            return;
+        }
+    }
     if (!voice.sink.queue(voice.pcm.data(), rendered)) {
         silence(voice);
         return;

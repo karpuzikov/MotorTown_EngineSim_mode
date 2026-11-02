@@ -28,7 +28,7 @@ class EngineGeneratorTests(unittest.TestCase):
                 with wave.open(str(ROOT / f'profiles/exhaust/{profile}.wav')) as committed:
                     self.assertEqual((committed.getnchannels(), committed.getframerate()), (1, 44100))
                     data = committed.readframes(committed.getnframes())
-                expected = make_exhausts.impulse_response(make_exhausts.PROFILES[profile])
+                expected = make_exhausts.impulse_response(profile)
                 import numpy as np
                 self.assertEqual(data, np.round(expected * 32767).astype('<i2').tobytes(),
                                  'run native/profiles/generator/make_exhausts.py')
@@ -40,7 +40,7 @@ class EngineGeneratorTests(unittest.TestCase):
         import make_exhausts
         for profile, layout in make_exhausts.PROFILES.items():
             with self.subTest(exhaust=profile):
-                energy = np.cumsum((make_exhausts.impulse_response(layout) ** 2)[::-1])[::-1]
+                energy = np.cumsum((make_exhausts.impulse_response(profile) ** 2)[::-1])[::-1]
                 decay_20_db = np.argmax(energy / energy[0] < 0.01) / make_exhausts.FS
                 self.assertLess(decay_20_db, 0.06)
 

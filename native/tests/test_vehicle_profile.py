@@ -81,10 +81,12 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         for field, _, profile, _ in self.rules():
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
-                script, _, exhaust = profile.partition('#exhaust=mtes-exhaust/')
-                self.assertTrue((ROOT / 'profiles' / Path(script).name).is_file(), profile)
-                # Every vehicle and fallback carries its own exhaust.
-                self.assertTrue((ROOT / 'profiles/exhaust' / exhaust).is_file(), profile)
+                import re
+                spec = re.fullmatch(r'(assets/es_\w+\.mr)#exhaust=mtes-exhaust/(\w+\.wav)#loudness=(\d+)', profile)
+                # Every vehicle and fallback carries its own exhaust and loudness.
+                self.assertTrue(spec, profile)
+                self.assertTrue((ROOT / 'profiles' / Path(spec.group(1)).name).is_file(), profile)
+                self.assertTrue((ROOT / 'profiles/exhaust' / spec.group(2)).is_file(), profile)
 
     def test_each_car_gets_its_real_counterparts_engine(self):
         cases = {
@@ -171,3 +173,5 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         self.assertEqual(exhaust('^kuda'), 'truck_euro')
         self.assertEqual(exhaust('^scooty'), 'scooter_2t')
         self.assertEqual(exhaust('^dory'), 'vintage_single')
+        loudness = lambda p: int(next(l for l in lines if l.startswith(f'vehicle\t{p}\t')).split('#loudness=')[1].split('\t')[0])
+        self.assertGreater(loudness('^golima'), loudness('^elisa') + 10)  # a semi vs a sedan

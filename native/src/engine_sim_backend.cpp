@@ -16,7 +16,9 @@
 #include "vehicle.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <optional>
 #include <filesystem>
 #include <limits>
 
@@ -47,7 +49,9 @@ public:
 
     bool load(const std::string &engineSoundSpec) override {
         stop();
-        const auto spec = parse_engine_sound_spec(engineSoundSpec);
+        const auto parsedSpec = parse_engine_sound_spec(engineSoundSpec);
+        if (!parsedSpec) return false;
+        const auto &spec = *parsedSpec;
         const auto &script = spec.script;
         if (script.empty() || !std::filesystem::is_regular_file(script)) return false;
 
@@ -90,13 +94,13 @@ public:
             audio.inputSampleNoise = static_cast<float>(m_engine->getInitialJitter());
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
-            // Engine Simulator's own leveler, as in its demo: every engine
-            // peak-normalized with a 23-ms release. Its gain smoothing lags
-            // each firing pulse, which overshot the stock 30000 target and
-            // clipped ~4% of samples; half the target keeps the overshoot
-            // inside full scale.
+            // Engine Simulator's leveler, with half its target: its gain
+            // smoothing lags each firing pulse, which overshot the stock 30000
+            // target and clipped ~4% of samples.
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
+            m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
+            m_loudnessGain = -1.0; // first read() jumps to the target
             m_rpmScale = profile_rpm_scale(script);
 
             const int exhausts = m_engine->getExhaustSystemCount();
@@ -148,6 +152,10 @@ public:
         // compression and the exhaust, as a real start and shut-down sound.
         m_engine->getIgnitionModule()->m_enabled = combustion && !fuelCut;
         m_engine->setSpeedControl(throttle);
+        if (m_fullThrottleLoudnessDba) {
+            m_targetLoudnessGain.store(std::pow(10.0, engine_loudness_gain_db(
+                *m_fullThrottleLoudnessDba, rpm, redlineRpm, throttle) / 20.0));
+        }
         m_simulator->m_starterMotor.m_enabled = false;
         m_simulator->m_dyno.m_enabled = true;
         m_simulator->m_dyno.m_hold = true;
@@ -193,8 +201,18 @@ public:
         if (!m_simulator || !dst || frames == 0) return 0;
         const auto count = static_cast<int>(std::min<std::size_t>(
             frames, std::numeric_limits<int>::max()));
-        return static_cast<std::size_t>(
+        const auto read = static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
+        if (m_fullThrottleLoudnessDba) {
+            // ~80 ms glide: throttle and gear changes swell, never click.
+            const double target = m_targetLoudnessGain.load();
+            if (m_loudnessGain < 0) m_loudnessGain = target;
+            for (std::size_t i = 0; i < read; ++i) {
+                m_loudnessGain += (target - m_loudnessGain) * (1.0 / (0.08 * 44100.0));
+                dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * m_loudnessGain));
+            }
+        }
+        return read;
     }
 
     void stop() noexcept override {
@@ -226,6 +244,9 @@ private:
     double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
     OverrunFuelCut m_fuelCut;
     double m_rpmScale = 1.0;
+    std::optional<double> m_fullThrottleLoudnessDba;
+    std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
+    double m_loudnessGain = -1.0;                  // read() thread only
 };
 
 } // namespace

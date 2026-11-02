@@ -59,7 +59,7 @@ inline std::vector<int> assign_traffic_voices(const std::vector<std::string>& vo
 // %TEMP%/MotorTownEngineSim_traffic_telemetry.txt (MTES5 lines).
 class TrafficEngineVoices final {
 public:
-    static constexpr std::size_t MaxVoices = 3; // Lua TRAFFIC_VOICE_LIMIT
+    static constexpr std::size_t MaxVoices = 2; // Lua TRAFFIC_VOICE_LIMIT; 3 lagged the game
     using Clock = std::chrono::steady_clock;
 
     TrafficEngineVoices(std::filesystem::path telemetryFile, VehicleProfileLookup& profiles,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <optional>
@@ -27,20 +28,60 @@ inline std::optional<double> parse_profile_directive(std::istream& script,
 }
 
 // A vehicle's engine sound: an engine script, optionally with the vehicle's
-// own exhaust impulse response in place of the script's:
-//     "<engine.mr>#exhaust=<exhaust.wav>"   (engine_families.tsv, profiles/exhaust)
+// own exhaust impulse response in place of the script's, and the vehicle's
+// real-world loudness (full-throttle pass-by dB(A) at 7.5 m):
+//     "<engine.mr>[#exhaust=<exhaust.wav>][#loudness=<dBA>]"   (engine_families.tsv)
 struct EngineSoundSpec {
     std::string script;
-    std::string exhaustImpulse; // empty: the script's own impulse responses
+    std::string exhaustImpulse;               // empty: the script's own impulse responses
+    std::optional<double> fullThrottleLoudnessDba; // none: Engine Simulator's level as is
 };
 
 inline constexpr const char* ExhaustSpecMarker = "#exhaust=";
+inline constexpr const char* LoudnessSpecMarker = "#loudness=";
 
-inline EngineSoundSpec parse_engine_sound_spec(const std::string& spec) {
-    const auto marker = spec.find(ExhaustSpecMarker);
-    if (marker == std::string::npos) return {spec, {}};
-    return {spec.substr(0, marker),
-        spec.substr(marker + std::char_traits<char>::length(ExhaustSpecMarker))};
+// Fails (nullopt) on a malformed gain: a wrong level must not play.
+inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) {
+    EngineSoundSpec parsed;
+    const auto loudnessAt = spec.find(LoudnessSpecMarker);
+    if (loudnessAt != std::string::npos) {
+        const auto text = spec.substr(loudnessAt + std::char_traits<char>::length(LoudnessSpecMarker));
+        try {
+            std::size_t used = 0;
+            const double loudness = std::stod(text, &used);
+            if (used != text.size() || !std::isfinite(loudness) || loudness < 40 || loudness > 130)
+                return std::nullopt;
+            parsed.fullThrottleLoudnessDba = loudness;
+        }
+        catch (...) { return std::nullopt; }
+        spec.resize(loudnessAt);
+    }
+    const auto exhaustAt = spec.find(ExhaustSpecMarker);
+    if (exhaustAt != std::string::npos) {
+        parsed.exhaustImpulse = spec.substr(
+            exhaustAt + std::char_traits<char>::length(ExhaustSpecMarker));
+        spec.resize(exhaustAt);
+    }
+    parsed.script = std::move(spec);
+    return parsed;
+}
+
+// Real-world engine loudness. Engine Simulator's raw output puts idle ~56 dB
+// under full throttle (measured, all profiles; real engines ~25 dB) and its
+// leveler flattens everything to one level (in game: a hatchback as loud
+// as a semi). So its leveler keeps the timbre and this sets the level, in
+// dB of output gain for a vehicle that makes fullThrottleLoudnessDba at
+// 7.5 m flat out at 80% of redline:
+//   - sound power rises ~25 dB per decade of RPM (idle ~20 dB under),
+//   - closing the throttle at the same RPM takes ~6 dB off,
+//   - 98 dB(A) plays at full scale; 7.5 m distance is in the 3D mix.
+inline double engine_loudness_gain_db(double fullThrottleLoudnessDba, double rpm,
+    double redlineRpm, double throttle) {
+    if (!(rpm > 0) || !(redlineRpm > 0)) return -90.0;
+    const double load = std::clamp(std::isfinite(throttle) ? throttle : 0.0, 0.0, 1.0);
+    const double gain = fullThrottleLoudnessDba - 98.0 +
+        25.0 * std::log10(rpm / (0.8 * redlineRpm)) + 6.0 * (load - 1.0);
+    return std::clamp(gain, -90.0, 0.0);
 }
 
 // Two-stroke engines fire every revolution. Engine Simulator only models
