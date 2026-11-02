@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00049
 // Buick 3.8 SFI turbo V6, 90 deg even-fire (GNX): 6 cyl, 3.79 L, bore 96.5 x stroke 86.4 mm,
 // redline 5500 rpm. Engine Simulator's 06_even_fire_v6.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -403,3 +404,5 @@ public node main {
     set_vehicle(random_car())
     set_transmission(random_transmission())
 }
+
+main()

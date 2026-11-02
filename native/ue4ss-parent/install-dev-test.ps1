@@ -30,7 +30,6 @@ $required = @(
     'dlls\main.dll', 'Scripts\main.lua', 'enabled.txt',
     'engine_profiles.tsv', 'engine_families.tsv', 'settings.ini', 'ENGINE_SIM_LICENSE.txt',
     'assets\es_ford_flathead_239.mr', 'assets\es_chevy_350.mr', 'assets\es_volvo_d13.mr',
-    'assets\engines\atg-video-2\07_gm_ls.mr',
     'assets\sound-library\smooth\smooth_39.wav',
     'assets\sound-library\new\mild_exhaust.wav', 'es\engine_sim.mr'
 )

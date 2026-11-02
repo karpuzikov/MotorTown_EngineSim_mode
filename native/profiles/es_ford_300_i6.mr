@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00398
 // Ford 300 4.9 I6 (F-150 1982): 6 cyl, 4.92 L, bore 101.6 x stroke 101.1 mm,
 // redline 4000 rpm. Engine Simulator's 03_2jz.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -405,3 +406,5 @@ public node main {
     set_vehicle(supra_vehicle())
     set_transmission(supra_transmission())
 }
+
+main()

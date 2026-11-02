@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00248
 // Chevrolet 305 V8 (Vandura): 8 cyl, 5.00 L, bore 94.9 x stroke 88.4 mm,
 // redline 4600 rpm. Engine Simulator's 07_gm_ls.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -458,3 +459,5 @@ public node main {
     set_vehicle(corvette())
     set_transmission(corvette_transmission())
 }
+
+main()

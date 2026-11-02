@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00155
 // Ford 4.6 Modular SOHC V8 (Crown Victoria, Town Car): 8 cyl, 4.60 L, bore 90.2 x stroke 90.0 mm,
 // redline 5800 rpm. Engine Simulator's 07_gm_ls.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -458,3 +459,5 @@ public node main {
     set_vehicle(corvette())
     set_transmission(corvette_transmission())
 }
+
+main()

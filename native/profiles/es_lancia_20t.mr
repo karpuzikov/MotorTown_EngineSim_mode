@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00168
 // Lancia 2.0 16v turbo I4 (Delta Integrale): 4 cyl, 2.00 L, bore 84.0 x stroke 90.0 mm,
 // redline 6500 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

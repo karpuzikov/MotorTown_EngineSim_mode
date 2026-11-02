@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00767
 // Volvo D13 12.8 I6 diesel (FM, VNL): 6 cyl, 12.78 L, bore 131.0 x stroke 158.0 mm,
 // redline 2200 rpm. Engine Simulator's 03_2jz.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -405,3 +406,5 @@ public node main {
     set_vehicle(supra_vehicle())
     set_transmission(supra_transmission())
 }
+
+main()

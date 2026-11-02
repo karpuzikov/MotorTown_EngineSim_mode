@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00237
 // 1000cc sport-bike I4 (Motor Town Bike i4): 4 cyl, 1.00 L, bore 76.0 x stroke 55.1 mm,
 // redline 13000 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

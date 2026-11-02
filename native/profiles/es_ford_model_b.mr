@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00624
 // Ford Model B 3.3 I4 (1932): 4 cyl, 3.29 L, bore 98.4 x stroke 108.0 mm,
 // redline 2800 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

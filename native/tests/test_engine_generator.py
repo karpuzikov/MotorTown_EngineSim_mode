@@ -19,12 +19,14 @@ class EngineGeneratorTests(unittest.TestCase):
                 committed = (ROOT / f'profiles/es_{key}.mr').read_text()
                 gain = re.match(r'// mtes-output-gain: ([0-9.e-]+)', committed)
                 self.assertTrue(gain, 'every engine is calibrated')
-                self.assertEqual(committed, make_engines.generate(key, spec, float(gain.group(1))),
+                self.assertEqual(committed, make_engines.build(key, spec, float(gain.group(1))),
                                  'run native/profiles/generator/make_engines.py --gains ...')
 
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.
         for key, spec in real_engines.ENGINES.items():
+            if make_engines.template_for(key, spec):
+                continue  # Engine Simulator's own tuned crank/firing
             text = (ROOT / f'profiles/es_{key}.mr').read_text()
             journals = {int(c): float(a) for c, a in re.findall(r'rod_journal rj(\d+)\(angle: ([-0-9.]+)', text)}
             fires = {int(c): float(a) for c, a in re.findall(r'connect_wire\(wires.wire(\d+), ([-0-9.]+)', text)}
@@ -41,7 +43,11 @@ class EngineGeneratorTests(unittest.TestCase):
         text = (ROOT / 'profiles/es_ford_flathead_239.mr').read_text()
         self.assertIn('label bore(81.0 * units.mm)', text)
         self.assertIn('label stroke(95.25 * units.mm)', text)
-        self.assertIn('firing order 1-5-4-8-6-3-7-2', text)
+        self.assertIn('redline: 3800 * units.rpm', text)
+        self.assertIn("Engine Simulator's 07_gm_ls.mr model", text)
+        self.assertTrue(text.rstrip().endswith('main()'))
+        for key in ('bmw_n55', 'chrysler_440'):  # engine-only templates get a main
+            self.assertIn('public node main', (ROOT / f'profiles/es_{key}.mr').read_text())
         two_stroke = (ROOT / 'profiles/es_vespa_150_2t.mr').read_text()
         self.assertIn('// mtes-rpm-scale: 2', two_stroke.splitlines()[1])
 

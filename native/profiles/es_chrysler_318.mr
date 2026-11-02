@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00243
 // Chrysler 318 LA V8 (Diplomat, Ram Van): 8 cyl, 5.21 L, bore 99.3 x stroke 84.1 mm,
 // redline 4600 rpm. Engine Simulator's 07_gm_ls.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -458,3 +459,5 @@ public node main {
     set_vehicle(corvette())
     set_transmission(corvette_transmission())
 }
+
+main()

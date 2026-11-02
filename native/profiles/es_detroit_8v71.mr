@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00822
 // mtes-rpm-scale: 2
 // Detroit Diesel 8V71 two-stroke V8 (MCI MC-9): 8 cyl, 9.31 L, bore 108.0 x stroke 127.0 mm,
 // redline 2100 rpm. Engine Simulator's chev_truck_454.mr model
@@ -232,3 +233,22 @@ public node chev_truck_454 {
         )
     )
 }
+
+private node mtes_vehicle {
+    alias output __out:
+        vehicle(mass: 1600 * units.kg, drag_coefficient: 0.3,
+            cross_sectional_area: (72 * units.inch) * (50 * units.inch),
+            diff_ratio: 3.42, tire_radius: 10 * units.inch, rolling_resistance: 200 * units.N);
+}
+private node mtes_transmission {
+    alias output __out:
+        transmission(max_clutch_torque: 2000 * units.lb_ft)
+        .add_gear(2.97).add_gear(2.07).add_gear(1.43).add_gear(1.00).add_gear(0.71);
+}
+public node main {
+    set_engine(chev_truck_454())
+    set_vehicle(mtes_vehicle())
+    set_transmission(mtes_transmission())
+}
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00708
 // Continental LDT-465 7.8 I6 multifuel (M35): 6 cyl, 7.84 L, bore 115.8 x stroke 124.0 mm,
 // redline 2800 rpm. Engine Simulator's 03_2jz.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -405,3 +406,5 @@ public node main {
     set_vehicle(supra_vehicle())
     set_transmission(supra_transmission())
 }
+
+main()

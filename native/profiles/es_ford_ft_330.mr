@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.0024
 // Ford FT 330 V8 (F-600 1967): 8 cyl, 5.41 L, bore 98.4 x stroke 88.9 mm,
 // redline 4000 rpm. Engine Simulator's 07_gm_ls.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -458,3 +459,5 @@ public node main {
     set_vehicle(corvette())
     set_transmission(corvette_transmission())
 }
+
+main()

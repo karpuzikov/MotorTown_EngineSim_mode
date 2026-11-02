@@ -104,7 +104,7 @@ class UE4SSParentBuildTests(unittest.TestCase):
             self.assertTrue((package / 'assets/es_lambo_l539.mr').is_file())
             self.assertTrue((package / 'engine_families.tsv').is_file())
             self.assertIn('volume', (package / 'settings.ini').read_text())
-            self.assertTrue((package / 'assets/engines/atg-video-2/07_gm_ls.mr').is_file())
+            self.assertFalse((package / 'assets/engines').exists())  # profiles are self-contained
             self.assertEqual(
                 (package / 'assets/sound-library/smooth/smooth_39.wav').read_bytes(),
                 b'fixture IR bytes must survive staging unchanged')

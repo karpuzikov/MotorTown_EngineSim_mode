@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.0432
 // BMW N55 3.0 turbo I6 (M2): 6 cyl, 2.98 L, bore 84.0 x stroke 89.6 mm,
 // redline 7000 rpm. Engine Simulator's M52B28.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -347,3 +348,22 @@ public node M52B28 {
             rev_limit: 7300 * units.rpm
         ))
 }
+
+private node mtes_vehicle {
+    alias output __out:
+        vehicle(mass: 1600 * units.kg, drag_coefficient: 0.3,
+            cross_sectional_area: (72 * units.inch) * (50 * units.inch),
+            diff_ratio: 3.42, tire_radius: 10 * units.inch, rolling_resistance: 200 * units.N);
+}
+private node mtes_transmission {
+    alias output __out:
+        transmission(max_clutch_torque: 2000 * units.lb_ft)
+        .add_gear(2.97).add_gear(2.07).add_gear(1.43).add_gear(1.00).add_gear(0.71);
+}
+public node main {
+    set_engine(M52B28())
+    set_vehicle(mtes_vehicle())
+    set_transmission(mtes_transmission())
+}
+
+main()

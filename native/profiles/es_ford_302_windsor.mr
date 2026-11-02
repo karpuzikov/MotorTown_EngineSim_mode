@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00174
 // Ford 302 Windsor V8 (LTD Country Squire): 8 cyl, 4.94 L, bore 101.6 x stroke 76.2 mm,
 // redline 4800 rpm. Engine Simulator's 07_gm_ls.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -458,3 +459,5 @@ public node main {
     set_vehicle(corvette())
     set_transmission(corvette_transmission())
 }
+
+main()

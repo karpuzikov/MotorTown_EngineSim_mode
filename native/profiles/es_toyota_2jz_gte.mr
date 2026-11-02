@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00589
 // Toyota 2JZ-GTE 3.0 I6 (Supra Mk4): 6 cyl, 3.00 L, bore 86.0 x stroke 86.0 mm,
 // redline 6800 rpm. Engine Simulator's 03_2jz.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -405,3 +406,5 @@ public node main {
     set_vehicle(supra_vehicle())
     set_transmission(supra_transmission())
 }
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 5.13e-05
 // mtes-rpm-scale: 2
 // Vespa 150 two-stroke single: 1 cyl, 0.15 L, bore 57.0 x stroke 57.0 mm,
 // redline 7000 rpm. Engine Simulator's 01_honda_trx520.mr model
@@ -178,3 +179,5 @@ public node main {
     set_transmission(honda_trx520_transmission())
     set_vehicle(honda_trx520_vehicle())
 }
+
+main()

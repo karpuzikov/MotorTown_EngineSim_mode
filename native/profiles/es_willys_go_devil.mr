@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.011
 // Willys Go Devil 2.2 I4 (MB Jeep): 4 cyl, 2.20 L, bore 79.4 x stroke 111.1 mm,
 // redline 4000 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00172
 // Mazda Skyactiv-G 2.0 I4 (CX-5): 4 cyl, 2.00 L, bore 83.5 x stroke 91.2 mm,
 // redline 6500 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

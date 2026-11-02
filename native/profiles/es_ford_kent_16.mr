@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00229
 // Ford 1.6 Kent I4 (Formula Ford): 4 cyl, 1.60 L, bore 81.0 x stroke 77.6 mm,
 // redline 7600 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00166
 // Chrysler 5.7 Hemi V8 (Charger 2012): 8 cyl, 5.65 L, bore 99.5 x stroke 90.9 mm,
 // redline 5800 rpm. Engine Simulator's 07_gm_ls.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -458,3 +459,5 @@ public node main {
     set_vehicle(corvette())
     set_transmission(corvette_transmission())
 }
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00123
 // Scania DC9 9.3 I5 diesel (P-Series): 5 cyl, 9.18 L, bore 127.0 x stroke 145.0 mm,
 // redline 2300 rpm. Engine Simulator's 07_audi_i5.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -375,3 +376,5 @@ public node main {
     set_vehicle(audi_vehicle())
     set_transmission(audi_transmission())
 }
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00944
 // Navistar DT466 7.6 I6 diesel (International 3800): 6 cyl, 7.22 L, bore 109.2 x stroke 128.5 mm,
 // redline 2600 rpm. Engine Simulator's 03_2jz.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -405,3 +406,5 @@ public node main {
     set_vehicle(supra_vehicle())
     set_transmission(supra_transmission())
 }
+
+main()

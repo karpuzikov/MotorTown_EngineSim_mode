@@ -110,7 +110,6 @@ jobs:
           $assets = Join-Path $trial 'assets'
           New-Item -ItemType Directory -Force -Path $assets | Out-Null
           Copy-Item 'native/profiles/es_*.mr' $assets
-          Copy-Item (Join-Path $source 'assets/engines') (Join-Path $assets 'engines') -Recurse
           Copy-Item (Join-Path $source 'es/sound-library') (Join-Path $assets 'sound-library') -Recurse
           Copy-Item (Join-Path $source 'es') (Join-Path $trial 'es') -Recurse
           # Generated real engines: flathead V8, I6, flat-6, V12, diesel I6, 2-stroke.

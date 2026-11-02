@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00157
 // Toyota 22R-E 2.4 I4 (Pickup): 4 cyl, 2.37 L, bore 92.0 x stroke 89.0 mm,
 // redline 5200 rpm. Engine Simulator's 05_honda_vtec.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -373,3 +374,5 @@ public node main {
     set_vehicle(integra_type_r())
     set_transmission(integra_type_r_transmission())
 }
+
+main()

@@ -1,3 +1,4 @@
+// mtes-output-gain: 0.00668
 // VW 1600 air-cooled flat-4 (Thing, T2): 4 cyl, 1.58 L, bore 85.5 x stroke 69.0 mm,
 // redline 4500 rpm. Engine Simulator's 02_subaru_ej25_uh.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -382,3 +383,5 @@ public node main {
     set_vehicle(impreza())
     set_transmission(impreza_transmission())
 }
+
+main()
