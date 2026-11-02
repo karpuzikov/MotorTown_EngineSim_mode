@@ -211,7 +211,10 @@ RECORDED_EXHAUST_OCTAVES_DB = [-1.0, -2.9, 1.4, 4.5, 8.7, 0.0, -6.5, -17.7, -28.
 CLASS_TILT_DB = {
     "big_diesel": [4, 6, 6, 3, 0, 0, -2, -4, -6, -6],
     "car": [0] * 10,
-    "vintage": [0, 1, 1, 0, 0, 0, 0, 0, -1, -2],  # flathead/air-cooled burble, no catalyst
+    # Matched to a real 1948 Ford F-1 flathead V8 recording (2026-11-02):
+    # less 250-500 Hz boom, more 63 Hz and 2-8 kHz (only half the recording's
+    # 2-8 kHz gap: its cab adds road and wind noise).
+    "vintage": [0, 13, 1, -9, -10, 4, 6, 10, 13, 10],
     "small": [-3, -3, -1, 0, 0, 0, 2, 2, 1, 0],
     "sport": [-2, -2, 0, 0, 0, 0, 2, 3, 2, 0],
     "two_stroke": [-6, -6, -3, 0, 0, 0, 3, 4, 3, 0],

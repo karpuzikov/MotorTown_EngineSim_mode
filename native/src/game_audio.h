@@ -49,6 +49,7 @@ public:
         Idle, InvalidInput, PcmUnavailable, MutePending, StockMuteFailed,
         QueueFailed, StartFailed, Playing
     };
+    static constexpr std::size_t LeadSilenceFrames = 2646; // 60 ms at 44.1 kHz
     GameAudioOutput(EngineAudio& source, ProceduralAudioSink& sink);
     ~GameAudioOutput();
 

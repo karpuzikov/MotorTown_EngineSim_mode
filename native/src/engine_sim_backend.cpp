@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cmath>
 #include <optional>
+#include <random>
 #include <filesystem>
 #include <limits>
 
@@ -151,7 +152,16 @@ public:
         // Unfired while the starter cranks or the engine spins down: only
         // compression and the exhaust, as a real start and shut-down sound.
         m_engine->getIgnitionModule()->m_enabled = combustion && !fuelCut;
-        m_engine->setSpeedControl(throttle);
+        // Real engines never repeat a cycle exactly: combustion varies cycle
+        // to cycle and idle speed hunts. Held perfectly by the dynamometer,
+        // idle was a buzz of razor-sharp harmonics (in-game recording: lines
+        // 20 dB over the noise vs 10-15 dB for a real Ford flathead).
+        // Matched to the real flathead: tonality 12 dB at idle (real 10-15),
+        // and steady cruise must not turn back into a pure tone.
+        const double idleness = std::clamp(1.0 - rpm / (0.5 * redlineRpm), 0.6, 1.0);
+        m_speedWander = 0.97 * m_speedWander + m_cycleVariation(m_random) * 0.0035 * idleness;
+        const double variedThrottle = std::clamp(throttle + m_cycleVariation(m_random) * 0.03, 0.0, 1.0);
+        m_engine->setSpeedControl(variedThrottle);
         if (m_fullThrottleLoudnessDba) {
             m_targetLoudnessGain.store(std::pow(10.0, engine_loudness_gain_db(
                 *m_fullThrottleLoudnessDba, rpm, redlineRpm, throttle) / 20.0));
@@ -162,7 +172,7 @@ public:
         // Motor Town RPM arrives every 50-150 ms. Stepping the dynamometer to
         // each new speed jerks the crankshaft, audible as an odd falling-RPM
         // sound in game. Ramp from the previous target across this frame.
-        const double target = units::rpm(rpm);
+        const double target = units::rpm(rpm * (1.0 + m_speedWander));
         const double from = m_lastDynoSpeed >= 0.0 ? m_lastDynoSpeed : target;
         // The dynamometer drives a resting crankshaft BACKWARDS. Without a
         // starter every model ran in reverse: intake valves pumped gas into
@@ -245,6 +255,9 @@ private:
     OverrunFuelCut m_fuelCut;
     double m_rpmScale = 1.0;
     std::optional<double> m_fullThrottleLoudnessDba;
+    std::mt19937 m_random{0x4d544553u};
+    std::normal_distribution<double> m_cycleVariation{0.0, 1.0};
+    double m_speedWander = 0.0; // fraction of the game RPM
     std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
     double m_loudnessGain = -1.0;                  // read() thread only
 };

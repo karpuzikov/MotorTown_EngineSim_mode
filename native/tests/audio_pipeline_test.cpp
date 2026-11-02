@@ -155,7 +155,7 @@ int main() {
     assert(pipeline.stage() == NativeAudioPipeline::Stage::Playing);
     assert(source->scripts.size() == 1 && source->advances == 2);
     assert(source->last_rpm == 3200 && source->last_combustion);
-    assert(sink.queues == 1 && sink.last.size() == 2205 && first->muted);
+    assert(sink.queues == 2 && sink.last.size() == 2205 && first->muted); // 60-ms lead + PCM
     for (auto v : sink.last) assert(v == 0); // Engine Volume 0 remains silent.
 
     // On a vehicle change the old stock emitter must be restored BEFORE
@@ -415,15 +415,15 @@ int main() {
     assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(10)));
     assert(clockSource->advances == 1 && clockSink.queues == 0);
     assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(25)));
-    assert(clockSink.queues == 1 && clockSink.last.size() == 1103);
+    assert(clockSink.queues == 2 && clockSink.last.size() == 1103);
     assert(clockEmitter->muted && clockSink.started);
     assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(45)));
-    assert(clockSource->advances == 3 && clockSink.queues == 2);
+    assert(clockSource->advances == 3 && clockSink.queues == 3);
     assert(clockSink.last.size() == 882 && clockSource->last_seconds < 0.021);
     for (int ms : {65, 85, 105, 125, 145}) {
         assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(ms)));
     }
-    assert(clockSink.queues == 7 && clockEmitter->muted);
+    assert(clockSink.queues == 8 && clockEmitter->muted);
     // Even with a cached packet still fresh, losing game focus must stop the
     // independent voice, never wait for an Unreal tick or a new sequence.
     assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(165), false));

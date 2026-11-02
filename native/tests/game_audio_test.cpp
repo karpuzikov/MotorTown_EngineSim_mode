@@ -112,8 +112,9 @@ int main() {
     assert(!second->muted && !sink.started);
     events.clear();
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
-    assert((std::vector<std::string>(events.end() - 4, events.end()) ==
-        std::vector<std::string>{"prepare", "queue", "mute", "start"}));
+    // 60 ms of lead silence first, then the PCM.
+    assert((std::vector<std::string>(events.end() - 5, events.end()) ==
+        std::vector<std::string>{"prepare", "queue", "queue", "mute", "start"}));
     assert(first->muted && !unrelated_horn_muted);
     assert(sink.started && sink.starts == 1 && sink.last.size() == 16);
     assert(sink.last[0] == 4096);
@@ -139,13 +140,16 @@ int main() {
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
     assert(sink.starts == 2);
 
-    // Underflow cannot leave the stock engine muted or overlay stale PCM.
+    // A late block while playing is a gap, not a stop/restore/restart: no
+    // stale or partial PCM is queued, the voice keeps playing.
     source->underrun = true;
     events.clear();
+    const auto queuedBefore = sink.last;
     assert(!game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
-    assert((events == std::vector<std::string>{"stop", "restore"}));
-    assert(!first->muted && !sink.started && sink.last.empty());
+    assert(game.status() == GameAudioOutput::Status::PcmUnavailable);
+    assert(events.empty() && first->muted && sink.started && sink.last == queuedBefore);
     source->underrun = false;
+    game.stop();
 
     // Switching vehicles releases old ownership before touching the new one.
     assert(engine.update("Atlas", "atlas.mr", {950, 0.5, 1, true}, t));

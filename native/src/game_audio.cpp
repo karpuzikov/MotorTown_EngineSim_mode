@@ -1,4 +1,6 @@
 #include "game_audio.h"
+
+#include <array>
 #include "pcm_block_pool.h"
 
 #include <algorithm>
@@ -49,7 +51,13 @@ bool GameAudioOutput::submit(const std::string& vehicle,
     // A vehicle switch must never overlay synthesis from the previous car.
     if (m_source.render(scratch, frames, when, engineVolume, vehicle) != frames ||
         !m_source.is_replacing_stock()) {
-        stop();
+        // A late Engine Simulator block while playing is a short gap in the
+        // already queued audio. Stopping cost a stock restore, a new lease
+        // and priming: in game 20-40 ms holes several times a second
+        // (recording 2026-11-02). Stock engine assets are silenced anyway.
+        // Stale telemetry or another vehicle still stops at once.
+        if (!m_playing || m_source.render_status() != EngineAudio::RenderStatus::PcmUnderrun)
+            stop();
         m_status = Status::PcmUnavailable;
         return false;
     }
@@ -75,6 +83,16 @@ bool GameAudioOutput::submit(const std::string& vehicle,
             stop();
             m_status = Status::StockMuteFailed;
             return false;
+        }
+        // Start 60 ms behind real time, so one late worker tick drains
+        // this lead instead of the speaker.
+        if (!m_playing) {
+            static const std::array<std::int16_t, LeadSilenceFrames> lead{};
+            if (!m_sink.queue(lead.data(), lead.size())) {
+                stop();
+                m_status = Status::QueueFailed;
+                return false;
+            }
         }
         // A slow game frame can represent 100-185 ms of simulation. The
         // XAudio2 pool owns fixed-size callback blocks; queue *all* PCM,
