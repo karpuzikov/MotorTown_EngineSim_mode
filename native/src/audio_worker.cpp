@@ -86,13 +86,14 @@ void NativeAudioWorker::run(std::stop_token token,
                 const auto checkAt = NativeAudioPipeline::Clock::now();
                 m_reader.poll(checkAt);
                 const auto fresh = m_reader.current(checkAt);
-                // A new gear/RPM can play until the next packet, but a new
-                // vehicle, asset, ignition or volume cannot lease old audio.
+                // A new gear/RPM/volume can play until the next packet, but a
+                // new vehicle, asset or a stopped engine cannot lease old
+                // audio. (Volume did: every step of the in-game Engine Volume
+                // slider stopped and restarted the engine sound.)
                 return fresh && sample && fresh->session == sample->session &&
                     fresh->vehicle == sample->vehicle &&
                     fresh->engine_asset == sample->engine_asset &&
-                    engine_turning(fresh->state) &&
-                    fresh->engine_volume == sample->engine_volume;
+                    engine_turning(fresh->state);
             });
             const auto stage = m_pipeline.stage();
             if (!foreground || !sample || !engine_turning(sample->state) ||
