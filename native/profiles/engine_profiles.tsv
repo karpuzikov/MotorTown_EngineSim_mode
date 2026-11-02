@@ -1,3 +1,1 @@
-# Exact Motor Town EngineData -> Engine Simulator profile (checked first).
-# The Dory Ford 302 small-block uses the GM LS cross-plane V8 model.
-MHEngineDataAsset /Game/Cars/Parts/Engine/FordSmalBlock302_V8_5L_140HP.FordSmalBlock302_V8_5L_140HP	assets/es_gm_ls.mr
+# Exact Motor Town EngineData -> profile (after the per-vehicle rules).

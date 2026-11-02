@@ -42,7 +42,7 @@ class DevInstallerBehaviorTests(unittest.TestCase):
                 'Scripts/main.lua', 'enabled.txt',
                 'engine_profiles.tsv', 'engine_families.tsv', 'settings.ini',
                 'ENGINE_SIM_LICENSE.txt',
-                'assets/es_gm_ls.mr', 'assets/es_toyota_2jz.mr', 'assets/es_bmw_m52.mr',
+                'assets/es_ford_flathead_239.mr', 'assets/es_chevy_350.mr', 'assets/es_volvo_d13.mr',
                 'assets/engines/atg-video-2/07_gm_ls.mr',
                 'assets/sound-library/smooth/smooth_39.wav',
                 'assets/sound-library/new/mild_exhaust.wav',
@@ -51,7 +51,7 @@ class DevInstallerBehaviorTests(unittest.TestCase):
                 path = stage / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('staged:' + relative +
-                    ('\nExporter v0.2.21 active' if relative == 'Scripts/main.lua' else ''))
+                    ('\nExporter v0.2.22 active' if relative == 'Scripts/main.lua' else ''))
             (mod / 'dlls').mkdir(parents=True)
             (mod / 'dlls/main.dll').write_text('old-original-dll')
             (mod / 'settings.ini').write_text('volume = 0.4\n')
@@ -63,7 +63,7 @@ class DevInstallerBehaviorTests(unittest.TestCase):
             self.assertEqual((mod / 'dlls/main.dll').read_text(), 'staged:dlls/main.dll')
             self.assertEqual((mod / 'dlls/boost_filesystem-vc143-mt-x64-1_92.dll').read_text(),
                              'staged:dlls/boost_filesystem-vc143-mt-x64-1_92.dll')
-            self.assertIn('Exporter v0.2.21 active', (mod / 'Scripts/main.lua').read_text())
+            self.assertIn('Exporter v0.2.22 active', (mod / 'Scripts/main.lua').read_text())
             self.assertTrue((mod / 'assets/sound-library/smooth/smooth_39.wav').is_file())
             self.assertTrue((mod / 'engine_families.tsv').is_file())
             self.assertEqual((mod / 'settings.ini').read_text(), 'volume = 0.4\n',

@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.21, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.22, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -831,7 +831,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.21 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.22 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -1050,9 +1050,19 @@ local function write_engine_catalog(vehicle)
     if os.time() < nextCatalog then return end
     nextCatalog = os.time() + 30
     local ok, assets = pcall(function() return FindAllOf("MHEngineDataAsset") end)
-    if not ok or type(assets) ~= "table" or #assets == catalogCount then return end
-    catalogCount = #assets
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.21" }
+    if not ok or type(assets) ~= "table" then return end
+    local classes = 0
+    pcall(function()
+        local seen = {}
+        for i, car in ipairs(FindAllOf("MTVehicle") or {}) do
+            if i > 500 then break end
+            local class = (full_name(car) or ""):match("^(%S+)")
+            if class and not seen[class] then seen[class] = true; classes = classes + 1 end
+        end
+    end)
+    if #assets * 1000 + classes == catalogCount then return end
+    catalogCount = #assets * 1000 + classes
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.22" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1064,6 +1074,23 @@ local function write_engine_catalog(vehicle)
         lines[#lines + 1] = "setting\t" .. name .. "\t" .. tostring(value) .. "\t" ..
             tostring(setting_value(value))
     end
+    -- Every car in the world (traffic too): blueprint class -> engine, so
+    -- each vehicle can be mapped to its real counterpart's engine.
+    pcall(function()
+        local seen = {}
+        local vehicles = FindAllOf("MTVehicle") or {}
+        for i, car in ipairs(vehicles) do
+            if i > 500 then break end
+            local name = full_name(car)
+            local class = name and name:match("^(%S+)")
+            if class and not seen[class] and not name:find("Default__", 1, true) then
+                seen[class] = true
+                local carEngine = member(car, "EngineComponent")
+                lines[#lines + 1] = "vehicle\t" .. class .. "\t" ..
+                    tostring(full_name(valid(carEngine) and member(carEngine, "EngineData") or nil))
+            end
+        end
+    end)
     for i, asset in ipairs(assets) do
         if i > 400 then break end
         local name = full_name(asset)
@@ -1322,7 +1349,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.21 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.22 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

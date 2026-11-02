@@ -11,7 +11,14 @@
 
 namespace mtes {
 
-// Profile catalog. First the exact EngineData UObject full name -> script
+// Motor Town vehicle blueprint class as a match key: "Trophy_Taxi_C ..." ->
+// "trophytaxi".
+std::string vehicle_class_key(const std::string& vehicle);
+
+// Profile catalog. First the car itself: the real engine of the real car
+// the Motor Town vehicle is based on (engine_families.tsv "vehicle" rules on
+// the blueprint class, lower case without underscores, e.g. "trophytaxi").
+// Then the exact EngineData UObject full name -> script
 // (engine_profiles.tsv); then ordered engine-family rules (optional
 // engine_families.tsv) matched against the engine asset name, then against
 // the stock engine SoundCue the game chose for it, then by the engine's
@@ -22,14 +29,14 @@ public:
     explicit ExactVehicleProfiles(std::filesystem::path modRoot);
 
     // Reads modRoot/engine_profiles.tsv (EngineData<TAB>relative .mr path)
-    // and modRoot/engine_families.tsv (asset|cue<TAB>regex<TAB>.mr or -,
+    // and modRoot/engine_families.tsv (vehicle|asset|cue<TAB>regex<TAB>.mr or -,
     // or maxrpm<TAB>low-high<TAB>.mr).
     // On malformed, missing or escaping entries, clears every mapping.
     bool reload();
     std::optional<std::string> script_for(const GameTelemetrySample& sample) override;
 
 private:
-    enum class Field { Asset, Cue, MaxRpm };
+    enum class Field { Vehicle, Asset, Cue, MaxRpm };
     struct FamilyRule {
         Field field = Field::Asset;
         std::regex pattern;

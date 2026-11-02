@@ -85,6 +85,7 @@ public:
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             m_simulator->synthesizer().setAudioParameters(audio);
+            m_rpmScale = profile_rpm_scale(script);
             m_calibrated = false;
             if (const auto gain = profile_output_gain(script)) {
                 // Linear output at the profile's measured gain; the built-in
@@ -129,9 +130,10 @@ public:
         }
     }
 
-    bool advance(double seconds, double rpm, double throttle, int gear) override {
+    bool advance(double seconds, double gameRpm, double throttle, int gear) override {
         if (!m_simulator || !m_engine || !m_transmission ||
-            !std::isfinite(rpm) || !std::isfinite(throttle)) return false;
+            !std::isfinite(gameRpm) || !std::isfinite(throttle)) return false;
+        const double rpm = gameRpm * m_rpmScale;
 
         // Follow Motor Town crankshaft speed; its driving physics remain
         // authoritative. The simulator's dynamometer holds that speed while
@@ -152,7 +154,10 @@ public:
         // a closed throttle (30 atm manifold), throttle response was inverted
         // and coasting whined like a drill. Spin it forward first.
         spin_forward(m_engine, from);
-        if (m_transmission->getGear() != gear) m_transmission->changeGear(gear);
+        // The clutch stays open (the dynamometer holds the game RPM), so the
+        // simulated gearbox stays in neutral: Motor Town gears beyond the
+        // profile's gearbox must never reach the simulator.
+        (void)gear;
         m_transmission->setClutchPressure(0.0);
 
         // Engine Simulator's standalone GUI varies its physics step count by
@@ -228,6 +233,7 @@ private:
     OverrunFuelCut m_fuelCut;
     LoudnessLeveler m_leveler;
     double m_profileGain = 1.0;
+    double m_rpmScale = 1.0;
     bool m_calibrated = false;
 };
 

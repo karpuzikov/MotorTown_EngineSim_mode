@@ -98,10 +98,10 @@ class UE4SSParentBuildTests(unittest.TestCase):
             package = staged.parent.parent
             self.assertTrue((package / 'Scripts/main.lua').is_file())
             self.assertTrue((package / 'engine_profiles.tsv').is_file())
-            self.assertIn('FordSmalBlock302_V8_5L_140HP',
-                          (package / 'engine_profiles.tsv').read_text())
-            self.assertTrue((package / 'assets/es_gm_ls.mr').is_file())
-            self.assertTrue((package / 'assets/es_toyota_2jz.mr').is_file())
+            self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239.mr',
+                          (package / 'engine_families.tsv').read_text())
+            self.assertTrue((package / 'assets/es_ford_flathead_239.mr').is_file())
+            self.assertTrue((package / 'assets/es_lambo_l539.mr').is_file())
             self.assertTrue((package / 'engine_families.tsv').is_file())
             self.assertIn('volume', (package / 'settings.ini').read_text())
             self.assertTrue((package / 'assets/engines/atg-video-2/07_gm_ls.mr').is_file())

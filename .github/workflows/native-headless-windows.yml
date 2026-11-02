@@ -95,9 +95,9 @@ jobs:
               [System.Text.UTF8Encoding]::new($false))
             $profiles += $path
           }
-          # Exercise the exact calibrated wrapper shipped for the Dory V8.
-          $dory = Join-Path $assets 'es_gm_ls.mr'
-          Copy-Item 'native/profiles/es_gm_ls.mr' $dory
+          # Exercise the generated real-engine profile shipped for the Dory.
+          $dory = Join-Path $assets 'es_ford_flathead_239.mr'
+          Copy-Item 'native/profiles/es_ford_flathead_239.mr' $dory
           $profiles += $dory
           & 'native/build-windows/Release/mtes-headless-smoke.exe' @profiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -113,8 +113,9 @@ jobs:
           Copy-Item (Join-Path $source 'assets/engines') (Join-Path $assets 'engines') -Recurse
           Copy-Item (Join-Path $source 'es/sound-library') (Join-Path $assets 'sound-library') -Recurse
           Copy-Item (Join-Path $source 'es') (Join-Path $trial 'es') -Recurse
-          # V8 (exact Dory map), I6 (main), I6 and big-block V8 (custom wrappers).
+          # Generated real engines: flathead V8, I6, flat-6, V12, diesel I6, 2-stroke.
           & 'native/build-windows/Release/mtes-headless-smoke.exe' @(
-            'es_gm_ls.mr', 'es_toyota_2jz.mr', 'es_bmw_m52.mr', 'es_chev_454.mr' |
+            'es_ford_flathead_239.mr', 'es_toyota_2jz_gte.mr', 'es_porsche_32_flat6.mr',
+            'es_lambo_l539.mr', 'es_volvo_d13.mr', 'es_vespa_150_2t.mr' |
               ForEach-Object { Join-Path $assets $_ })
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

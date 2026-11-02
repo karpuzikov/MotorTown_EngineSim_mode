@@ -32,7 +32,7 @@ class VehicleProfileTests(unittest.TestCase):
 class PackagedFamilyRuleTests(unittest.TestCase):
     """Python's re matches these ECMAScript patterns identically."""
 
-    def resolve(self, asset, cue='', max_rpm=0):
+    def rules(self):
         import re
         rules = []
         for line in (ROOT / 'profiles/engine_families.tsv').read_text().splitlines():
@@ -44,14 +44,18 @@ class PackagedFamilyRuleTests(unittest.TestCase):
                 rules.append((field, (low, high), profile))
             else:
                 rules.append((field, re.compile(pattern, re.IGNORECASE), profile))
-        exact = {}
-        for line in (ROOT / 'profiles/engine_profiles.tsv').read_text().splitlines():
-            if line and not line.startswith('#'):
-                key, profile = line.split('\t')
-                exact[key] = profile
-        if asset in exact:
-            return exact[asset]
-        for wanted, name in (('asset', asset), ('cue', cue)):
+        return rules
+
+    @staticmethod
+    def key(vehicle):
+        name = vehicle.split(' ')[0]
+        if name.endswith('_C'):
+            name = name[:-2]
+        return name.replace('_', '').lower()
+
+    def resolve(self, vehicle, asset='', cue='', max_rpm=0):
+        rules = self.rules()
+        for wanted, name in (('vehicle', self.key(vehicle)), ('asset', asset), ('cue', cue)):
             for field, pattern, profile in rules:
                 if field == wanted and name and pattern.search(name):
                     return None if profile == '-' else profile
@@ -61,46 +65,51 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         return 'STOCK'
 
     def test_every_rule_points_to_a_packaged_profile(self):
-        for line in (ROOT / 'profiles/engine_families.tsv').read_text().splitlines():
-            if line and not line.startswith('#'):
-                field, _, profile = line.split('\t')
-                self.assertIn(field, ('asset', 'cue', 'maxrpm'))
-                if profile != '-':
-                    self.assertTrue((ROOT / 'profiles' / Path(profile).name).is_file(), profile)
+        for field, _, profile in self.rules():
+            self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
+            if profile != '-':
+                self.assertTrue((ROOT / 'profiles' / Path(profile).name).is_file(), profile)
 
-    def test_known_motor_town_engines_get_matching_cylinder_layouts(self):
-        prefix = 'MHEngineDataAsset /Game/Cars/Parts/Engine/'
+    def test_each_car_gets_its_real_counterparts_engine(self):
         cases = {
-            'FordSmalBlock302_V8_5L_140HP': 'assets/es_gm_ls.mr',
-            'V6Sport_DOHC_200HP': 'assets/es_v6_60.mr',
-            '2JZ320HP': 'assets/es_toyota_2jz.mr',
-            'RB26DET276HP': 'assets/es_toyota_2jz.mr',
-            'S58': 'assets/es_bmw_m52.mr',
-            'I4Sport_150HP': 'assets/es_honda_b18c.mr',
-            'I6Sport_200HP': 'assets/es_bmw_m52.mr',
-            'Hemi392_525HP': 'assets/es_chev_454.mr',
-            '81bb': 'assets/es_chev_454.mr',
-            'V10ACR': 'assets/es_lfa_v10.mr',
-            'Ferrari_275_V12_400HP': 'assets/es_ferrari_412.mr',
-            'Electric_200kW': None,
+            # In-game blueprint class (seen in UE4SS.log) -> real engine
+            'DoryWrecker_C /Game/Maps/Jeju': 'assets/es_ford_flathead_239.mr',  # 1948 Ford F-1
+            'Tuscan_C /Game/Maps/Jeju': 'assets/es_chevy_350.mr',               # 1969 Nova SS
+            'Micky_C /Game/Maps/Jeju': 'assets/es_nissan_cg13.mr',              # Nissan Micra
+            'Scooty_C /Game/Maps/Jeju': 'assets/es_vespa_150_2t.mr',            # Vespa
+            'Elisa2_C /Game/Maps/Jeju': 'assets/es_ford_46_modular.mr',         # Crown Victoria
+            'Trophy_Taxi_C /Game/Maps/Jeju': 'assets/es_vaz_2103.mr',           # Lada 2107
+            'PoliceInterceptor_C /x': 'assets/es_chrysler_440.mr',
+            'Police_C /x': 'assets/es_chrysler_hemi_57.mr',
+            'ElisaPolice_C /x': 'assets/es_ford_46_modular.mr',
+            'Fortem_C /x': 'assets/es_porsche_32_flat6.mr',
+            'Raton_C /x': 'assets/es_lambo_l539.mr',
+            'Pulse_C /x': None,                                                # Honda e
+        }
+        for vehicle, expected in cases.items():
+            with self.subTest(vehicle=vehicle):
+                self.assertEqual(self.resolve(vehicle, max_rpm=6000), expected)
+
+    def test_unknown_cars_still_get_a_combustion_engine(self):
+        prefix = 'MHEngineDataAsset /Game/Cars/Parts/Engine/'
+        unknown = 'NewCar_C /x'
+        cases = {
+            'FordSmalBlock302_V8_5L_140HP': 'assets/es_ford_302_windsor.mr',
+            'V6Sport_DOHC_200HP': 'assets/es_buick_38_turbo.mr',
+            'I4_90HP': 'assets/es_nissan_cg13.mr',
+            'I4Sport_150HP': 'assets/es_mazda_b6.mr',
+            'Bike_i4_160HP': 'assets/es_bike_i4_1000.mr',
+            'Bike_50HP': 'assets/es_triumph_650_twin.mr',
+            'Kart_20HP': 'assets/es_kart_100_2t.mr',
+            'Scooter_15HP': 'assets/es_vespa_150_2t.mr',
+            'HeavyDuty_440HP': 'assets/es_cummins_isx15.mr',
+            'MediumDuty_250HP': 'assets/es_navistar_dt466.mr',
+            'Bus_300HP': 'assets/es_cummins_isb67.mr',
+            'Ferrari_275_V12_400HP': 'assets/es_lambo_l539.mr',
+            'Electric_300HP': None,
         }
         for name, expected in cases.items():
             with self.subTest(name=name):
-                self.assertEqual(self.resolve(prefix + name + '.' + name, max_rpm=6000), expected)
-        mystery = prefix + 'Mystery.Mystery'
-        truck_cue = 'SoundCue /Game/Cars/Parts/Engine/Sound/Truck/MidDuty_02/SC_MidDuty.SC_MidDuty'
-        self.assertEqual(self.resolve(mystery, truck_cue), 'assets/es_bmw_m52.mr')
-        two_stroke = 'SoundCue /Game/Cars/Parts/Engine/Sound/2Stroke/SC_2StrokeEngine_Chainsaw.SC_2StrokeEngine_Chainsaw'
-        self.assertEqual(self.resolve(mystery, two_stroke), 'assets/es_honda_trx520.mr')
-        i4_cue = 'SoundCue /Game/Cars/Parts/Engine/Sound/I4Sport/SC_I4SportEngine.SC_I4SportEngine'
-        self.assertEqual(self.resolve(mystery, i4_cue), 'assets/es_honda_b18c.mr')
-        # The default V8 cue says nothing about the engine: MaxRPM decides,
-        # and every combustion engine gets a profile.
-        v8_cue = 'SoundCue /Game/Cars/Parts/Engine/Sound/V8/SC_V8Engine.SC_V8Engine'
-        self.assertEqual(self.resolve(mystery, v8_cue, 2500), 'assets/es_bmw_m52.mr')
-        self.assertEqual(self.resolve(mystery, v8_cue, 4500), 'assets/es_chev_454.mr')
-        self.assertEqual(self.resolve(mystery, v8_cue, 6000), 'assets/es_gm_ls.mr')
-        self.assertEqual(self.resolve(mystery, v8_cue, 8000), 'assets/es_honda_b18c.mr')
-        self.assertEqual(self.resolve(mystery, v8_cue, 12000), 'assets/es_hayabusa.mr')
-        for rpm in range(1, 30001, 50):
-            self.assertNotEqual(self.resolve(mystery, v8_cue, rpm), 'STOCK', rpm)
+                self.assertEqual(self.resolve(unknown, prefix + name + '.' + name, max_rpm=6000), expected)
+        for rpm in range(1, 40001, 50):
+            self.assertNotEqual(self.resolve(unknown, prefix + 'Mystery.Mystery', '', rpm), 'STOCK', rpm)

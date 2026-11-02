@@ -1,6 +1,7 @@
 #include "vehicle_profile.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <string>
 #include <utility>
@@ -45,6 +46,18 @@ std::vector<std::string> split_tabs(const std::string& line) {
 }
 
 } // namespace
+
+std::string vehicle_class_key(const std::string& vehicle) {
+    // "Trophy_Taxi_C /Game/Maps/..." -> "trophytaxi"
+    std::string name = vehicle.substr(0, vehicle.find(' '));
+    if (name.size() > 2 && name.compare(name.size() - 2, 2, "_C") == 0) name.resize(name.size() - 2);
+    std::string key;
+    for (unsigned char c : name) {
+        if (c == '_') continue;
+        key.push_back(static_cast<char>(std::tolower(c)));
+    }
+    return key;
+}
 
 ExactVehicleProfiles::ExactVehicleProfiles(fs::path modRoot)
     : m_modRoot(std::move(modRoot)) {}
@@ -97,7 +110,8 @@ bool ExactVehicleProfiles::reload() {
             if (line.empty() || line.front() == '#') continue;
             const auto fields = split_tabs(line);
             if (fields.size() != 3 ||
-                (fields[0] != "asset" && fields[0] != "cue" && fields[0] != "maxrpm") ||
+                (fields[0] != "asset" && fields[0] != "cue" && fields[0] != "maxrpm" &&
+                 fields[0] != "vehicle") ||
                 fields[1].empty() || fields[1].size() > 512 ||
                 families.size() >= 1000) return false;
             FamilyRule rule;
@@ -116,7 +130,8 @@ bool ExactVehicleProfiles::reload() {
                 catch (...) { return false; }
             }
             else {
-                rule.field = fields[0] == "cue" ? Field::Cue : Field::Asset;
+                rule.field = fields[0] == "cue" ? Field::Cue
+                    : fields[0] == "vehicle" ? Field::Vehicle : Field::Asset;
                 try {
                     rule.pattern = std::regex(fields[1],
                         std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
@@ -158,6 +173,10 @@ std::optional<std::string> ExactVehicleProfiles::rpm_family_for(double maxRpm) c
 
 std::optional<std::string> ExactVehicleProfiles::script_for(
     const GameTelemetrySample& sample) {
+    if (auto car = family_for(vehicle_class_key(sample.vehicle), Field::Vehicle)) {
+        if (car->empty()) return std::nullopt;
+        return car;
+    }
     if (sample.engine_asset.empty()) return std::nullopt;
     const auto it = m_profiles.find(sample.engine_asset);
     if (it != m_profiles.end()) return it->second;

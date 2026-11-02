@@ -1,6 +1,0 @@
-// mtes-output-gain: 0.0135
-// V12 (Ferrari 412 T2). Engine Simulator model, measured full-throttle level -14 dBFS.
-import "engine_sim.mr"
-import "engines/atg-video-2/12_ferrari_412_t2.mr"
-
-main()

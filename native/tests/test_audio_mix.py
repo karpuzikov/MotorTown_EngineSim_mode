@@ -32,17 +32,18 @@ class AudioMixTests(unittest.TestCase):
         self.assertLess(backend.index('spin_forward(m_engine, from);'),
                         backend.index('m_simulator->startFrame(seconds);'))
         self.assertIn('profile_output_gain(script)', backend)
+        self.assertIn('profile_rpm_scale(script)', backend)  # two-strokes
         self.assertIn('m_leveler.observe(dst, read)', backend)
         self.assertIn('m_leveler.update(seconds)', backend)
 
     def test_every_packaged_profile_is_calibrated(self):
         profiles = sorted((ROOT / 'profiles').glob('es_*.mr'))
-        self.assertGreaterEqual(len(profiles), 14)
+        self.assertGreaterEqual(len(profiles), 60)
         for profile in profiles:
             with self.subTest(profile=profile.name):
                 first = profile.read_text().splitlines()[0]
                 self.assertRegex(first, r'^// mtes-output-gain: [0-9.e-]+$')
-                self.assertIn('import "engines/', profile.read_text())
+                self.assertIn('set_engine(', profile.read_text())
 
     def test_xaudio2_output_applies_the_stock_mix(self):
         sink = (ROOT / 'src/xaudio2_sink.cpp').read_text()

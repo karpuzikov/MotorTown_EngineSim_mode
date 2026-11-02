@@ -1,6 +1,0 @@
-// mtes-output-gain: 0.00716
-// Flat-4 boxer, unequal headers (Subaru EJ25). Engine Simulator model, measured full-throttle level -14 dBFS.
-import "engine_sim.mr"
-import "engines/atg-video-2/02_subaru_ej25_uh.mr"
-
-main()

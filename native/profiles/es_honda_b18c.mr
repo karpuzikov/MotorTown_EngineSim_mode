@@ -1,6 +1,0 @@
-// mtes-output-gain: 0.0026
-// Inline-4 (Honda B18C5 VTEC). Engine Simulator model, measured full-throttle level -14 dBFS.
-import "engine_sim.mr"
-import "engines/atg-video-1/05_honda_vtec.mr"
-
-main()

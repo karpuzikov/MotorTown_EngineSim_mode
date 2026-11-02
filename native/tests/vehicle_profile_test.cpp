@@ -155,4 +155,23 @@ int main(int argc, char** argv) {
     }
     assert(!catalog.reload());
     fs::remove(root / "engine_families.tsv");
+
+    // Per-vehicle rules: the real car's engine wins over the engine asset.
+    assert(vehicle_class_key("Trophy_Taxi_C /Game/Maps/Jeju/Jeju_World.Jeju_World:PersistentLevel.Trophy_Taxi_C_1") == "trophytaxi");
+    assert(vehicle_class_key("DoryWrecker_C /Game/x") == "dorywrecker");
+    assert(vehicle_class_key("") .empty());
+    write(boxer + "\tprofiles/boxer.mr\n");
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "vehicle\t^trophy\tprofiles/v6.mr\nvehicle\t^pulse\t-\n";
+    }
+    assert(catalog.reload());
+    auto car = *first;
+    car.vehicle = "Trophy_Taxi_C /Game/Maps/Jeju/Jeju_World.Jeju_World:PersistentLevel.Trophy_Taxi_C_7";
+    assert(fs::equivalent(*catalog.script_for(car), root / "profiles/v6.mr")); // beats exact boxer
+    car.vehicle = "Pulse_C /Game/x";
+    assert(!catalog.script_for(car)); // electric car keeps stock sound
+    car.vehicle = "Other_C /Game/x";
+    assert(fs::equivalent(*catalog.script_for(car), root / "profiles/boxer.mr"));
+    fs::remove(root / "engine_families.tsv");
 }
