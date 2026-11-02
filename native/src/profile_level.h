@@ -67,20 +67,23 @@ inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) 
 }
 
 // Real-world engine loudness. Engine Simulator's raw output puts idle ~56 dB
-// under full throttle (measured, all profiles; real engines ~25 dB) and its
-// leveler flattens everything to one level (in game: a hatchback as loud
-// as a semi). So its leveler keeps the timbre and this sets the level, in
-// dB of output gain for a vehicle that makes fullThrottleLoudnessDba at
+// under full throttle (measured, all profiles; real engines ~20 dB) and its
+// leveler flattens every engine to one peak level (in game: a hatchback as
+// loud as a semi). So its leveler keeps the timbre and this sets the level,
+// in dB of output gain for a vehicle that makes fullThrottleLoudnessDba at
 // 7.5 m flat out at 80% of redline:
-//   - sound power rises ~25 dB per decade of RPM (idle ~20 dB under),
-//   - closing the throttle at the same RPM takes ~6 dB off,
+//   - leveled output already falls ~16 dB from revving to idle (sparse
+//     pulses at low RPM; in-game recording 2026-11-02), so RPM and load
+//     add only 4 dB per decade and 3 dB for a closed throttle (the leveler
+//     would otherwise make coasting as loud as flat out). (25 dB/decade + 6 dB put the
+//     Dory's idle 37 dB under revving: "almost non-existent".)
 //   - 98 dB(A) plays at full scale; 7.5 m distance is in the 3D mix.
 inline double engine_loudness_gain_db(double fullThrottleLoudnessDba, double rpm,
     double redlineRpm, double throttle) {
     if (!(rpm > 0) || !(redlineRpm > 0)) return -90.0;
     const double load = std::clamp(std::isfinite(throttle) ? throttle : 0.0, 0.0, 1.0);
     const double gain = fullThrottleLoudnessDba - 98.0 +
-        25.0 * std::log10(rpm / (0.8 * redlineRpm)) + 6.0 * (load - 1.0);
+        4.0 * std::log10(rpm / (0.8 * redlineRpm)) + 3.0 * (load - 1.0);
     return std::clamp(gain, -90.0, 0.0);
 }
 

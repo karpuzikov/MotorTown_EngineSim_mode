@@ -45,16 +45,16 @@ int main() {
         assert(!parse_engine_sound_spec("a.mr#loudness=-1"));
     }
 
-    // Real-world loudness: a semi is louder than a hatchback; idle ~20 dB
-    // under full throttle (Engine Simulator alone: 56 dB); lifting off at
-    // the same RPM takes 6 dB, smoothly (no sudden drop).
+    // Real-world loudness: a semi is louder than a hatchback. Engine
+    // Simulator's leveled output already drops ~16 dB to idle, so the model
+    // adds little there (the Dory idled 37 dB under revving with 25 dB/decade).
     {
         const double semi = engine_loudness_gain_db(88, 1680, 2100, 1.0);
         const double hatchback = engine_loudness_gain_db(74, 5200, 6500, 1.0);
         assert(near(semi - hatchback, 14, 1e-9));
         const double idle = engine_loudness_gain_db(74, 850, 6500, 0.0);
-        assert(hatchback - idle > 18 && hatchback - idle < 30);
-        assert(near(hatchback - engine_loudness_gain_db(74, 5200, 6500, 0.0), 6, 1e-9));
+        assert(hatchback - idle > 5 && hatchback - idle < 10);
+        assert(near(hatchback - engine_loudness_gain_db(74, 5200, 6500, 0.0), 3, 1e-9));
         assert(engine_loudness_gain_db(130, 9000, 6500, 1.0) == 0.0); // never above full scale
     }
 
