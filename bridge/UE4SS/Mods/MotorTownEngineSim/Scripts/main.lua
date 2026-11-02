@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.24, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.25, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -108,13 +108,20 @@ end
 -- leased, or stock engine sound overlaps the replacement. Jake brake and
 -- afterfire pops stay stock: Engine Simulator does not synthesize them.
 local audioComponentClass = nil
+-- Kept stock: electric motors (no combustion to simulate), backfire/
+-- afterfire pops and jake brakes.
+local KEEP_STOCK = { "/electric/", "backfire", "afterfire", "jakebrake", "jake_brake" }
+local function is_kept_stock_sound(lowerName)
+    for _, keep in ipairs(KEEP_STOCK) do
+        if lowerName:find(keep, 1, true) then return true end
+    end
+    return false
+end
+
 local function is_engine_sound(name)
     if type(name) ~= "string" then return false end
     local lower = name:lower()
-    if lower:find("afterfire", 1, true) or lower:find("backfire", 1, true) or
-        lower:find("jakebrake", 1, true) or lower:find("jake_brake", 1, true) then
-        return false
-    end
+    if is_kept_stock_sound(lower) then return false end
     return lower:find("/cars/parts/engine/", 1, true) ~= nil or
         lower:find("/vehicle/intake/", 1, true) ~= nil or
         lower:find("/vehicle/exhaust", 1, true) ~= nil or
@@ -288,7 +295,7 @@ local function mute_lease_tick(vehicle)
     local channelAddress, intakeAddress = address_of(channel), address_of(intake)
     if leasedAudio then
         local changed = nil
-        if not channelAddress or channelAddress ~= leasedAudio.channelAddress then
+        if channelAddress ~= leasedAudio.channelAddress then
             changed = "engine audio component"
         elseif intakeAddress ~= leasedAudio.intakeAddress then
             changed = "intake audio component"
@@ -308,10 +315,13 @@ local function mute_lease_tick(vehicle)
             return
         end
     end
+    -- Some trucks (in game: Kira Van, Brutus wrecker) carry no engine cue
+    -- on their engine AudioComponent; there is nothing to mute there, but
+    -- native audio still needs its ACK or the car stays silent.
+    if not valid(channel) then channel, channelAddress = nil, nil end
     local matching = session == nativeSession and sequence and sequence > 0 and
         hex_name(full_name(vehicle)) == vehicleHex and
-        hex_name(full_name(data)) == assetHex and
-        cueName ~= nil and valid(channel)
+        hex_name(full_name(data)) == assetHex
 
     -- Remember the highest *accepted* sequence even after restoring stock.
     -- Otherwise a crashed DLL leaves MTESM1 on disk and its static request
@@ -322,8 +332,8 @@ local function mute_lease_tick(vehicle)
             if not restore_leased_engine("new lease token") then return end
         end
         if not leasedAudio then
-            local original = tonumber(member(channel, "VolumeMultiplier"))
-            if not original or original < 0 or original > 4 then return end
+            local original = channel and tonumber(member(channel, "VolumeMultiplier"))
+            if channel and (not original or original < 0 or original > 4) then return end
             local intakeOriginal = intake and tonumber(member(intake, "VolumeMultiplier"))
             if intake and (not intakeOriginal or intakeOriginal < 0 or
                 intakeOriginal > 4) then return end
@@ -336,14 +346,15 @@ local function mute_lease_tick(vehicle)
             log("Native PCM lease requested; muting engine cue " .. tostring(cueName) ..
                 " and intake cue " .. tostring(intakeCueName))
         end
-        if not set_gain(channel, 0.0) or
+        if (channel and not set_gain(channel, 0.0)) or
             (intake and not set_gain(intake, 0.0)) then
             restore_leased_engine("mute gain validation failed")
             return
         end
         if not leasedAudio.extras then
             leasedAudio.extras = {}
-            leasedAudio.extraAddresses = { [channelAddress] = true }
+            leasedAudio.extraAddresses = {}
+            if channelAddress then leasedAudio.extraAddresses[channelAddress] = true end
             if intakeAddress then leasedAudio.extraAddresses[intakeAddress] = true end
         end
         if not mute_extra_engine_audio(vehicle) then
@@ -368,7 +379,7 @@ local function mute_lease_tick(vehicle)
         if leaseIdleTicks >= 4 then
             restore_leased_engine("duplicate watchdog expired"); return
         end
-        if not set_gain(channel, 0.0) or
+        if (channel and not set_gain(channel, 0.0)) or
             (intake and not set_gain(intake, 0.0)) or
             not mute_extra_engine_audio(vehicle) or
             not write_mute_ack(session, sequenceText, token, vehicleHex, assetHex) then
@@ -833,7 +844,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.24 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.25 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -1069,7 +1080,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.24" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.25" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1198,10 +1209,8 @@ end
 
 -- The player wants no stock engine sound at all, from any car: silence the
 -- shared engine/intake sound ASSETS themselves (every layer, every car,
--- whatever component plays them). Kept stock: electric motors (no
--- combustion to simulate), backfire/afterfire pops and jake brakes.
+-- whatever component plays them), except KEEP_STOCK.
 local STOCK_ENGINE_DIRS = { "/game/cars/parts/engine/sound/", "/game/sounds/vehicle/intake/" }
-local KEEP_STOCK = { "/electric/", "backfire", "afterfire", "jakebrake" }
 local checkedStockSounds = {}
 local mutedStockSounds = 0
 local nextStockCueScan, nextStockWaveScan = 0, 0
@@ -1212,11 +1221,7 @@ local function is_stock_engine_asset(name)
     for _, dir in ipairs(STOCK_ENGINE_DIRS) do
         if lower:find(dir, 1, true) then inside = true end
     end
-    if not inside then return false end
-    for _, keep in ipairs(KEEP_STOCK) do
-        if lower:find(keep, 1, true) then return false end
-    end
-    return true
+    return inside and not is_kept_stock_sound(lower)
 end
 
 local function silence_class(className, property)
@@ -1358,7 +1363,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.24 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.25 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

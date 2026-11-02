@@ -1,4 +1,3 @@
-// mtes-output-gain: 0.00617
 // Nissan RB26DETT 2.6 I6 (Skyline R32 GT-R): 6 cyl, 2.57 L, bore 86.0 x stroke 73.7 mm,
 // redline 8000 rpm. Engine Simulator's 03_2jz.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -246,12 +245,12 @@ public node t2jz {
         es_params,
         length: 100.0 * units.inch,
         audio_volume: 0.2,
-        impulse_response: ir_lib.mild_exhaust_0_reverb)
+        impulse_response: ir_lib.default_0)
     exhaust_system exhaust1(
         es_params,
         length: 100.0 * units.inch,
         audio_volume: 0.2,
-        impulse_response: ir_lib.mild_exhaust_0_reverb)
+        impulse_response: ir_lib.default_0)
 
     label spacing(0.5 * units.inch)
 

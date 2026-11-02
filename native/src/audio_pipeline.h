@@ -40,7 +40,7 @@ class NativeAudioPipeline final {
 public:
     enum class Pacing { TelemetryPackets, WorkerClock };
     enum class Stage {
-        NoTelemetry, Background, StalePacket, IgnitionOff, InvalidVolume, NoProfile,
+        NoTelemetry, Background, StalePacket, EngineStopped, InvalidVolume, NoProfile,
         NoEmitter, EngineLoadFailed, EngineAdvanceFailed, Priming,
         PcmUnderrun, PcmSilent, PcmUnavailable, MutePending,
         StockMuteFailed, OutputQueueFailed, OutputStartFailed,
@@ -78,6 +78,7 @@ public:
 
 private:
     void silence() noexcept;
+    void release_output() noexcept; // silence() but keeps the engine loaded
 
     EngineAudio& m_engine;
     GameAudioOutput& m_output;

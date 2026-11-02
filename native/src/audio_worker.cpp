@@ -91,11 +91,11 @@ void NativeAudioWorker::run(std::stop_token token,
                 return fresh && sample && fresh->session == sample->session &&
                     fresh->vehicle == sample->vehicle &&
                     fresh->engine_asset == sample->engine_asset &&
-                    fresh->state.ignition &&
+                    engine_turning(fresh->state) &&
                     fresh->engine_volume == sample->engine_volume;
             });
             const auto stage = m_pipeline.stage();
-            if (!foreground || !sample || !sample->state.ignition ||
+            if (!foreground || !sample || !engine_turning(sample->state) ||
                 stage == NativeAudioPipeline::Stage::InvalidVolume ||
                 stage == NativeAudioPipeline::Stage::NoProfile ||
                 stage == NativeAudioPipeline::Stage::NoEmitter) {

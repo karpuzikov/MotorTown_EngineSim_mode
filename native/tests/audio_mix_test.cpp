@@ -1,5 +1,4 @@
-// Loudness, spatial mix, settings and profile-gain parsing (no audio device).
-#include "loudness_leveler.h"
+// Spatial mix, settings and profile directive parsing (no audio device).
 #include "mod_settings.h"
 #include "profile_level.h"
 #include "spatial_mix.h"
@@ -16,53 +15,20 @@ using namespace mtes;
 namespace {
 bool near(double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; }
 
-// Feed the leveler a "raw" engine at levelDb (calibrated scale) and return
-// the output level (dBFS) over the last 100 ms.
-double run(LoudnessLeveler& leveler, double levelDb, double seconds) {
-    const double amplitude = std::pow(10.0, levelDb / 20.0) * std::sqrt(2.0);
-    std::vector<std::int16_t> pcm(static_cast<std::size_t>(seconds * 44100));
-    for (std::size_t i = 0; i < pcm.size(); ++i)
-        pcm[i] = static_cast<std::int16_t>(std::lround(amplitude * std::sin(i * 0.31) * 32767.0));
-    leveler.process(pcm.data(), pcm.size());
-    double sum = 0;
-    const std::size_t tail = 4410;
-    for (std::size_t i = pcm.size() - tail; i < pcm.size(); ++i)
-        sum += (pcm[i] / 32768.0) * (pcm[i] / 32768.0);
-    return 10 * std::log10(sum / tail);
-}
 } // namespace
 
 int main() {
-    // Profile gain directive: only a well-formed header line counts.
+    // Profile header directive: only a well-formed header line counts.
     {
-        std::istringstream good("// mtes-output-gain: 0.00211\n// V8\nimport \"engine_sim.mr\"\n");
-        const auto gain = parse_profile_output_gain(good);
-        assert(gain && near(*gain, 0.00211, 1e-9));
-        std::istringstream missing("import \"engine_sim.mr\"\nmain()\n");
-        assert(!parse_profile_output_gain(missing));
-        std::istringstream junk("// mtes-output-gain: 0.5x\n");
-        assert(!parse_profile_output_gain(junk));
-        std::istringstream negative("// mtes-output-gain: -1\n");
-        assert(!parse_profile_output_gain(negative));
-    }
-
-    // Leveler: full throttle stays at the reference; lifting off (raw -20 dB)
-    // or idling (-50 dB) is clearly quieter but never silent, and the level
-    // settles within ~0.2 s (no slow pumping after a lift-off or a shift).
-    {
-        LoudnessLeveler leveler;
-        leveler.reset();
-        const double wot = run(leveler, LoudnessLeveler::ReferenceDbfs, 1.0);
-        assert(near(wot, LoudnessLeveler::ReferenceDbfs, 1.0));
-        const double lift = run(leveler, LoudnessLeveler::ReferenceDbfs - 20, 0.3);
-        assert(lift < wot - 4 && lift > wot - 10);
-        const double idle = run(leveler, LoudnessLeveler::ReferenceDbfs - 50, 0.5);
-        assert(idle < wot - 10 && idle > wot - 20);
-        const double back = run(leveler, LoudnessLeveler::ReferenceDbfs, 0.2);
-        assert(near(back, LoudnessLeveler::ReferenceDbfs, 1.5));
-        LoudnessLeveler fresh;
-        fresh.reset();
-        assert(fresh.gain_db() > 20); // a fresh engine is idling, not silent
+        std::istringstream good("// mtes-rpm-scale: 2\n// V8\nimport \"engine_sim.mr\"\n");
+        const auto scale = parse_profile_directive(good, "// mtes-rpm-scale:", 4);
+        assert(scale && near(*scale, 2.0, 1e-9));
+        std::istringstream missing("// V8\n");
+        assert(!parse_profile_directive(missing, "// mtes-rpm-scale:", 4));
+        std::istringstream junk("// mtes-rpm-scale: 2x\n");
+        assert(!parse_profile_directive(junk, "// mtes-rpm-scale:", 4));
+        std::istringstream negative("// mtes-rpm-scale: -1\n");
+        assert(!parse_profile_directive(negative, "// mtes-rpm-scale:", 4));
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

@@ -1,4 +1,3 @@
-// mtes-output-gain: 0.00912
 // VW 1100 air-cooled flat-4 (T1 1950): 4 cyl, 1.13 L, bore 75.0 x stroke 64.0 mm,
 // redline 3300 rpm. Engine Simulator's 02_subaru_ej25_uh.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.

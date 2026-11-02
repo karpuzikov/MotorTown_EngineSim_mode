@@ -17,7 +17,7 @@ public:
     bool underrun = false;
     bool underrun_emitted = false;
     bool load(const std::string&) override { return true; }
-    bool advance(double, double, double, int) override { return true; }
+    bool advance(double, double, double, bool) override { return true; }
     std::size_t read(std::int16_t* dst, std::size_t frames) override {
         // A real exhausted producer returns zero after its available burst,
         // not a perpetually-halving stream ending one sample short.

@@ -35,7 +35,7 @@ struct SlowBackend final : EngineBackend {
     std::size_t available = 0;
 
     bool load(const std::string&) override { available = 0; return true; }
-    bool advance(double seconds, double, double, int) override {
+    bool advance(double seconds, double, double, bool) override {
         advanced_off_main.store(std::this_thread::get_id() != main_thread);
         ++advances;
         std::this_thread::sleep_for(cost);

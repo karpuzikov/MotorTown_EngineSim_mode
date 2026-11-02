@@ -23,7 +23,7 @@ struct FakeEngine : EngineBackend {
     bool throw_after_partial_write = false;
     Clock::time_point ready_after{};
     std::string script;
-    int last_gear = -99;
+    bool last_combustion = false;
     double last_rpm = 0;
     double last_throttle = 0;
 
@@ -32,11 +32,11 @@ struct FakeEngine : EngineBackend {
         script = path;
         return load_ok;
     }
-    bool advance(double, double rpm, double throttle, int gear) override {
+    bool advance(double, double rpm, double throttle, bool combustion) override {
         ++advances;
         last_rpm = rpm;
         last_throttle = throttle;
-        last_gear = gear;
+        last_combustion = combustion;
         return advance_ok;
     }
     std::size_t read(std::int16_t *dst, std::size_t requested) override {
@@ -72,12 +72,12 @@ int main() {
     assert(engine->reads == 0);
 
     // A running player vehicle activates its exact script and follows RPM,
-    // throttle and gear (game neutral 0 maps to Engine Simulator neutral -1).
+    // throttle; a running engine fires.
     assert(audio.update("Tuscan_C", "assets/engines/tuscan.mr",
         {1500, 0.3, 2, true}, start));
     assert(engine->loads == 1 && engine->advances == 1);
     assert(engine->last_rpm == 1500 && engine->last_throttle == 0.3);
-    assert(engine->last_gear == 1);
+    assert(engine->last_combustion);
     assert(!audio.is_replacing_stock());
     assert(audio.render(pcm.data(), pcm.size(), start) == 16);
     assert(pcm[0] == 2048 && pcm[15] == 2048);
@@ -154,7 +154,16 @@ int main() {
     assert(audio.update("Atlas_4x2_Semi_C", "assets/engines/atlas.mr",
         {900, 0.8, 0, true}, start + std::chrono::seconds(2)));
     assert(engine->loads == 2 && engine->stops == 1);
-    assert(engine->last_gear == -1);
+    assert(engine->last_combustion);
+
+    // The starter cranks with the ignition still off (in game ~150 RPM):
+    // heard unfired, not silent, on the already loaded engine.
+    assert(audio.update("Atlas_4x2_Semi_C", "assets/engines/atlas.mr",
+        {150, 1.0, 0, false}, start + std::chrono::milliseconds(2100)));
+    assert(engine->loads == 2 && !engine->last_combustion && engine->last_rpm == 150);
+    // A standing engine is not advanced.
+    assert(!audio.update("Atlas_4x2_Semi_C", "assets/engines/atlas.mr",
+        {0, 0, 0, false}, start + std::chrono::milliseconds(2200)));
     assert(engine->script == "assets/engines/atlas.mr");
     assert(!audio.is_replacing_stock());
 

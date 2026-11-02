@@ -10,7 +10,7 @@ namespace {
 constexpr auto MaxTelemetryAge = std::chrono::milliseconds(250);
 
 bool valid(const EngineState &s) {
-    return s.ignition && std::isfinite(s.rpm) && s.rpm >= 50 && s.rpm <= 25000 &&
+    return engine_turning(s) &&
         std::isfinite(s.throttle) && s.throttle >= 0 && s.throttle <= 1 &&
         s.gear >= -2 && s.gear <= 32;
 }
@@ -36,6 +36,34 @@ void EngineAudio::stop() noexcept {
     stop_locked();
 }
 
+bool EngineAudio::load_locked(const std::string &vehicle, const std::string &script) {
+    stop_locked();
+    try {
+        if (!m_backend->load(script)) {
+            m_updateStatus.store(UpdateStatus::LoadFailed);
+            m_backend->stop();
+            return false;
+        }
+    }
+    catch (...) {
+        m_updateStatus.store(UpdateStatus::LoadFailed);
+        m_backend->stop();
+        return false;
+    }
+    m_active = true;
+    m_vehicle = vehicle;
+    m_script = script;
+    m_advancedSinceLoad = false;
+    return true;
+}
+
+bool EngineAudio::preload(const std::string &vehicle, const std::string &script) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (vehicle.empty() || script.empty()) return false;
+    if (m_active && vehicle == m_vehicle && script == m_script) return true;
+    return load_locked(vehicle, script);
+}
+
 bool EngineAudio::update(const std::string &vehicle, const std::string &script,
     EngineState state, std::chrono::steady_clock::time_point when) {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -45,33 +73,18 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
         return false;
     }
     if (!m_active || vehicle != m_vehicle || script != m_script) {
-        stop_locked();
-        try {
-            if (!m_backend->load(script)) {
-                m_updateStatus.store(UpdateStatus::LoadFailed);
-                m_backend->stop();
-                return false;
-            }
-        }
-        catch (...) {
-            m_updateStatus.store(UpdateStatus::LoadFailed);
-            m_backend->stop();
-            return false;
-        }
-        m_active = true;
-        m_vehicle = vehicle;
-        m_script = script;
-        m_lastUpdate = when;
+        if (!load_locked(vehicle, script)) return false;
     }
+    // A preloaded engine has waited unadvanced: start from this frame, not
+    // with seconds of backlog PCM.
+    if (!m_advancedSinceLoad) m_lastUpdate = when;
+    m_advancedSinceLoad = true;
     const double delta = std::clamp(
         std::chrono::duration<double>(when - m_lastUpdate).count(), 0.005,
         8192.0 / 44100.0); // Match the maximum queued 44.1-kHz PCM packet.
     m_lastUpdate = when;
     try {
-        // Engine Simulator uses -1 for neutral, 0 for first gear, etc.
-        // Reverse gears have no direct equivalent in the source simulator.
-        if (!m_backend->advance(delta, state.rpm, state.throttle,
-                state.gear > 0 ? state.gear - 1 : -1)) {
+        if (!m_backend->advance(delta, state.rpm, state.throttle, state.ignition)) {
             m_updateStatus.store(UpdateStatus::AdvanceFailed);
             stop_locked();
             return false;

@@ -1,7 +1,6 @@
 #include "engine_sim_backend.h"
 #include "impulse_wav.h"
 #include "overrun_fuel_cut.h"
-#include "loudness_leveler.h"
 #include "profile_level.h"
 
 #include "compiler.h"
@@ -23,6 +22,8 @@
 
 namespace mtes {
 namespace {
+
+constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
 
 // Engine Simulator's starter turns the crank to -starter_speed: negative
 // v_theta for most models, positive for those scripted with a negative
@@ -84,20 +85,14 @@ public:
             audio.inputSampleNoise = static_cast<float>(m_engine->getInitialJitter());
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
+            // Engine Simulator's own leveler, as in its demo: every engine
+            // peak-normalized with a 23-ms release. Its gain smoothing lags
+            // each firing pulse, which overshot the stock 30000 target and
+            // clipped ~4% of samples; half the target keeps the overshoot
+            // inside full scale.
+            audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
             m_rpmScale = profile_rpm_scale(script);
-            m_calibrated = false;
-            if (const auto gain = profile_output_gain(script)) {
-                // Linear output at the profile's measured gain; the built-in
-                // leveler only limits peaks above its target. Set before the
-                // render thread starts. LoudnessLeveler shapes dynamics.
-                auto &leveler = m_simulator->synthesizer().m_levelingFilter;
-                leveler.p_maxLevel = static_cast<float>(*gain);
-                leveler.p_minLevel = static_cast<float>(*gain * 0.001);
-                m_profileGain = *gain;
-                m_calibrated = true;
-                m_leveler.reset();
-            }
 
             const int exhausts = m_engine->getExhaustSystemCount();
             if (exhausts <= 0) {
@@ -130,7 +125,7 @@ public:
         }
     }
 
-    bool advance(double seconds, double gameRpm, double throttle, int gear) override {
+    bool advance(double seconds, double gameRpm, double throttle, bool combustion) override {
         if (!m_simulator || !m_engine || !m_transmission ||
             !std::isfinite(gameRpm) || !std::isfinite(throttle)) return false;
         const double rpm = gameRpm * m_rpmScale;
@@ -139,7 +134,10 @@ public:
         // authoritative. The simulator's dynamometer holds that speed while
         // its own combustion model generates the audio samples.
         const double redlineRpm = m_engine->getRedline() / units::rpm(1.0);
-        m_engine->getIgnitionModule()->m_enabled = !m_fuelCut.update(rpm, throttle, redlineRpm);
+        const bool fuelCut = m_fuelCut.update(rpm, throttle, redlineRpm);
+        // Unfired while the starter cranks or the engine spins down: only
+        // compression and the exhaust, as a real start and shut-down sound.
+        m_engine->getIgnitionModule()->m_enabled = combustion && !fuelCut;
         m_engine->setSpeedControl(throttle);
         m_simulator->m_starterMotor.m_enabled = false;
         m_simulator->m_dyno.m_enabled = true;
@@ -157,7 +155,6 @@ public:
         // The clutch stays open (the dynamometer holds the game RPM), so the
         // simulated gearbox stays in neutral: Motor Town gears beyond the
         // profile's gearbox must never reach the simulator.
-        (void)gear;
         m_transmission->setClutchPressure(0.0);
 
         // Engine Simulator's standalone GUI varies its physics step count by
@@ -187,12 +184,8 @@ public:
         if (!m_simulator || !dst || frames == 0) return 0;
         const auto count = static_cast<int>(std::min<std::size_t>(
             frames, std::numeric_limits<int>::max()));
-        const auto read = static_cast<std::size_t>(
+        return static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
-#ifndef MTES_MEASURE_RAW_LEVELS // offline profile calibration measures fixed gain
-        if (m_calibrated) m_leveler.process(dst, read);
-#endif
-        return read;
     }
 
     void stop() noexcept override {
@@ -200,7 +193,6 @@ public:
         // Engine Simulator checkout: upstream forgets several allocations.
         m_lastDynoSpeed = -1.0;
         m_fuelCut.reset();
-        m_calibrated = false;
         if (m_simulator) {
             m_simulator->releaseSimulation();
             delete m_simulator;
@@ -224,10 +216,7 @@ private:
     Simulator *m_simulator = nullptr;
     double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
     OverrunFuelCut m_fuelCut;
-    LoudnessLeveler m_leveler;
-    double m_profileGain = 1.0;
     double m_rpmScale = 1.0;
-    bool m_calibrated = false;
 };
 
 } // namespace

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('g++'), 'Requires a C++20 compiler')
 class AudioMixTests(unittest.TestCase):
-    def test_leveler_pan_settings_and_profile_gain(self):
+    def test_pan_settings_and_profile_directives(self):
         with tempfile.TemporaryDirectory(prefix='mtes-mix-') as temp:
             executable = Path(temp) / 'audio-mix-test'
             build = subprocess.run([
@@ -23,7 +23,7 @@ class AudioMixTests(unittest.TestCase):
             run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=20)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
-    def test_backend_spins_engines_forward_and_levels_calibrated_profiles(self):
+    def test_backend_spins_engines_forward_with_engine_sim_leveler(self):
         backend = (ROOT / 'src/engine_sim_backend.cpp').read_text()
         # In game every model ran backwards (dyno from rest): 30-atm intake,
         # inverted throttle, drill-like coasting. Direction follows the
@@ -31,17 +31,18 @@ class AudioMixTests(unittest.TestCase):
         self.assertIn('getStarterSpeed() < 0.0 ? 1.0 : -1.0', backend)
         self.assertLess(backend.index('spin_forward(m_engine, from);'),
                         backend.index('m_simulator->startFrame(seconds);'))
-        self.assertIn('profile_output_gain(script)', backend)
         self.assertIn('profile_rpm_scale(script)', backend)  # two-strokes
-        self.assertIn('m_leveler.process(dst, read)', backend)  # feed-forward, no pumping
+        # Loudness is Engine Simulator's own (as in its demo); no extra
+        # compressor or per-profile gain pulls it down in game.
+        self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
+        self.assertNotIn('leveler.p_maxLevel', backend)
 
-    def test_every_packaged_profile_is_calibrated(self):
+    def test_every_packaged_profile_is_a_complete_engine(self):
         profiles = sorted((ROOT / 'profiles').glob('es_*.mr'))
         self.assertGreaterEqual(len(profiles), 60)
         for profile in profiles:
             with self.subTest(profile=profile.name):
-                first = profile.read_text().splitlines()[0]
-                self.assertRegex(first, r'^// mtes-output-gain: [0-9.e-]+$')
+                self.assertNotIn('mtes-output-gain', profile.read_text())
                 self.assertIn('set_engine(', profile.read_text())
 
     def test_xaudio2_output_applies_the_stock_mix(self):

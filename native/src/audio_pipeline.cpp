@@ -24,8 +24,12 @@ NativeAudioPipeline::~NativeAudioPipeline() { stop(); }
 
 void NativeAudioPipeline::silence() noexcept {
     // Restore Motor Town's own engine emitter before unloading a script.
-    m_output.stop();
+    release_output();
     m_engine.stop();
+}
+
+void NativeAudioPipeline::release_output() noexcept {
+    m_output.stop();
     m_activeEmitter.reset();
     m_activeVehicle.clear();
     m_activeScript.clear();
@@ -106,15 +110,22 @@ bool NativeAudioPipeline::process(const std::optional<GameTelemetrySample>& samp
         // Engine switches restore the old car before any potentially costly
         // script lookup/compile, so the previous vehicle never stays muted.
         if (m_loaded && m_activeVehicle != sample->vehicle) silence();
-        if (m_pcm.empty() || !sample->state.ignition ||
-            !std::isfinite(gameEngineVolume) ||
+        if (m_pcm.empty() || !std::isfinite(gameEngineVolume) ||
             gameEngineVolume < 0 || gameEngineVolume > 1) {
-            m_stage = !sample->state.ignition ? Stage::IgnitionOff : Stage::InvalidVolume;
+            m_stage = Stage::InvalidVolume;
             silence();
             return false;
         }
 
         const auto script = m_profiles.script_for(*sample);
+        if (!engine_turning(sample->state)) {
+            // Standing engine: no sound, but compile it now so the starter's
+            // first turn plays (in game: silence, then suddenly full on).
+            release_output();
+            m_stage = Stage::EngineStopped;
+            if (script && !script->empty()) m_engine.preload(sample->vehicle, *script);
+            return false;
+        }
         if (!script || script->empty()) {
             m_stage = Stage::NoProfile;
             silence();

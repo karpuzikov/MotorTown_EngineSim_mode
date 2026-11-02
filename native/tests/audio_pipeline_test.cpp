@@ -24,20 +24,20 @@ public:
     double last_rpm = 0;
     double last_throttle = 0;
     double last_seconds = 0;
-    int last_gear = -99;
+    bool last_combustion = false;
     bool load(const std::string& script) override {
         events.push_back("load:" + script);
         scripts.push_back(script);
         ready_frames = 0;
         return !fail_load;
     }
-    bool advance(double seconds, double rpm, double throttle, int gear) override {
+    bool advance(double seconds, double rpm, double throttle, bool combustion) override {
         ++advances;
         last_seconds = seconds;
         ready_frames += static_cast<std::size_t>(seconds * 44100.0);
         last_rpm = rpm;
         last_throttle = throttle;
-        last_gear = gear;
+        last_combustion = combustion;
         return true;
     }
     std::size_t read(std::int16_t* pcm, std::size_t frames) override {
@@ -140,7 +140,7 @@ int main() {
     assert(source->scripts.size() == 1 && source->scripts[0] == "boxer.mr");
     assert(source->advances == 1 && source->reads == 0);
     assert(source->last_rpm == 2000 && source->last_throttle == 0.4);
-    assert(source->last_gear == 2); // Motor Town third -> Engine Simulator second.
+    assert(source->last_combustion);
     assert(sink.queues == 0 && sink.last.empty());
 
     // A 120 Hz UE4SS callback must not generate duplicate PCM from the
@@ -154,7 +154,7 @@ int main() {
     assert(pipeline.process(a2, t + std::chrono::milliseconds(50), 0.0));
     assert(pipeline.stage() == NativeAudioPipeline::Stage::Playing);
     assert(source->scripts.size() == 1 && source->advances == 2);
-    assert(source->last_rpm == 3200 && source->last_gear == 3);
+    assert(source->last_rpm == 3200 && source->last_combustion);
     assert(sink.queues == 1 && sink.last.size() == 2205 && first->muted);
     for (auto v : sink.last) assert(v == 0); // Engine Volume 0 remains silent.
 
@@ -263,8 +263,23 @@ int main() {
     assert(!first->muted && !sink.started);
     const auto off = parse_game_telemetry(
         "MTES2 A1B2C3D4E5F60708 15 0 0 0 0 43617241 2 6500");
+    const auto loads_before_off = source->scripts.size();
     assert(off && !pipeline.process(off, t + std::chrono::seconds(2), 1.0));
     assert(!first->muted && !sink.started);
+    // A standing engine is compiled now, once, so its start is heard.
+    assert(pipeline.stage() == NativeAudioPipeline::Stage::EngineStopped);
+    assert(source->scripts.size() == loads_before_off + 1);
+    const auto stillOff = parse_game_telemetry(
+        "MTES2 A1B2C3D4E5F60708 16 0 0 0 0 43617241 2 6500");
+    assert(!pipeline.process(stillOff, t + std::chrono::milliseconds(2050), 1.0));
+    assert(source->scripts.size() == loads_before_off + 1);
+    // The starter cranks with the ignition off: the preloaded engine turns
+    // unfired, without another compile.
+    const auto cranking = parse_game_telemetry(
+        "MTES2 A1B2C3D4E5F60708 17 150 1 0 0 43617241 2 6500");
+    pipeline.process(cranking, t + std::chrono::milliseconds(2100), 1.0);
+    assert(source->scripts.size() == loads_before_off + 1);
+    assert(source->last_rpm == 150 && !source->last_combustion);
 
     // Production callers read gain from MTES4 rather than supplying a
     // constant. Unknown settings must restore the original game emitter.

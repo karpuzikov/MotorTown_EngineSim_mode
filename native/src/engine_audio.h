@@ -17,13 +17,20 @@ struct EngineState {
     bool ignition = false;
 };
 
+// The crankshaft is turning: running, or cranked by the starter / spinning
+// down with the ignition off (Motor Town reports ~150 RPM while cranking).
+inline bool engine_turning(const EngineState &s) {
+    return s.rpm >= 50 && s.rpm <= 25000; // false for NaN
+}
+
 // Implemented by the actual Engine Simulator combustion/synthesizer library.
 // No window, sound device, standalone process, or Unreal dependencies here.
 class EngineBackend {
 public:
     virtual ~EngineBackend() = default;
     virtual bool load(const std::string &script) = 0;
-    virtual bool advance(double seconds, double rpm, double throttle, int gear) = 0;
+    // combustion false: the starter or momentum turns the engine unfired.
+    virtual bool advance(double seconds, double rpm, double throttle, bool combustion) = 0;
     virtual std::size_t read(std::int16_t *dst, std::size_t frames) = 0;
     virtual void stop() noexcept = 0;
 };
@@ -40,6 +47,9 @@ public:
 
     bool update(const std::string &vehicle, const std::string &script,
         EngineState state, std::chrono::steady_clock::time_point when);
+    // Compiles the vehicle's engine while it stands still, so the starter's
+    // first turn is heard instead of waiting for a script compile.
+    bool preload(const std::string &vehicle, const std::string &script);
     std::size_t render(std::int16_t *dst, std::size_t frames,
         std::chrono::steady_clock::time_point when, double engineVolume = 1.0,
         const std::string &expectedVehicle = {});
@@ -50,6 +60,7 @@ public:
 
 private:
     void stop_locked() noexcept;
+    bool load_locked(const std::string &vehicle, const std::string &script);
 
     std::unique_ptr<EngineBackend> m_backend;
     mutable std::mutex m_mutex;
@@ -60,6 +71,7 @@ private:
     std::string m_vehicle;
     std::string m_script;
     std::chrono::steady_clock::time_point m_lastUpdate{};
+    bool m_advancedSinceLoad = false;
 };
 
 } // namespace mtes

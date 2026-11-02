@@ -71,7 +71,7 @@ const wchar_t* audio_stage_name(mtes::NativeAudioPipeline::Stage stage) noexcept
     case Stage::NoTelemetry: return STR("no live telemetry");
     case Stage::Background: return STR("game minimized or not in foreground");
     case Stage::StalePacket: return STR("telemetry replay or stale packet");
-    case Stage::IgnitionOff: return STR("engine ignition off");
+    case Stage::EngineStopped: return STR("engine stopped (preloaded)");
     case Stage::InvalidVolume: return STR("invalid game engine volume");
     case Stage::NoProfile: return STR("no engine profile for this engine (stock sound kept)");
     case Stage::NoEmitter: return STR("no eligible stock engine emitter");

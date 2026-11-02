@@ -227,12 +227,15 @@ assert(read(ack) == string.format("MTESA1 %s 12 CD77 %s %s", session,
 __test_mute(nil)
 assert(channel.VolumeMultiplier == 0.63)
 
--- No engine cue at all: nothing verified to replace.
+-- No engine cue on the engine component (in game: Kira Van, Brutus wrecker
+-- stuck "waiting for Lua stock-mute ACK" in silence): still acknowledged.
 channel.Sound = nil
 lease(13, "DE88")
 __test_mute(vehicle)
-assert(channel.VolumeMultiplier == 0.63, "A component without a cue is not leased")
-assert(read(ack) == "MTESA0")
+assert(read(ack) == string.format("MTESA1 %s 13 DE88 %s %s", session,
+    hex(vehicleName), hex(assetName)), "A car without an engine cue must still play")
+__test_mute(nil)
+assert(channel.VolumeMultiplier == 0.63)
 
 -- Engine sound layers on OTHER AudioComponents of the car (exhaust/engine
 -- layers from the engine's sound data) must be leased too, or the stock
@@ -256,9 +259,15 @@ local horn = object("AudioComponent Horn", {
     SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
 })
 horn.GetAddress = function() return 0x5000 end
+local electric = object("AudioComponent ElectricMotor", {
+    VolumeMultiplier = 0.8,
+    Sound = object("SoundCue /Game/Cars/Parts/Engine/Sound/Electric/SC_ElectricMotor.SC_ElectricMotor"),
+    SetVolumeMultiplier = function(self, gain) self.VolumeMultiplier = gain end,
+})
+electric.GetAddress = function() return 0x6000 end
 StaticFindObject = function() return object("Class /Script/Engine.AudioComponent") end
 vehicle.K2_GetComponentsByClass = function()
-    return { channel, intake, exhaust, afterfire, horn }
+    return { channel, intake, exhaust, afterfire, horn, electric }
 end
 lease(20, "EF99")
 __test_mute(vehicle)
@@ -266,6 +275,7 @@ assert(channel.VolumeMultiplier == 0 and intake.VolumeMultiplier == 0)
 assert(exhaust.VolumeMultiplier == 0, "Extra engine sound layer must be muted")
 assert(afterfire.VolumeMultiplier == 0.5, "Afterfire pops stay stock")
 assert(horn.VolumeMultiplier == 1.0, "Horn is never touched")
+assert(electric.VolumeMultiplier == 0.8, "Electric motor sound stays stock")
 __test_mute(nil)
 assert(exhaust.VolumeMultiplier == 0.9, "Extra layer gain restored")
 assert(channel.VolumeMultiplier == 0.63)

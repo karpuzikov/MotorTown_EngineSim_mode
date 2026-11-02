@@ -17,10 +17,8 @@ class EngineGeneratorTests(unittest.TestCase):
         for key, spec in real_engines.ENGINES.items():
             with self.subTest(engine=key):
                 committed = (ROOT / f'profiles/es_{key}.mr').read_text()
-                gain = re.match(r'// mtes-output-gain: ([0-9.e-]+)', committed)
-                self.assertTrue(gain, 'every engine is calibrated')
-                self.assertEqual(committed, make_engines.build(key, spec, float(gain.group(1))),
-                                 'run native/profiles/generator/make_engines.py --gains ...')
+                self.assertEqual(committed, make_engines.build(key, spec),
+                                 'run native/profiles/generator/make_engines.py')
 
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.
@@ -49,7 +47,7 @@ class EngineGeneratorTests(unittest.TestCase):
         for key in ('bmw_n55', 'chrysler_440'):  # engine-only templates get a main
             self.assertIn('public node main', (ROOT / f'profiles/es_{key}.mr').read_text())
         two_stroke = (ROOT / 'profiles/es_vespa_150_2t.mr').read_text()
-        self.assertIn('// mtes-rpm-scale: 2', two_stroke.splitlines()[1])
+        self.assertIn('// mtes-rpm-scale: 2', two_stroke.splitlines()[0])
 
     def test_every_vehicle_names_a_generated_engine(self):
         for pattern, name, real, engine in real_engines.VEHICLES:

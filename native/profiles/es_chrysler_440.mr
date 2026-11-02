@@ -1,4 +1,3 @@
-// mtes-output-gain: 0.00385
 // Chrysler 440 police V8 (Coronet 1975): 8 cyl, 7.20 L, bore 109.7 x stroke 95.25 mm,
 // redline 5000 rpm. Engine Simulator's chev_truck_454.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.

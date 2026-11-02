@@ -1,4 +1,3 @@
-// mtes-output-gain: 0.00075
 // Volvo/Ford 2.5T I5 (Focus RS): 5 cyl, 2.52 L, bore 83.0 x stroke 93.2 mm,
 // redline 6800 rpm. Engine Simulator's 07_audi_i5.mr model
 // (its heads, cams, intake and exhaust) with this engine's dimensions.
@@ -236,9 +235,9 @@ public node audi_i5_2_2L {
     )
 
     exhaust_system exhaust0(
-        es_params, audio_volume: 1.0, impulse_response: ir_lib.mild_exhaust_0)
+        es_params, audio_volume: 1.0, impulse_response: ir_lib.default_0)
     exhaust_system exhaust1(
-        es_params, audio_volume: 0.8, impulse_response: ir_lib.mild_exhaust_0)
+        es_params, audio_volume: 0.8, impulse_response: ir_lib.default_0)
 
     cylinder_bank b0(bank_params, angle: 0)
     b0

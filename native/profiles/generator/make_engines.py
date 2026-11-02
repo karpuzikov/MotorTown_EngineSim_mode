@@ -8,10 +8,9 @@ reaches: the V8 burble, the boxer rumble), compression, redline and cam/
 intake/exhaust defaults for the car's character. Head flow, runners and
 plenum scale from the GM LS model shipped with Engine Simulator.
 
-Usage: make_engines.py [--gains gains.json]   (gains: offline calibration)
+Usage: make_engines.py [--only key ...]
 """
 import argparse
-import json
 import math
 from pathlib import Path
 
@@ -22,10 +21,10 @@ INCH = 25.4
 
 STYLES = {
     #           cam dur@50  lift(in) LSA  timing max  ir                           exhaust vol  idle plate
-    "economy": dict(dur=208, lift=0.38, lsa=112, adv=34, ir="mild_exhaust_0", audio=1.0, plate=0.996),
-    "sport":   dict(dur=232, lift=0.45, lsa=110, adv=36, ir="mild_exhaust_0_reverb", audio=1.6, plate=0.996),
+    "economy": dict(dur=208, lift=0.38, lsa=112, adv=34, ir="default_0", audio=1.0, plate=0.996),
+    "sport":   dict(dur=232, lift=0.45, lsa=110, adv=36, ir="default_0", audio=1.6, plate=0.996),
     "muscle":  dict(dur=228, lift=0.48, lsa=110, adv=36, ir="default_0", audio=4.0, plate=0.996),
-    "luxury":  dict(dur=200, lift=0.40, lsa=114, adv=32, ir="mild_exhaust_0", audio=0.8, plate=0.996),
+    "luxury":  dict(dur=200, lift=0.40, lsa=114, adv=32, ir="default_0", audio=0.8, plate=0.996),
     "vintage": dict(dur=196, lift=0.32, lsa=114, adv=24, ir="default_0", audio=1.6, plate=0.993),
     "truck":   dict(dur=204, lift=0.40, lsa=114, adv=30, ir="default_0", audio=1.6, plate=0.996),
     "bike":    dict(dur=232, lift=0.36, lsa=106, adv=32, ir="minimal_muffling_01", audio=1.0, plate=0.99),
@@ -54,7 +53,7 @@ def fire_times(spec):
     return {cyl: t for cyl, t in zip(order, times)}
 
 
-def generate(key, spec, gain):
+def generate(key, spec):
     n = spec["cyl"]
     style = STYLES[spec["style"]]
     bank_of, banks = banks_for(spec)
@@ -84,8 +83,6 @@ def generate(key, spec, gain):
 
     L = []
     w = L.append
-    if gain is not None:
-        w(f"// mtes-output-gain: {gain:.3g}")
     if scale != 1:
         w(f"// mtes-rpm-scale: {scale}")
     w(f"// {spec['name']}: {n} cyl, {disp_l:.2f} L, bore {bore} x stroke {stroke} mm,")
@@ -294,6 +291,10 @@ TEMPLATES = {
 
 def template_for(key, spec):
     n, layout = spec["cyl"], spec["layout"]
+    if spec["style"] == "diesel":
+        # The petrol templates' cams, runners and exhausts made every truck
+        # and bus sound like a sports car (in game: semis, Atlas dump).
+        return None
     disp = math.pi / 4 * (spec["bore"] / 10) ** 2 * (spec["stroke"] / 10) * n / 1000
     if n == 1:
         return "single"
@@ -314,7 +315,7 @@ def template_for(key, spec):
     return None
 
 
-def generate_from_template(key, spec, gain, template):
+def generate_from_template(key, spec, template):
     import re
     text = (TEMPLATE_DIR / TEMPLATES[template]).read_text()
     scale = spec.get("rpm_scale", 1)
@@ -345,10 +346,13 @@ def generate_from_template(key, spec, gain, template):
     sub(r"redline: [0-9.]+ \* units\.rpm", f"redline: {redline} * units.rpm")
     sub(r"rev_limit: [0-9.]+ \* units\.rpm", f"rev_limit: {redline + 300 * scale} * units.rpm")
     sub(r'name: "[^"]*"', f'name: "{spec["name"]}"', count=1)
+    # The "mild exhaust" responses cut 1-4 kHz by ~14 dB more than default_0
+    # at Motor Town's engine speeds: in game the Neo and Trophy 2 sounded
+    # muffled under their tyre noise.
+    if template != "single":
+        sub(r"ir_lib\.mild_exhaust_0\w*", "ir_lib.default_0", required=False)
     disp = math.pi / 4 * (bore / 10) ** 2 * (stroke / 10) * spec["cyl"] / 1000
     head = []
-    if gain is not None:
-        head.append(f"// mtes-output-gain: {gain:.3g}")
     if scale != 1:
         head.append(f"// mtes-rpm-scale: {scale}")
     head.append(f"// {spec['name']}: {spec['cyl']} cyl, {disp:.2f} L, bore {bore} x stroke {stroke} mm,")
@@ -385,23 +389,21 @@ public node main {
 """
 
 
-def build(key, spec, gain):
+def build(key, spec):
     template = template_for(key, spec)
     if template:
-        return generate_from_template(key, spec, gain, template)
-    return generate(key, spec, gain)
+        return generate_from_template(key, spec, template)
+    return generate(key, spec)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gains", type=Path)
     parser.add_argument("--only", nargs="*")
     args = parser.parse_args()
-    gains = json.loads(args.gains.read_text()) if args.gains else {}
     for key, spec in ENGINES.items():
         if args.only and key not in args.only:
             continue
-        (OUT / f"es_{key}.mr").write_text(build(key, spec, gains.get(key)))
+        (OUT / f"es_{key}.mr").write_text(build(key, spec))
     write_families()
     print(f"wrote {len(ENGINES) if not args.only else len(args.only)} engines to {OUT}")
 

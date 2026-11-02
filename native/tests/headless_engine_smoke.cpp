@@ -21,8 +21,8 @@ public:
     explicit MeteredEngineBackend(std::unique_ptr<mtes::EngineBackend> delegate)
         : underlying(std::move(delegate)) {}
     bool load(const std::string& script) override { return underlying->load(script); }
-    bool advance(double seconds, double rpm, double throttle, int gear) override {
-        return underlying->advance(seconds, rpm, throttle, gear);
+    bool advance(double seconds, double rpm, double throttle, bool combustion) override {
+        return underlying->advance(seconds, rpm, throttle, combustion);
     }
     std::size_t read(std::int16_t* dst, std::size_t frames) override {
         const auto count = underlying->read(dst, frames);
@@ -148,12 +148,13 @@ bool run_worker_clock_probe(mtes::EngineAudio& audio, const char* path,
             return false;
         }
     }
-    // Ignition loss restores stock sound and stops the independent source.
+    // A stopped engine restores stock sound and stops the independent source.
     telemetry.state.ignition = false;
+    telemetry.state.rpm = 0;
     ++telemetry.sequence;
     if (pipeline.process(telemetry, Clock::now(), true) ||
         sink.playing || emitters.stock->muted) {
-        std::cerr << "Worker-clock pipeline retained stock mute after ignition off\n";
+        std::cerr << "Worker-clock pipeline retained stock mute after the engine stopped\n";
         return false;
     }
     return true;
