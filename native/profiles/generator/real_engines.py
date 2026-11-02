@@ -258,7 +258,7 @@ VEHICLES = [
     (r"^tronko", "Tronko", "Volvo FM", "volvo_d13"),
     (r"^longhorn", "Longhorn", "2014 Volvo VNL 780", "volvo_d13"),
     (r"^fox", "Fox", "1942 Willys MB", "willys_go_devil"),
-    (r"^kart", "Kart", "Racing kart", "kart_100_2t"),
+    (r"^kart|^scmkart", "Kart", "Racing kart", "kart_100_2t"),
     # Plain "Police" is the 2012 Dodge Charger; after the *Police variants.
     (r"^police", "Police", "2012 Dodge Charger", "chrysler_hemi_57"),
 ]

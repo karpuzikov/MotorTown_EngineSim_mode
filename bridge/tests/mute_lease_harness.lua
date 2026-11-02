@@ -311,3 +311,9 @@ assert(v6Wave.Volume == 0, "Stock engine sound-data waves silenced")
 assert(electric.VolumeMultiplier == 1.0, "Electric motors keep their sound")
 assert(backfire.VolumeMultiplier == 1.0 and jake.VolumeMultiplier == 1.0, "Pops and jake brake stay")
 assert(hornCue.VolumeMultiplier == 1.0 and cdo.VolumeMultiplier == 1.0)
+
+-- The replacement must play at the silenced cue's ORIGINAL loudness (in game
+-- 2026-11-02 the mix used the silenced 0: no engine sound at all).
+channel.Sound = v8
+local gain = __test_mix({}, vehicle)
+assert(gain and gain > 0.5, "Mix gain uses the stock cue's original volume: " .. tostring(gain))

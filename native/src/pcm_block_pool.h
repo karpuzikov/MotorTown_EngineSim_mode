@@ -7,14 +7,15 @@
 
 namespace mtes {
 
-// Four stable PCM buffers. Only the game thread reserves/writes slots;
+// Sixteen stable PCM buffers (four ran dry when a slow first frame queued
+// 8192 frames at once: "XAudio2 PCM queue failed" in game). Only the game thread reserves/writes slots;
 // the audio thread releases them on completion without allocation or locking.
 class PcmBlockPool final {
 public:
     // Covers a delayed UE4SS game tick (up to ~93 ms) without allocating
     // on the XAudio2 callback or silently truncating a PCM packet.
     static constexpr std::size_t FramesPerBlock = 4096;
-    static constexpr std::size_t BlockCount = 4;
+    static constexpr std::size_t BlockCount = 16;
 
     struct Block {
         std::array<std::int16_t, FramesPerBlock> samples{};

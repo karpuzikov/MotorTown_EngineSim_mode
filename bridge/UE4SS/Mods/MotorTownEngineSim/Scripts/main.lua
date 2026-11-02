@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.22, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.23, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -831,7 +831,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.22 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.23 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -897,6 +897,7 @@ end
 -- Master Volume, found by its EMTUserSettingType name (never by a guessed
 -- number). Native XAudio2 output bypasses Unreal's mixer, so the game's
 -- master slider must be applied explicitly. nil when not verifiable.
+local stockSoundVolumes = {} -- silenced stock sound asset address -> original volume
 local masterVolumeKey = nil
 local nextMasterKeyProbe = 0
 local soundSettingNames = nil
@@ -1012,7 +1013,11 @@ local function stock_mix(pc, vehicle)
     local componentGain = leasedAudio and leasedAudio.channelAddress == address_of(channel)
         and leasedAudio.gain or tonumber(member(channel, "VolumeMultiplier"))
     if not componentGain or componentGain < 0 then return nil end
-    local cueGain = valid(cue) and tonumber(member(cue, "VolumeMultiplier")) or 1
+    -- The stock cue asset itself is silenced (silence_stock_engine_sounds):
+    -- use the volume it had, never the 0 we set (in game: total silence).
+    local cueGain = valid(cue) and (stockSoundVolumes[address_of(cue)] or
+        tonumber(member(cue, "VolumeMultiplier"))) or 1
+    if not cueGain or cueGain <= 0 then cueGain = 1 end
     local master = setting_value(setting_keys()) or 1
     local gain = componentGain * (cueGain or 1) * master
     local settings = attenuation_of(channel, cue)
@@ -1062,7 +1067,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.22" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.23" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1220,6 +1225,8 @@ local function silence_class(className, property)
         if address and not checkedStockSounds[address] then
             checkedStockSounds[address] = true
             if is_stock_engine_asset(full_name(sound)) then
+                local original = tonumber(member(sound, property))
+                if original and original > 0 then stockSoundVolumes[address] = original end
                 local set = pcall(function() sound[property] = 0.0 end)
                 if set and tonumber(member(sound, property)) == 0 then
                     mutedStockSounds = mutedStockSounds + 1
@@ -1349,7 +1356,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.22 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.23 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

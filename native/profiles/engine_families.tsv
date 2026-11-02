@@ -138,7 +138,7 @@ vehicle	^longhorn	assets/es_volvo_d13.mr
 # Fox: 1942 Willys MB -> Willys Go Devil 2.2 I4 (MB Jeep)
 vehicle	^fox	assets/es_willys_go_devil.mr
 # Kart: Racing kart -> 100cc two-stroke kart single
-vehicle	^kart	assets/es_kart_100_2t.mr
+vehicle	^kart|^scmkart	assets/es_kart_100_2t.mr
 # Police: 2012 Dodge Charger -> Chrysler 5.7 Hemi V8 (Charger 2012)
 vehicle	^police	assets/es_chrysler_hemi_57.mr
 asset	electric|battery|e-?motor|(^|[^a-z])ev([^a-z]|$)	-
