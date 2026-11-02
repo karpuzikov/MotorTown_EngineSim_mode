@@ -12,6 +12,11 @@ the acoustic transfer-matrix (four-pole) method used for muffler design:
     open tailpipe: p = Z_radiation * U  (unflanged pipe end)
     impulse response = radiated sound (j*omega * U_tail) per unit valve flow
 
+Damping is what makes it a muffler, not a pipe: mean-flow losses at every
+area change and at the exhaust jet, rough-wall turbulence, perforated
+baffles and packing. Without them (first version) every system rang for
+110-150 ms like a bare pipe; recorded exhausts decay in 25-45 ms.
+
 Writes native/profiles/exhaust/<profile>.wav (44.1 kHz mono PCM16).
 """
 import wave
@@ -25,10 +30,14 @@ N = 32768
 SPEED_OF_SOUND = 500.0   # m/s in exhaust gas at ~350 C
 DENSITY = 0.55           # kg/m^3 at ~350 C
 IMPULSE_SECONDS = 0.22   # Engine Simulator uses the first 10000 samples
-LOSS_ROLL_OFF_HZ = 500.0
+MEAN_FLOW_MACH = 0.1     # exhaust gas speed / sound speed at cruise
+WALL_TURBULENCE = 3.0    # rough hot pipes with flow lose more than Kirchhoff's smooth tube
+LOSS_ROLL_OFF_HZ = 2000.0
 
 # Element kinds: pipe(length, diameter); cat(length, diameter, absorption);
-# chamber(length, diameter): an expansion chamber / chambered muffler box;
+# chamber(length, diameter): a chambered muffler box - inlet and outlet tubes
+# extend into it (L/2, L/4: their closed annular cavities fill the pass bands
+# a bare expansion chamber leaves at kL = n*pi) through perforated baffles;
 # absorb(length, diameter, absorption): perforated straight-through pipe in
 # packing (glasspack, truck drum, sports muffler); resonator(volume_l, neck
 # length, neck diameter): Helmholtz side branch. Absorption in Np/m at 1 kHz.
@@ -80,7 +89,7 @@ def frequencies():
 
 def wave_number(f, diameter, absorption=0.0):
     # Viscothermal wall loss (Kirchhoff) plus absorptive packing.
-    alpha = 3e-5 * np.sqrt(f) / (diameter / 2) + absorption * (f / 1000.0)
+    alpha = WALL_TURBULENCE * 3e-5 * np.sqrt(f) / (diameter / 2) + absorption * (f / 1000.0)
     return 2 * np.pi * f / SPEED_OF_SOUND - 1j * alpha
 
 
@@ -102,11 +111,60 @@ def resonator(f, volume_litres, neck_length, neck_diameter):
     return np.array([[one, zero], [1 / branch, one]])
 
 
-def element(f, kind, *args):
-    if kind == "pipe" or kind == "chamber":
+def area(diameter):
+    return np.pi * diameter ** 2 / 4
+
+
+def series(f, resistance):
+    one, zero = np.ones_like(f, dtype=complex), np.zeros_like(f, dtype=complex)
+    return np.array([[one, zero + resistance], [zero, one]])
+
+
+def shunt(f, branch_impedance):
+    one, zero = np.ones_like(f, dtype=complex), np.zeros_like(f, dtype=complex)
+    return np.array([[one, zero], [1 / branch_impedance, one]])
+
+
+def junction(f, upstream_diameter, downstream_diameter):
+    """Sudden area change with mean flow: the jet separating at an expansion
+    (and the vena contracta at a contraction) turns sound into vorticity -
+    the main damping of a real exhaust; without it every pipe rings."""
+    small, large = sorted((area(upstream_diameter), area(downstream_diameter)))
+    loss = (1 - small / large) ** 2 if downstream_diameter > upstream_diameter \
+        else 0.5 * (1 - small / large)
+    return series(f, loss * MEAN_FLOW_MACH * DENSITY * SPEED_OF_SOUND / small)
+
+
+MUFFLER_PACKING = 2.0     # Np/m at 1 kHz: light packing in OEM muffler boxes
+BAFFLE_RESISTANCE = 0.3   # perforated baffle flow resistance, x rho*c/S_pipe
+
+
+def chambered_muffler(f, length, diameter, pipe_diameter):
+    inlet_extension, outlet_extension = length / 2, length / 4
+    annulus = area(diameter) - area(pipe_diameter)
+    impedance = DENSITY * SPEED_OF_SOUND / annulus
+
+    def closed_cavity(depth):  # annular quarter-wave side branch
+        k = wave_number(f, diameter, MUFFLER_PACKING)
+        return -1j * impedance / np.tan(k * depth)
+    body = duct(f, length - inlet_extension - outlet_extension, diameter, MUFFLER_PACKING)
+    baffle = series(f, BAFFLE_RESISTANCE * DENSITY * SPEED_OF_SOUND / area(pipe_diameter))
+    return chain([baffle, shunt(f, closed_cavity(inlet_extension)), body,
+                  shunt(f, closed_cavity(outlet_extension)), baffle])
+
+
+def chain(matrices):
+    total = matrices[0]
+    for matrix in matrices[1:]:
+        total = np.einsum("ijn,jkn->ikn", total, matrix)
+    return total
+
+
+def element(f, kind, args, pipe_diameter):
+    if kind in ("pipe", "cat", "absorb"):
         return duct(f, *args)
-    if kind in ("cat", "absorb"):
-        return duct(f, *args)
+    if kind == "chamber":
+        return chambered_muffler(f, *args, pipe_diameter)
     if kind == "resonator":
         return resonator(f, *args)
     raise ValueError(kind)
@@ -114,23 +172,34 @@ def element(f, kind, *args):
 
 def frequency_response(layout):
     f = frequencies()
-    total = None
+    matrices = []
+    pipe_diameter = layout[0][2]
     for kind, *args in layout:
-        matrix = element(f, kind, *args)
-        total = matrix if total is None else np.einsum("ijn,jkn->ikn", total, matrix)
-    tail_diameter = next(args[1] for kind, *args in reversed(layout) if kind != "resonator")
-    radius = tail_diameter / 2
+        diameter = args[1] if kind != "resonator" else pipe_diameter
+        if kind != "chamber" and diameter != pipe_diameter:
+            matrices.append(junction(f, pipe_diameter, diameter))
+        if kind == "chamber":  # flow expands into the box and contracts out
+            matrices.append(junction(f, pipe_diameter, diameter))
+            matrices.append(element(f, kind, args, pipe_diameter))
+            matrices.append(junction(f, diameter, pipe_diameter))
+            continue
+        matrices.append(element(f, kind, args, pipe_diameter))
+        if kind != "resonator":
+            pipe_diameter = diameter
+    total = chain(matrices)
+    radius = pipe_diameter / 2
     ka = 2 * np.pi * f / SPEED_OF_SOUND * radius
     tail_impedance = DENSITY * SPEED_OF_SOUND / (np.pi * radius ** 2)
-    radiation = tail_impedance * (0.25 * ka ** 2 + 1j * 0.6133 * ka)
+    # Open end: radiation plus the exhaust jet, which absorbs low-frequency
+    # sound that would otherwise reflect back and make the tailpipe ring.
+    radiation = tail_impedance * (0.25 * ka ** 2 + MEAN_FLOW_MACH + 1j * 0.6133 * ka)
     tail_flow = 1 / (total[1, 0] * radiation + total[1, 1])  # U_tail / U_valve
     # Radiated sound rises 6 dB/octave from the tailpipe flow (j*omega);
     # flow and wall losses of hot, turbulent gas and the distance to the
-    # listener roll it off again above ~500 Hz (9 dB/octave).
-    # shortcut: one roll-off for every system, calibrated so a typical car
-    # system spreads its energy like Engine Simulator's recorded responses
-    # (1-4 kHz 13 dB and 4-10 kHz 30 dB below 0.2-1 kHz); per-element flow
-    # losses would let mufflers differ there too.
+    # listener roll it off again above ~2 kHz (9 dB/octave).
+    # shortcut: one roll-off for every system, set so in-game engine output
+    # keeps 1-4 kHz ~30 dB under the firing tone like Engine Simulator's
+    # default response (500 Hz made cars as dull as the muffled templates).
     response = 1j * f / 1000.0 * tail_flow / (1 + (f / LOSS_ROLL_OFF_HZ) ** 2) ** 0.75
     response[0] = 0
     return response

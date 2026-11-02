@@ -33,6 +33,17 @@ class EngineGeneratorTests(unittest.TestCase):
                 self.assertEqual(data, np.round(expected * 32767).astype('<i2').tobytes(),
                                  'run native/profiles/generator/make_exhausts.py')
 
+    def test_exhausts_are_damped_like_real_ones_not_bare_pipes(self):
+        # In game the undamped first version sounded like a pipe bolted to
+        # the engine: 110-150 ms ringing. Recorded exhausts: 25-45 ms.
+        import numpy as np
+        import make_exhausts
+        for profile, layout in make_exhausts.PROFILES.items():
+            with self.subTest(exhaust=profile):
+                energy = np.cumsum((make_exhausts.impulse_response(layout) ** 2)[::-1])[::-1]
+                decay_20_db = np.argmax(energy / energy[0] < 0.01) / make_exhausts.FS
+                self.assertLess(decay_20_db, 0.06)
+
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.
         for key, spec in real_engines.ENGINES.items():
