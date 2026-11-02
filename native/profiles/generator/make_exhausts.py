@@ -218,10 +218,11 @@ CLASS_TILT_DB = {
     # the recording is not (2-8 kHz only half matched: the cab adds road and
     # wind noise).
     "flathead": [-16, 10, 1, 5, 7, 22, 13, 17, 20, 17],
-    # Matched to a real MCI MC-9 coach's Detroit 6V92TA at idle (2026-11-02),
-    # within 2 dB from 63 Hz to 8 kHz: injector and gear clatter and blower
-    # noise make it bright, pulsing with every firing.
-    "detroit": [4, 22, 6, 22, 35, 42, 53, 50, 50, 44],
+    # Matched to a real 1989 MCI MC-9's Detroit 6V92TA idling (cold start
+    # recording, 2026-11-02), within 2 dB from 63 Hz to 16 kHz: the ~60 Hz
+    # firing thump carries ~80% of the sound, clatter rides on top. (A first
+    # video, its microphone at the blower, made it a high buzz in game.)
+    "detroit": [26, 38, 15, 19, 37, 42, 44, 38, 42, 57],
     "small": [-3, -3, -1, 0, 0, 0, 2, 2, 1, 0],
     "sport": [-2, -2, 0, 0, 0, 0, 2, 3, 2, 0],
     "two_stroke": [-6, -6, -3, 0, 0, 0, 3, 4, 3, 0],
@@ -247,9 +248,9 @@ FULL_THROTTLE_LOUDNESS_DBA = {
     "economy_small": 75, "soviet_two_box": 78, "kei_small": 76, "aircooled_box": 80,
     "pickup_van": 77, "offroad_vintage": 80, "truck_medium": 84, "military_stack": 88,
     "truck_stack": 88, "truck_euro": 84, "bus_rear": 82, "motorcycle_twin": 86,
-    # shortcut: the native loudness model levels RMS; this bright curve reads
-    # 7 dB louder in dB(A) than bus_rear at the same RMS, so 82 - 7.
-    "bus_detroit": 75,
+    # shortcut: the native loudness model levels RMS; this curve reads 4 dB
+    # louder in dB(A) than bus_rear at the same RMS, so 82 - 4.
+    "bus_detroit": 78,
     "sportbike": 88, "scooter_2t": 80, "kart": 92,
 }
 

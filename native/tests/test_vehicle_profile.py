@@ -82,8 +82,7 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
                 import re
-                spec = re.fullmatch(r'(assets/es_\w+\.mr)#exhaust=mtes-exhaust/(\w+\.wav)'
-                                    r'(?:#mechanical=detroit_two_stroke)?#loudness=(\d+)', profile)
+                spec = re.fullmatch(r'(assets/es_\w+\.mr)#exhaust=mtes-exhaust/(\w+\.wav)#loudness=(\d+)', profile)
                 # Every vehicle and fallback carries its own exhaust and loudness.
                 self.assertTrue(spec, profile)
                 self.assertTrue((ROOT / 'profiles' / Path(spec.group(1)).name).is_file(), profile)

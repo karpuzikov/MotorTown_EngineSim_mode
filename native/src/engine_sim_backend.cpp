@@ -2,7 +2,6 @@
 #include "impulse_wav.h"
 #include "overrun_fuel_cut.h"
 #include "profile_level.h"
-#include "mechanical_sound_layer.h"
 
 #include "compiler.h"
 #include "crankshaft.h"
@@ -102,13 +101,6 @@ public:
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
             m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
-            m_mechanical.reset();
-            if (!spec.mechanicalPreset.empty()) {
-                const auto preset = mechanical_sound_preset(spec.mechanicalPreset);
-                // Its level is set against the loudness target.
-                if (!preset || !spec.fullThrottleLoudnessDba) { stop(); return false; }
-                m_mechanical.emplace(*preset);
-            }
             m_loudnessGain = -1.0; // first read() jumps to the target
             m_rpmScale = profile_rpm_scale(script);
 
@@ -170,7 +162,6 @@ public:
         m_speedWander = 0.97 * m_speedWander + m_cycleVariation(m_random) * 0.0035 * idleness;
         const double variedThrottle = std::clamp(throttle + m_cycleVariation(m_random) * 0.03, 0.0, 1.0);
         m_engine->setSpeedControl(variedThrottle);
-        m_layerRpm.store(gameRpm);
         if (m_fullThrottleLoudnessDba) {
             m_targetLoudnessGain.store(std::pow(10.0, engine_loudness_gain_db(
                 *m_fullThrottleLoudnessDba, rpm, redlineRpm, throttle) / 20.0));
@@ -231,11 +222,6 @@ public:
                 dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * m_loudnessGain));
             }
         }
-        if (m_mechanical) {
-            // Mixed after the loudness gain, relative to Engine Simulator's
-            // leveled output (~-20 dBFS RMS) at that gain.
-            m_mechanical->add_to(dst, read, m_layerRpm.load(), std::pow(10.0, -20.0 / 20.0) * m_loudnessGain);
-        }
         return read;
     }
 
@@ -272,8 +258,6 @@ private:
     std::mt19937 m_random{0x4d544553u};
     std::normal_distribution<double> m_cycleVariation{0.0, 1.0};
     double m_speedWander = 0.0; // fraction of the game RPM
-    std::optional<MechanicalSoundLayer> m_mechanical; // read() thread after load()
-    std::atomic<double> m_layerRpm{0.0};
     std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
     double m_loudnessGain = -1.0;                  // read() thread only
 };

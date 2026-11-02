@@ -459,10 +459,8 @@ def rule_lines(field, pattern, engine, exhaust=None):
             return "-"
         if not exhaust:
             return f"assets/es_{key}.mr"
-        mechanical = ENGINES[key].get("mechanical")
         return (f"assets/es_{key}.mr#exhaust=mtes-exhaust/{exhaust}.wav"
-                + (f"#mechanical={mechanical}" if mechanical else "")
-                + f"#loudness={FULL_THROTTLE_LOUDNESS_DBA[exhaust]}")
+                f"#loudness={FULL_THROTTLE_LOUDNESS_DBA[exhaust]}")
     if isinstance(engine, tuple):
         return [f"{field}\t{pattern}\t{script(key)}\t{hp}" for key, hp in horsepower_ranges(*engine)]
     return [f"{field}\t{pattern}\t{script(engine)}"]

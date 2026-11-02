@@ -29,10 +29,9 @@ FLATHEAD_V8 = dict(
     exhaust="single_crossover", crossover_inch=36, flame_speed=0.75,
 )
 
-# Detroit Diesel two-strokes: single rear exhaust; heavy coach flywheel. The
-# 6V92TA (Cheetah) adds blower whine and turbo whistle tones measured on a
-# real coach with its "bus_detroit" exhaust (Engine Simulator only makes
-# exhaust sound). Firing orders 1L-3R-3L-4R-4L-2R-2L-1R (V8) and
+# Detroit Diesel two-strokes: single rear exhaust; heavy coach flywheel; the
+# Cheetah's 6V92TA sound is matched to a real MC-9 by its "bus_detroit"
+# exhaust curve (make_exhausts.py). Firing orders 1L-3R-3L-4R-4L-2R-2L-1R (V8) and
 # 1L-3R-3L-2R-2L-1R (V6), left bank = cylinders 1.., right bank after.
 # shortcut: firing orders from the service-manual convention, not checked
 # against a manual; Engine Simulator still runs them as four-strokes at
@@ -287,8 +286,7 @@ ENGINES = {
         redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
     "detroit_6v92": dict(name="Detroit Diesel 6V92TA two-stroke V6 (MCI MC-9 1989)", layout="V", cyl=6,
         v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 6, 3, 5, 2, 4], numbering="ford",
-        redline=2100, cr=17.0, style="diesel", rpm_scale=2, mechanical="detroit_two_stroke",
-        **DETROIT_TWO_STROKE),
+        redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
     "iveco_f1c": dict(name="Iveco F1C 3.0 I4 diesel (minibus)", layout="I", cyl=4,
         bore=95.8, stroke=104.0, firing=[1, 3, 4, 2], redline=3800, cr=17.5, style="diesel"),
     "cummins_isl9": dict(name="Cummins ISL9 8.9 I6 diesel (buses, medium trucks)", layout="I", cyl=6,

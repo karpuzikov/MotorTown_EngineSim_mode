@@ -1,6 +1,5 @@
 #include "vehicle_profile.h"
 #include "profile_level.h"
-#include "mechanical_sound_layer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -62,12 +61,6 @@ std::optional<std::string> packaged_script(const fs::path& root, const std::stri
         const auto impulse = packaged_impulse(root, spec->exhaustImpulse);
         if (!impulse) return std::nullopt;
         *script += ExhaustSpecMarker + *impulse;
-    }
-    if (!spec->mechanicalPreset.empty()) {
-        // Its level is set against the loudness target.
-        if (!mechanical_sound_preset(spec->mechanicalPreset) || !spec->fullThrottleLoudnessDba)
-            return std::nullopt;
-        *script += MechanicalSpecMarker + spec->mechanicalPreset;
     }
     if (spec->fullThrottleLoudnessDba) *script += text.substr(text.find(LoudnessSpecMarker));
     return script;

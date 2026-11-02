@@ -58,6 +58,15 @@ class EngineGeneratorTests(unittest.TestCase):
         order = re.findall(r'connect_wire\(wires.wire(\d)', text)
         self.assertEqual(order, ['1', '5', '4', '8', '6', '3', '7', '2'])
 
+    def test_the_cheetah_is_an_mc9_detroit_with_its_matched_exhaust(self):
+        # In game the Cheetah was a muffled sports car (generic bus exhaust),
+        # then hiss and buzz (curves fitted to a video miked at the blower).
+        # Its exhaust curve is now fitted to a real MC-9 idling.
+        rules = (ROOT / 'profiles/engine_families.tsv').read_text()
+        self.assertIn('vehicle\t^cheetah\tassets/es_detroit_6v92.mr'
+                      '#exhaust=mtes-exhaust/bus_detroit.wav#loudness=78\n', rules)
+        self.assertTrue((ROOT / 'profiles/exhaust/bus_detroit.wav').is_file())
+
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.
         for key, spec in real_engines.ENGINES.items():
