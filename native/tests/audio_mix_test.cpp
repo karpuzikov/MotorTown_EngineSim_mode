@@ -68,16 +68,16 @@ int main() {
         assert(!mechanical_sound_preset("unknown"));
         MechanicalSoundLayer layer(*mechanical_sound_preset("detroit_two_stroke"));
         std::vector<std::int16_t> pcm(44100, 0);
-        layer.add_to(pcm.data(), pcm.size(), 0.0, 0.0, 600.0, 0.1);
+        layer.add_to(pcm.data(), pcm.size(), 0.0, 0.002);
         for (auto v : pcm) assert(v == 0);
-        layer.add_to(pcm.data(), pcm.size(), 600.0, 0.0, 600.0, 0.1);
+        layer.add_to(pcm.data(), pcm.size(), 600.0, 0.002); // in game ~0.0004
         const auto bin = [&](double hz) { // Goertzel power
             const double k = 2 * std::cos(2 * 3.14159265358979 * hz / 44100);
             double s1 = 0, s2 = 0;
             for (auto v : pcm) { const double s0 = v + k * s1 - s2; s2 = s1; s1 = s0; }
             return s1 * s1 + s2 * s2 - k * s1 * s2;
         };
-        assert(bin(88 * 600 / 60.0) > 30 * bin(88 * 600 / 60.0 + 37)); // whine line over the noise
+        assert(bin(88 * 600 / 60.0) > 10 * bin(88 * 600 / 60.0 + 37)); // whine line 10 dB over the noise
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

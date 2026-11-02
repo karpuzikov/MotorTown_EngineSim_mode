@@ -223,7 +223,8 @@ int main(int argc, char** argv) {
                             "profiles/v6.mr#exhaust=../../outside.wav",
                             "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.mr",
                             "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#loudness=0",
-                            "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#mechanical=unknown#loudness=80"}) {
+                            "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#mechanical=unknown#loudness=80",
+                            "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#mechanical=detroit_two_stroke"}) {
         std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
         rules << "vehicle\t^kira\t" << bad << "\n";
         rules.close();

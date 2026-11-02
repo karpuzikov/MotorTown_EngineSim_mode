@@ -64,7 +64,9 @@ std::optional<std::string> packaged_script(const fs::path& root, const std::stri
         *script += ExhaustSpecMarker + *impulse;
     }
     if (!spec->mechanicalPreset.empty()) {
-        if (!mechanical_sound_preset(spec->mechanicalPreset)) return std::nullopt;
+        // Its level is set against the loudness target.
+        if (!mechanical_sound_preset(spec->mechanicalPreset) || !spec->fullThrottleLoudnessDba)
+            return std::nullopt;
         *script += MechanicalSpecMarker + spec->mechanicalPreset;
     }
     if (spec->fullThrottleLoudnessDba) *script += text.substr(text.find(LoudnessSpecMarker));

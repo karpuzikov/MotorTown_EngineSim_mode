@@ -21,27 +21,31 @@ namespace mtes {
 // sports car".
 struct MechanicalSoundPreset {
     // Noise level per octave band (63 Hz .. 8 kHz), dB relative to the
-    // engine's own level, at idle.
+    // exhaust's level. Follows the loudness model (RPM, throttle) like the
+    // exhaust does.
     std::array<double, 8> octaveLevelsDb{};
     struct Tone { double crankOrder; double levelDb; };
     std::vector<Tone> tones;          // follow engine speed
     double fixedToneHz = 0;           // e.g. turbo whistle; 0 = none
     double fixedToneLevelDb = -120;
-    double dbPerSpeedDoubling = 3.0;  // rises with RPM
-    double fullLoadDb = 2.0;          // and with load
+    // The vehicle's loudness target is exhaust plus this layer: the exhaust
+    // sits this far below it (in dBA the coach is mostly mechanical noise).
+    double exhaustLevelDb = 0;
 };
 
 inline std::optional<MechanicalSoundPreset> mechanical_sound_preset(const std::string& name) {
     if (name == "detroit_two_stroke") {
         MechanicalSoundPreset preset;
-        // Matched octave by octave to the real coach at idle; relative to the
-        // exhaust it fades as RPM rises (the exhaust grows faster).
-        preset.octaveLevelsDb = {-60, -40, 0, 9, 8, 16, 10, 0};
-        preset.tones = {{88.0, 1.0}, {176.0, -7.0}, {225.0, 3.0}};
+        // Matched octave by octave to the real coach at idle.
+        // shortcut: the recording has no usable revs (its louder parts are
+        // still ~620 rpm, camera moved), so the whine keeps its idle balance
+        // to the exhaust at every RPM; tune from a high-RPM recording.
+        preset.octaveLevelsDb = {-60, -40, 14, 19, 12, 24, 11, -5};
+        preset.tones = {{88.0, 7.0}, {176.0, -1.0}, {225.0, 9.0}}; // 7-10 dB over the noise, as real
         preset.fixedToneHz = 11300;
         preset.fixedToneLevelDb = -16;
-        preset.dbPerSpeedDoubling = -5.0;
-        preset.fullLoadDb = 0.0;
+        // Layer at these levels adds 32 dBA at full throttle (offline render).
+        preset.exhaustLevelDb = -32;
         return preset;
     }
     return std::nullopt;
@@ -57,24 +61,21 @@ public:
     }
 
     // referenceLevel: linear RMS the dB levels are relative to.
-    void add_to(std::int16_t* pcm, std::size_t frames, double rpm, double load,
-        double idleRpm, double referenceLevel) {
-        if (!(rpm > 0) || !(idleRpm > 0)) return;
-        const double rise = m_preset.dbPerSpeedDoubling * std::log2(std::max(rpm, idleRpm) / idleRpm) +
-            m_preset.fullLoadDb * std::clamp(load, 0.0, 1.0);
+    void add_to(std::int16_t* pcm, std::size_t frames, double rpm, double referenceLevel) {
+        if (!(rpm > 0)) return;
         std::array<double, 8> bandGain{};
         for (std::size_t b = 0; b < bandGain.size(); ++b)
-            bandGain[b] = referenceLevel * std::pow(10.0, (m_preset.octaveLevelsDb[b] + rise) / 20.0) *
+            bandGain[b] = referenceLevel * std::pow(10.0, m_preset.octaveLevelsDb[b] / 20.0) *
                 m_bands[b].unitNoiseCorrection;
         std::vector<double> toneAmp(m_preset.tones.size()), toneStep(m_preset.tones.size());
         for (std::size_t t = 0; t < m_preset.tones.size(); ++t) {
             const double hz = m_preset.tones[t].crankOrder * rpm / 60.0;
             toneStep[t] = 2 * Pi * hz / m_sampleRate;
             toneAmp[t] = hz < 0.45 * m_sampleRate
-                ? referenceLevel * std::sqrt(2.0) * std::pow(10.0, (m_preset.tones[t].levelDb + rise) / 20.0) : 0.0;
+                ? referenceLevel * std::sqrt(2.0) * std::pow(10.0, m_preset.tones[t].levelDb / 20.0) : 0.0;
         }
         const double fixedAmp = m_preset.fixedToneHz > 0 && m_preset.fixedToneHz < 0.45 * m_sampleRate
-            ? referenceLevel * std::sqrt(2.0) * std::pow(10.0, (m_preset.fixedToneLevelDb + rise) / 20.0) : 0.0;
+            ? referenceLevel * std::sqrt(2.0) * std::pow(10.0, m_preset.fixedToneLevelDb / 20.0) : 0.0;
         const double fixedStep = 2 * Pi * m_preset.fixedToneHz / m_sampleRate;
         for (std::size_t i = 0; i < frames; ++i) {
             double sum = 0;
