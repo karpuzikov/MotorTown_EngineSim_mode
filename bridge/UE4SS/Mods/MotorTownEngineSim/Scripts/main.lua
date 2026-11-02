@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.25, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.26, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -18,6 +18,7 @@ if not TEMP then
 end
 local TELEMETRY = TEMP .. "\\MotorTownEngineSim_telemetry.txt"
 local NATIVE_TELEMETRY = TEMP .. "\\MotorTownEngineSim_native_telemetry.txt"
+local TRAFFIC_TELEMETRY = TEMP .. "\\MotorTownEngineSim_traffic_telemetry.txt"
 local DEBUG_LOG = TEMP .. "\\MotorTownEngineSim_diagnostics.txt"
 local DISCOVERY = TEMP .. "\\MotorTownEngineSim_discovery.txt"
 local AUDIO_TARGETS = TEMP .. "\\MotorTownEngineSim_audio_targets.txt"
@@ -25,6 +26,7 @@ local MUTE_REQUEST = TEMP .. "\\MotorTownEngineSim_native_mute_request.txt"
 local MUTE_ACK = TEMP .. "\\MotorTownEngineSim_native_mute_ack.txt"
 local ENGINE_CATALOG = TEMP .. "\\MotorTownEngineSim_engine_catalog.txt"
 local lastVehicle = nil
+local lastDrivenVehicle = nil
 local mapping = nil
 local lastValue = ""
 local nextDiscovery = 0
@@ -844,7 +846,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.25 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.26 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -1080,7 +1082,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.25" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.26" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1153,8 +1155,9 @@ end
 -- MTES4 adds the read-only engine-volume setting. -1 means unknown.
 -- MTES5 adds the stock engine cue name and where/how loud Unreal would play
 -- it (gain, pan, low-pass Hz); gain -1 means unknown.
-local function write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
-    nativeSequence = nativeSequence + 1
+-- One MTES5 line: identity, engine state, engine data and stock 3D mix.
+-- mixField nil: the vehicle's stock mix relative to the camera.
+local function native_telemetry_packet(vehicle, rpm, throttle, running, gear, pc, sequence, mixField)
     local name = ""
     if valid(vehicle) then
         local ok, value = pcall(function() return vehicle:GetFullName() end)
@@ -1189,22 +1192,114 @@ local function write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
         log("Engine Volume: " .. volumeField)
         lastReportedVolume = volumeField
     end
-    local cueHex, mixField = "-", "-1 0.0000 0"
+    local cueHex = "-"
     if valid(vehicle) then
         local engine = member(vehicle, "EngineComponent")
         cueHex = hex_name(sound_name(valid(engine) and member(engine, "AudioComponent") or nil)) or "-"
-        if pc then
+        if pc and not mixField then
             local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
             if ok and gain then
                 mixField = string.format("%.4f %.4f %.0f", gain, pan, lowpass)
             end
         end
     end
-    local packet = string.format("MTES5 %s %d %.3f %.4f %d %d %s %d %.3f %s %s %s %s\n",
-        nativeSession, nativeSequence, rpm, throttle, running and 1 or 0, gear or -99,
-        encoded, engineType, maxRpm, encodedAsset, volumeField, cueHex, mixField)
+    return string.format("MTES5 %s %d %.3f %.4f %d %d %s %d %.3f %s %s %s %s\n",
+        nativeSession, sequence, rpm, throttle, running and 1 or 0, gear or -99,
+        encoded, engineType, maxRpm, encodedAsset, volumeField, cueHex,
+        mixField or "-1 0.0000 0")
+end
+
+local function write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
+    nativeSequence = nativeSequence + 1
+    local packet = native_telemetry_packet(vehicle, rpm, throttle, running, gear, pc, nativeSequence)
     local file = io.open(NATIVE_TELEMETRY, "w")
     if file then file:write(packet); file:close() end
+end
+
+local function engine_rpm(vehicle)
+    local rpm = tonumber(path_value(vehicle, "EngineComponent.GetRPM()"))
+    if rpm and rpm == rpm and rpm >= 0 and rpm <= 25000 then return rpm end
+    return nil
+end
+
+-- Running engines of other vehicles near the camera (traffic, parked cars
+-- left idling): the native side synthesizes the nearest few.
+local TRAFFIC_VOICE_LIMIT = 3 -- native TrafficEngineVoices::MaxVoices
+local TRAFFIC_AUDIBLE_RADIUS = 15000 -- Unreal units (150 m)
+local trafficVehicles, nextTrafficScan, trafficSequence = {}, 0, 0
+local function camera_location(pc)
+    local camera = member(pc, "PlayerCameraManager")
+    if not valid(camera) then return nil end
+    local ok, location = pcall(function() return camera:GetCameraLocation() end)
+    if not ok then return nil end
+    return vector_of(location)
+end
+
+local function distance_to(vehicle, lx, ly, lz)
+    local ok, location = pcall(function() return vehicle:K2_GetActorLocation() end)
+    if not ok then return nil end
+    local x, y, z = vector_of(location)
+    if not x then return nil end
+    return math.sqrt((x - lx) ^ 2 + (y - ly) ^ 2 + (z - lz) ^ 2)
+end
+
+local function scan_running_traffic(pc, playerVehicle)
+    local lx, ly, lz = camera_location(pc)
+    local ok, all = pcall(FindAllOf, "MTVehicle")
+    if not lx or not ok or type(all) ~= "table" then return {} end
+    local playerAddress = address_of(playerVehicle)
+    local nearby = {}
+    for _, vehicle in ipairs(all) do
+        local address = address_of(vehicle)
+        local rpm = address and address ~= playerAddress and engine_rpm(vehicle)
+        if rpm and rpm >= 50 then
+            local distance = distance_to(vehicle, lx, ly, lz)
+            if distance and distance <= TRAFFIC_AUDIBLE_RADIUS then
+                nearby[#nearby + 1] = { vehicle = vehicle, distance = distance }
+            end
+        end
+    end
+    table.sort(nearby, function(a, b) return a.distance < b.distance end)
+    local chosen = {}
+    for i = 1, math.min(TRAFFIC_VOICE_LIMIT, #nearby) do chosen[i] = nearby[i].vehicle end
+    return chosen
+end
+
+-- shortcut: a vehicle without a stock AudioComponent gets plain
+-- inverse-distance loudness, centred; use its attenuation if one appears.
+local function traffic_mix(pc, vehicle)
+    local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
+    if ok and gain then return string.format("%.4f %.4f %.0f", gain, pan, lowpass) end
+    local lx, ly, lz = camera_location(pc)
+    local distance = lx and distance_to(vehicle, lx, ly, lz)
+    if not distance then return nil end
+    return string.format("%.4f 0.0000 0", math.min(1, 1000 / math.max(distance, 1000)))
+end
+
+local function write_traffic_telemetry(pc, playerVehicle)
+    if os.time() >= nextTrafficScan then
+        nextTrafficScan = os.time() + 1
+        trafficVehicles = scan_running_traffic(pc, playerVehicle)
+    end
+    trafficSequence = trafficSequence + 1
+    local lines = {}
+    local playerAddress = address_of(playerVehicle)
+    for _, vehicle in ipairs(trafficVehicles) do
+        local rpm = valid(vehicle) and address_of(vehicle) ~= playerAddress and engine_rpm(vehicle)
+        local mixField = rpm and traffic_mix(pc, vehicle)
+        if rpm and mixField then
+            local throttle = tonumber(path_value(vehicle, "EngineComponent.GetThrottle()")) or 0
+            if throttle ~= throttle then throttle = 0 end
+            if throttle > 1 then throttle = throttle / 100 end
+            local ignition = path_value(vehicle, "EngineComponent.IsIgnitionOn()")
+            local running = ignition == true or (ignition == nil and rpm >= 100)
+            -- Gear does not reach the synthesizer; 0 (neutral) satisfies the format.
+            lines[#lines + 1] = native_telemetry_packet(vehicle, rpm,
+                math.max(0, math.min(1, throttle)), running, 0, pc, trafficSequence, mixField)
+        end
+    end
+    local file = io.open(TRAFFIC_TELEMETRY, "w")
+    if file then file:write(table.concat(lines)); file:close() end
 end
 
 -- The player wants no stock engine sound at all, from any car: silence the
@@ -1276,18 +1371,22 @@ local function tick()
         lastVehicle, mapping, lastGear = nil, nil, nil
         return
     end
-    local ok, vehicle = pcall(function() return pc:K2_GetPawn() end)
-    if not ok or not valid(vehicle) then
-        restore_leased_engine()
-        write_telemetry(0, 0, false)
-        write_native_telemetry(nil, 0, 0, false, nil)
-        lastVehicle, mapping, lastGear = nil, nil, nil
-        return
-    end
-    local isVehicle = pcall(function()
-        if not vehicle:IsA("/Script/MotorTown.MTVehicle") then error("Not vehicle") end
+    local ok, pawn = pcall(function() return pc:K2_GetPawn() end)
+    local isVehicle = ok and valid(pawn) and pcall(function()
+        if not pawn:IsA("/Script/MotorTown.MTVehicle") then error("Not vehicle") end
     end)
-    if not isVehicle then
+    local vehicle = nil
+    if isVehicle then
+        vehicle, lastDrivenVehicle = pawn, pawn
+    elseif valid(lastDrivenVehicle) and (engine_rpm(lastDrivenVehicle) or 0) >= 50 then
+        -- On foot beside the car left running: it keeps idling, heard from
+        -- the camera (in game the sound cut off on getting out).
+        vehicle = lastDrivenVehicle
+    else
+        lastDrivenVehicle = nil
+    end
+    pcall(write_traffic_telemetry, pc, vehicle)
+    if not vehicle then
         restore_leased_engine()
         write_telemetry(0, 0, false)
         write_native_telemetry(nil, 0, 0, false, nil)
@@ -1363,7 +1462,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.25 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.26 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

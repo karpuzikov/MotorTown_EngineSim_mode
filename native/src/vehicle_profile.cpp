@@ -109,7 +109,8 @@ bool ExactVehicleProfiles::reload() {
             if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty() || line.front() == '#') continue;
             const auto fields = split_tabs(line);
-            if (fields.size() != 3 ||
+            if ((fields.size() != 3 && fields.size() != 4) ||
+                (fields.size() == 4 && fields[0] != "vehicle" && fields[0] != "asset") ||
                 (fields[0] != "asset" && fields[0] != "cue" && fields[0] != "maxrpm" &&
                  fields[0] != "vehicle") ||
                 fields[1].empty() || fields[1].size() > 512 ||
@@ -143,6 +144,19 @@ bool ExactVehicleProfiles::reload() {
                 if (!script) return false;
                 rule.script = *script;
             }
+            if (fields.size() == 4) {
+                const auto dash = fields[3].find('-');
+                try {
+                    if (dash == std::string::npos) return false;
+                    std::size_t a = 0, b = 0;
+                    const auto low = fields[3].substr(0, dash), high = fields[3].substr(dash + 1);
+                    rule.minHorsepower = std::stoi(low, &a);
+                    rule.maxHorsepower = std::stoi(high, &b);
+                    if (a != low.size() || b != high.size() || rule.minHorsepower < 0 ||
+                        rule.maxHorsepower < rule.minHorsepower) return false;
+                }
+                catch (...) { return false; }
+            }
             families.push_back(std::move(rule));
         }
         if (rules.bad()) return false;
@@ -152,11 +166,21 @@ bool ExactVehicleProfiles::reload() {
     return true;
 }
 
+std::optional<int> engine_asset_horsepower(const std::string& engineAsset) {
+    static const std::regex horsepower(R"((\d{1,5})HP(?![A-Za-z0-9]))", std::regex::icase);
+    std::optional<int> found;
+    for (std::sregex_iterator it(engineAsset.begin(), engineAsset.end(), horsepower), end;
+        it != end; ++it) found = std::stoi((*it)[1].str());
+    return found;
+}
+
 std::optional<std::string> ExactVehicleProfiles::family_for(
-    const std::string& name, Field field) const {
+    const std::string& name, Field field, std::optional<int> horsepower) const {
     if (name.empty()) return std::nullopt;
     for (const auto& rule : m_families) {
         if (rule.field != field || !std::regex_search(name, rule.pattern)) continue;
+        if (rule.minHorsepower >= 0 && (!horsepower ||
+            *horsepower < rule.minHorsepower || *horsepower > rule.maxHorsepower)) continue;
         return rule.script; // empty: keep stock sound
     }
     return std::nullopt;
@@ -173,14 +197,18 @@ std::optional<std::string> ExactVehicleProfiles::rpm_family_for(double maxRpm) c
 
 std::optional<std::string> ExactVehicleProfiles::script_for(
     const GameTelemetrySample& sample) {
-    if (auto car = family_for(vehicle_class_key(sample.vehicle), Field::Vehicle)) {
+    const auto horsepower = engine_asset_horsepower(sample.engine_asset);
+    // An electric motor keeps its stock sound in any vehicle.
+    const auto engineFamily = family_for(sample.engine_asset, Field::Asset, horsepower);
+    if (engineFamily && engineFamily->empty()) return std::nullopt;
+    if (auto car = family_for(vehicle_class_key(sample.vehicle), Field::Vehicle, horsepower)) {
         if (car->empty()) return std::nullopt;
         return car;
     }
     if (sample.engine_asset.empty()) return std::nullopt;
     const auto it = m_profiles.find(sample.engine_asset);
     if (it != m_profiles.end()) return it->second;
-    auto family = family_for(sample.engine_asset, Field::Asset);
+    auto family = engineFamily;
     if (!family) family = family_for(sample.engine_cue, Field::Cue);
     if (!family) family = rpm_family_for(sample.max_rpm);
     if (!family || family->empty()) return std::nullopt;

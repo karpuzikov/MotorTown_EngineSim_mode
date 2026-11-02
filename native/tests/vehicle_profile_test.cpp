@@ -173,5 +173,30 @@ int main(int argc, char** argv) {
     assert(!catalog.script_for(car)); // electric car keeps stock sound
     car.vehicle = "Other_C /Game/x";
     assert(fs::equivalent(*catalog.script_for(car), root / "profiles/boxer.mr"));
+
+    // The installed engine's horsepower picks the real engine of that power;
+    // an electric motor keeps the stock sound even in a combustion car.
+    assert(engine_asset_horsepower("MHEngineDataAsset /Game/Cars/Parts/Engine/MediumDuty_330HP.MediumDuty_330HP") == 330);
+    assert(engine_asset_horsepower("FordSmalBlock302_V8_5L_140HP") == 140);
+    assert(!engine_asset_horsepower("Mystery.Mystery"));
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "asset\telectric\t-\n"
+                 "vehicle\t^kira\tprofiles/boxer.mr\t0-217\n"
+                 "vehicle\t^kira\tprofiles/v6.mr\t218-100000\n";
+    }
+    assert(catalog.reload());
+    car.vehicle = "Kira_Van_C /Game/x";
+    car.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/MediumDuty_190HP.MediumDuty_190HP";
+    assert(fs::equivalent(*catalog.script_for(car), root / "profiles/boxer.mr"));
+    car.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/MediumDuty_330HP.MediumDuty_330HP";
+    assert(fs::equivalent(*catalog.script_for(car), root / "profiles/v6.mr"));
+    car.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/Electric_300HP.Electric_300HP";
+    assert(!catalog.script_for(car));
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "cue\tv6\tprofiles/v6.mr\t0-10\n"; // horsepower only on vehicle/asset
+    }
+    assert(!catalog.reload());
     fs::remove(root / "engine_families.tsv");
 }

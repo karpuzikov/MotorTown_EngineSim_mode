@@ -51,7 +51,13 @@ class EngineGeneratorTests(unittest.TestCase):
 
     def test_every_vehicle_names_a_generated_engine(self):
         for pattern, name, real, engine in real_engines.VEHICLES:
-            self.assertTrue(engine == '-' or engine in real_engines.ENGINES, name)
+            if isinstance(engine, tuple):
+                family, engines = engine
+                self.assertEqual(len(engines), len(real_engines.ENGINE_FAMILIES[family]), name)
+                for key in engines:
+                    self.assertIn(key, real_engines.ENGINES, name)
+            else:
+                self.assertTrue(engine == '-' or engine in real_engines.ENGINES, name)
         families = (ROOT / 'profiles/engine_families.tsv').read_text()
         for pattern, *_ in real_engines.VEHICLES:
             self.assertIn(f'vehicle\t{pattern}\t', families)

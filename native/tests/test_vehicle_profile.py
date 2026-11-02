@@ -38,12 +38,13 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         for line in (ROOT / 'profiles/engine_families.tsv').read_text().splitlines():
             if not line or line.startswith('#'):
                 continue
-            field, pattern, profile = line.split('\t')
+            field, pattern, profile, *horsepower = line.split('\t')
+            hp = tuple(int(x) for x in horsepower[0].split('-')) if horsepower else None
             if field == 'maxrpm':
                 low, high = (float(x) for x in pattern.split('-'))
-                rules.append((field, (low, high), profile))
+                rules.append((field, (low, high), profile, hp))
             else:
-                rules.append((field, re.compile(pattern, re.IGNORECASE), profile))
+                rules.append((field, re.compile(pattern, re.IGNORECASE), profile, hp))
         return rules
 
     @staticmethod
@@ -54,18 +55,30 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         return name.replace('_', '').lower()
 
     def resolve(self, vehicle, asset='', cue='', max_rpm=0):
+        import re
         rules = self.rules()
+        found = re.findall(r'(\d{1,5})HP(?![A-Za-z0-9])', asset, re.IGNORECASE)
+        horsepower = int(found[-1]) if found else None
+
+        def first(wanted, name):
+            for field, pattern, profile, hp in rules:
+                if field == wanted and name and pattern.search(name) and (
+                        hp is None or (horsepower is not None and hp[0] <= horsepower <= hp[1])):
+                    return profile
+            return None
+        if first('asset', asset) == '-':
+            return None  # electric motors first, in any vehicle
         for wanted, name in (('vehicle', self.key(vehicle)), ('asset', asset), ('cue', cue)):
-            for field, pattern, profile in rules:
-                if field == wanted and name and pattern.search(name):
-                    return None if profile == '-' else profile
-        for field, (low, high), profile in (r for r in rules if r[0] == 'maxrpm'):
+            profile = first(wanted, name)
+            if profile:
+                return None if profile == '-' else profile
+        for field, (low, high), profile, _ in (r for r in rules if r[0] == 'maxrpm'):
             if max_rpm > 0 and low <= max_rpm <= high:
                 return None if profile == '-' else profile
         return 'STOCK'
 
     def test_every_rule_points_to_a_packaged_profile(self):
-        for field, _, profile in self.rules():
+        for field, _, profile, _ in self.rules():
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
                 self.assertTrue((ROOT / 'profiles' / Path(profile).name).is_file(), profile)
@@ -86,9 +99,17 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             'Raton_C /x': 'assets/es_lambo_l539.mr',
             'Pulse_C /x': None,                                                # Honda e
         }
+        stock = {  # each car's stock EngineData (engine catalog)
+            'DoryWrecker_C': 'FordSmalBlock302_V8_5L_140HP', 'Tuscan_C': 'FordSmalBlock302_V8_5L_140HP',
+            'Micky_C': 'I4_90HP', 'Scooty_C': 'Scooter_10HP', 'Elisa2_C': 'FordSmalBlock302_V8_5L_180HP',
+            'Trophy_Taxi_C': 'I4_90HP', 'Fortem_C': 'FordSmalBlock302_V8_5L_240HP',
+            'Police_C': 'FordSmalBlock302_V8_5L_240HP', 'Raton_C': 'Ferrari_275_V12_400HP',
+            'Pulse_C': 'Electric_130HP'}
         for vehicle, expected in cases.items():
             with self.subTest(vehicle=vehicle):
-                self.assertEqual(self.resolve(vehicle, max_rpm=6000), expected)
+                name = stock.get(vehicle.split(' ')[0], 'FordSmalBlock302_V8_5L_180HP')
+                asset = f'MHEngineDataAsset /Game/Cars/Parts/Engine/{name}.{name}'
+                self.assertEqual(self.resolve(vehicle, asset, max_rpm=6000), expected)
 
     def test_unknown_cars_still_get_a_combustion_engine(self):
         prefix = 'MHEngineDataAsset /Game/Cars/Parts/Engine/'
@@ -103,8 +124,9 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             'Kart_20HP': 'assets/es_kart_100_2t.mr',
             'Scooter_15HP': 'assets/es_vespa_150_2t.mr',
             'HeavyDuty_440HP': 'assets/es_cummins_isx15.mr',
-            'MediumDuty_250HP': 'assets/es_navistar_dt466.mr',
-            'Bus_300HP': 'assets/es_cummins_isb67.mr',
+            'MediumDuty_190HP': 'assets/es_navistar_dt466.mr',
+            'MediumDuty_250HP': 'assets/es_cummins_isb67.mr',
+            'Bus_300HP': 'assets/es_cummins_isl9.mr',
             'Ferrari_275_V12_400HP': 'assets/es_lambo_l539.mr',
             'Electric_300HP': None,
         }
@@ -113,3 +135,25 @@ class PackagedFamilyRuleTests(unittest.TestCase):
                 self.assertEqual(self.resolve(unknown, prefix + name + '.' + name, max_rpm=6000), expected)
         for rpm in range(1, 40001, 50):
             self.assertNotEqual(self.resolve(unknown, prefix + 'Mystery.Mystery', '', rpm), 'STOCK', rpm)
+
+    def test_each_car_and_installed_engine_gets_the_real_engine_of_that_power(self):
+        prefix = 'MHEngineDataAsset /Game/Cars/Parts/Engine/'
+        def engine(name):
+            return prefix + name + '.' + name
+        # In game both had MediumDuty_330HP and sounded the same.
+        self.assertEqual(self.resolve('Kira_Van_C /x', engine('MediumDuty_330HP')),
+                         'assets/es_deutz_f10l413f.mr')
+        self.assertEqual(self.resolve('Brutus_Wrecker_C /x', engine('MediumDuty_330HP')),
+                         'assets/es_mercedes_om936.mr')
+        self.assertEqual(self.resolve('Kira_Van_C /x', engine('MediumDuty_190HP')),
+                         'assets/es_deutz_f6l912.mr')
+        self.assertEqual(self.resolve('Stinger_C /x', engine('FordSmalBlock302_V8_5L_140HP')),
+                         'assets/es_chevy_350.mr')
+        self.assertEqual(self.resolve('Stinger_C /x', engine('FordSmalBlock302_V8_5L_320HP')),
+                         'assets/es_chevy_396.mr')
+        # Liliput has a combustion engine in game (silent while it kept stock).
+        self.assertEqual(self.resolve('Liliput_C /x', engine('Bus_140HP')),
+                         'assets/es_iveco_f1c.mr')
+        # An electric motor keeps its stock sound in any vehicle.
+        self.assertIsNone(self.resolve('Kira_Van_C /x', engine('Electric_300HP')))
+        self.assertIsNone(self.resolve('EVan_C /x', engine('Electric_130HP')))

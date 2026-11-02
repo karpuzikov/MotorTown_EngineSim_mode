@@ -16,7 +16,7 @@ import os
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = [
     'game_telemetry.cpp', 'audio_pipeline.cpp', 'audio_worker.cpp', 'engine_audio.cpp',
-    'game_audio.cpp', 'lua_mute_lease.cpp', 'vehicle_profile.cpp',
+    'game_audio.cpp', 'lua_mute_lease.cpp', 'vehicle_profile.cpp', 'traffic_engine_voices.cpp',
     'xaudio2_sink.cpp',
 ]
 RUNTIME_SOURCES = [str(ROOT / 'src' / name) for name in RUNTIME]

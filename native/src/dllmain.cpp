@@ -6,6 +6,7 @@
 #include "engine_sim_backend.h"
 #include "lua_mute_lease.h"
 #include "mod_settings.h"
+#include "traffic_engine_voices.h"
 #include "vehicle_profile.h"
 #include "xaudio2_sink.h"
 
@@ -24,12 +25,16 @@
 #endif
 
 namespace {
-std::filesystem::path game_telemetry_path() {
-    // Matches the Lua producer inside the same game process; no companion app.
+// Files shared with the Lua producer inside the same game process.
+std::filesystem::path temp_file(const char* name) {
     const char* temp = std::getenv("TMP");
     if (!temp || !*temp) temp = std::getenv("TEMP");
     if (!temp || !*temp) return {};
-    return std::filesystem::path(temp) / "MotorTownEngineSim_native_telemetry.txt";
+    return std::filesystem::path(temp) / name;
+}
+
+std::filesystem::path game_telemetry_path() {
+    return temp_file("MotorTownEngineSim_native_telemetry.txt");
 }
 
 std::filesystem::path module_root() {
@@ -102,6 +107,7 @@ public:
     }
 
     ~MotorTownEngineSimMod() override {
+        m_traffic.stop();
         m_worker.stop();
         m_pipeline.stop();
         m_emitters.cancel();
@@ -111,8 +117,12 @@ public:
         m_ready = true;
         const auto settings = mtes::load_mod_settings(module_root());
         m_sink.set_output_volume(settings.volume);
+        m_traffic.set_output_volume(settings.volume);
         m_profilesReady = m_profiles.reload();
         const bool workerStarted = m_profilesReady && m_worker.start();
+        const bool trafficStarted = m_profilesReady && m_traffic.start();
+        RC::Output::send<RC::LogLevel::Normal>(
+            STR("[MTES] Traffic engine voices running: {}\n"), trafficStarted);
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native initialized; engine profiles ready: {}\n"),
             m_profilesReady);
@@ -131,6 +141,12 @@ public:
             m_updateLogged = true;
         }
         const auto now = mtes::GameTelemetryFeed::Clock::now();
+        const auto trafficVoices = m_traffic.playing_voices();
+        if (trafficVoices != m_lastTrafficVoices) {
+            RC::Output::send<RC::LogLevel::Normal>(
+                STR("[MTES] Traffic engines playing: {}\n"), trafficVoices);
+            m_lastTrafficVoices = trafficVoices;
+        }
         m_telemetry.poll(now);
         auto sample = m_telemetry.current(now);
         if (m_profilesReady) {
@@ -250,6 +266,9 @@ private:
         mtes::NativeAudioPipeline::Pacing::WorkerClock};
     mtes::NativeAudioWorker m_worker{game_telemetry_path(), m_pipeline,
         [] { return game_in_foreground(); }, [this] { m_emitters.cancel(); }};
+    mtes::TrafficEngineVoices m_traffic{temp_file("MotorTownEngineSim_traffic_telemetry.txt"),
+        m_profiles, [] { return game_in_foreground(); }};
+    std::size_t m_lastTrafficVoices = 0;
     std::string m_lastVehicle;
     std::string m_lastProfileVehicle, m_lastProfileAsset, m_lastProfileCue;
     std::optional<double> m_lastVolume;
