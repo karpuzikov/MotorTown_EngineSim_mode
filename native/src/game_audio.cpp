@@ -4,6 +4,7 @@
 #include "pcm_block_pool.h"
 
 #include <algorithm>
+#include <fstream>
 
 namespace mtes {
 
@@ -12,7 +13,37 @@ GameAudioOutput::GameAudioOutput(EngineAudio& source, ProceduralAudioSink& sink)
 
 GameAudioOutput::~GameAudioOutput() { stop(); }
 
+void GameAudioOutput::capture(const std::int16_t* pcm, std::size_t frames) {
+    if (m_captureFile.empty()) return;
+    if (m_recentOutput.empty()) m_recentOutput.resize(20 * 44100);
+    for (std::size_t i = 0; i < frames; ++i) {
+        m_recentOutput[m_recentNext] = pcm[i];
+        m_recentNext = (m_recentNext + 1) % m_recentOutput.size();
+    }
+    m_recentCount = std::min(m_recentOutput.size(), m_recentCount + frames);
+}
+
+void GameAudioOutput::write_capture() noexcept {
+    if (m_captureFile.empty() || m_recentCount < 2 * 44100) return;
+    try {
+        std::ofstream out(m_captureFile, std::ios::binary | std::ios::trunc);
+        const auto u32 = [&](std::uint32_t v) { out.write(reinterpret_cast<const char*>(&v), 4); };
+        const auto u16 = [&](std::uint16_t v) { out.write(reinterpret_cast<const char*>(&v), 2); };
+        const auto bytes = static_cast<std::uint32_t>(m_recentCount * 2);
+        out.write("RIFF", 4); u32(36 + bytes); out.write("WAVEfmt ", 8);
+        u32(16); u16(1); u16(1); u32(44100); u32(88200); u16(2); u16(16);
+        out.write("data", 4); u32(bytes);
+        const auto size = m_recentOutput.size();
+        const auto start = (m_recentNext + size - m_recentCount) % size;
+        for (std::size_t i = 0; i < m_recentCount; ++i)
+            out.write(reinterpret_cast<const char*>(&m_recentOutput[(start + i) % size]), 2);
+    }
+    catch (...) {}
+    m_recentCount = 0;
+}
+
 void GameAudioOutput::stop() noexcept {
+    write_capture();
     // Stop playback before bringing original sound back. The emitter wrapper
     // is responsible for checking its Unreal object is still valid.
     m_sink.stop();
@@ -107,6 +138,7 @@ bool GameAudioOutput::submit(const std::string& vehicle,
             }
             offset += chunk;
         }
+        capture(scratch, frames);
         if (stillEligible && !stillEligible()) {
             stop();
             m_status = Status::InvalidInput;

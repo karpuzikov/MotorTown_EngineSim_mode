@@ -6,9 +6,11 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace mtes {
 
@@ -63,6 +65,10 @@ public:
     void stop() noexcept;
     void set_mix(const SpatialMix& mix) noexcept { m_sink.set_mix(mix); }
     Status status() const noexcept { return m_status; }
+    // Diagnostics: the last 20 s of exactly what was queued for playback are
+    // written here (mono 44.1 kHz WAV) whenever playback stops, so in-game
+    // sound can be compared with the simulator's output.
+    void set_capture_file(std::filesystem::path file) { m_captureFile = std::move(file); }
 
 private:
     EngineAudio& m_source;
@@ -71,6 +77,12 @@ private:
     std::string m_vehicle;
     bool m_playing = false;
     Status m_status = Status::Idle;
+    std::filesystem::path m_captureFile;
+    std::vector<std::int16_t> m_recentOutput; // ring buffer, 20 s
+    std::size_t m_recentNext = 0;
+    std::size_t m_recentCount = 0;
+    void capture(const std::int16_t* pcm, std::size_t frames);
+    void write_capture() noexcept;
 };
 
 } // namespace mtes

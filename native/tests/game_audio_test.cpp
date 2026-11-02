@@ -5,6 +5,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -211,4 +212,19 @@ int main() {
     assert(!game.submit("Atlas", second, scratch.data(), scratch.size(),
         t + std::chrono::seconds(2), 1.0));
     assert(!second->muted && !sink.started);
+    second->allow_mute = true;
+
+    // Diagnostics: what was queued for playback is written out on stop.
+    const auto capture = std::filesystem::temp_directory_path() / "mtes_capture_test.wav";
+    std::filesystem::remove(capture);
+    game.set_capture_file(capture);
+    std::vector<std::int16_t> packet(4096);
+    for (int i = 0; i < 23; ++i) {
+        const auto at = t + std::chrono::seconds(3) + std::chrono::milliseconds(20 * i);
+        assert(engine.update("Atlas", "atlas.mr", {950, 0.5, 1, true}, at));
+        assert(game.submit("Atlas", second, packet.data(), packet.size(), at, 1.0));
+    }
+    game.stop();
+    assert(std::filesystem::file_size(capture) == 44 + 23 * 4096 * 2);
+    std::filesystem::remove(capture);
 }
