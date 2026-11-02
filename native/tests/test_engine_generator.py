@@ -64,8 +64,16 @@ class EngineGeneratorTests(unittest.TestCase):
         # Its exhaust curve is now fitted to a real MC-9 idling.
         rules = (ROOT / 'profiles/engine_families.tsv').read_text()
         self.assertIn('vehicle\t^cheetah\tassets/es_detroit_6v92.mr'
-                      '#exhaust=mtes-exhaust/bus_detroit.wav#loudness=81\n', rules)
+                      '#exhaust=mtes-exhaust/bus_detroit.wav#loudness=82\n', rules)
         self.assertTrue((ROOT / 'profiles/exhaust/bus_detroit.wav').is_file())
+
+    def test_two_strokes_vary_each_firing(self):
+        # At twice the RPM, turbulence saturated and Engine Simulator burned
+        # every firing identically: a buzz (real 6V92 idle varies 10-22%).
+        for key in ('detroit_6v92', 'detroit_8v71', 'detroit_8v92'):
+            text = (ROOT / f'profiles/es_{key}.mr').read_text()
+            self.assertIn('// mtes-rpm-scale: 2', text)
+            self.assertIn('burning_efficiency_randomness: 1.0, max_turbulence_effect: 100.0', text)
 
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.

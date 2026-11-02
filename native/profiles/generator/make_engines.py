@@ -141,7 +141,14 @@ def generate(key, spec):
     w(f'        name: "{spec["name"]}",')
     w("        starter_torque: 200 * units.lb_ft,\n        starter_speed: 200 * units.rpm,")
     w(f"        redline: {sim_redline} * units.rpm,\n        throttle_gamma: 2.0,")
-    w("        fuel: fuel(max_burning_efficiency: 1.0, turbulence_to_flame_speed_ratio: turbulence_to_flame_speed_ratio()),")
+    # Engine Simulator varies each firing's burn unless turbulence (mean
+    # piston speed) saturates; a two-stroke at twice the RPM always did, so
+    # every firing was identical: a buzz (real 6V92 idle: 10-22% firing to
+    # firing, 21% now; was 3%).
+    fuel_randomness = ("burning_efficiency_randomness: 1.0, max_turbulence_effect: 100.0, "
+                       if scale > 1 else "")
+    w(f"        fuel: fuel(max_burning_efficiency: 1.0, {fuel_randomness}"
+      "turbulence_to_flame_speed_ratio: turbulence_to_flame_speed_ratio()),")
     w(f"        hf_gain: 0.01,\n        noise: 1.0,\n        jitter: {0.4 if spec['style'] in ('diesel', 'vintage', 'truck') else 0.25},")
     w(f"        simulation_frequency: {sim_freq}\n    )\n")
     w("    wires wires()\n")

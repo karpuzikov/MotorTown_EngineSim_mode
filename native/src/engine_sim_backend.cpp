@@ -148,7 +148,10 @@ public:
         // authoritative. The simulator's dynamometer holds that speed while
         // its own combustion model generates the audio samples.
         const double redlineRpm = m_engine->getRedline() / units::rpm(1.0);
-        const bool fuelCut = m_fuelCut.update(rpm, throttle, redlineRpm);
+        // The engine's real speed and redline: a two-stroke's doubled model
+        // RPM (600 rpm idle -> 1200) sat above the cut-in, so its idle never
+        // fired (in game: the Cheetah's idle was a motored, buzzing pump).
+        const bool fuelCut = m_fuelCut.update(gameRpm, throttle, redlineRpm / m_rpmScale);
         // Unfired while the starter cranks or the engine spins down: only
         // compression and the exhaust, as a real start and shut-down sound.
         m_engine->getIgnitionModule()->m_enabled = combustion && !fuelCut;

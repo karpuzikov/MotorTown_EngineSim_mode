@@ -35,6 +35,13 @@ int main() {
     assert(!bike.update(2000, 0.0, 12000)); // 0.22 * 12000 = 2640
     assert(bike.update(5000, 0.0, 12000));
 
+    // A two-stroke's model runs at twice the RPM; the backend passes the
+    // real speed and redline. The doubled pair cut its idle (in game the
+    // Cheetah idled unfired: a buzz).
+    OverrunFuelCut detroit;
+    assert(!detroit.update(600, 0.0, 2100));
+    assert(detroit.update(1200, 0.0, 4200)); // what the backend used to pass
+
     // Invalid data never leaves the engine cut.
     assert(!cut.update(std::numeric_limits<double>::quiet_NaN(), 0.0, v8Redline));
     cut.reset();

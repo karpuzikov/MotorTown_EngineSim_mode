@@ -251,9 +251,7 @@ FULL_THROTTLE_LOUDNESS_DBA = {
     "economy_small": 75, "soviet_two_box": 78, "kei_small": 76, "aircooled_box": 80,
     "pickup_van": 77, "offroad_vintage": 80, "truck_medium": 84, "military_stack": 88,
     "truck_stack": 88, "truck_euro": 84, "bus_rear": 82, "motorcycle_twin": 86,
-    # shortcut: the native loudness model levels RMS; this curve reads 1 dB
-    # quieter in dB(A) than bus_rear at the same RMS, so 82 - 1.
-    "bus_detroit": 81,
+    "bus_detroit": 82,
     "sportbike": 88, "scooter_2t": 80, "kart": 92,
 }
 
