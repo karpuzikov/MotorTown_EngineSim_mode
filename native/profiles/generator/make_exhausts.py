@@ -71,6 +71,7 @@ PROFILES = {
     "truck_stack": [("pipe", 2.2, 0.127), ("absorb", 0.9, 0.127, 1.5), ("pipe", 1.8, 0.127)],
     "truck_euro": [("pipe", 2.0, 0.11), ("chamber", 0.7, 0.40), ("pipe", 0.25, 0.11)],
     "bus_rear": [("pipe", 0.7, 0.10), ("chamber", 1.0, 0.35), ("pipe", 0.25, 0.10)],
+    "bus_detroit": [("pipe", 0.7, 0.10), ("chamber", 1.0, 0.35), ("pipe", 0.25, 0.10)],
     "motorcycle_twin": [("pipe", 0.9, 0.038), ("absorb", 0.4, 0.05, 0.5), ("pipe", 0.05, 0.038)],
     "sportbike": [("pipe", 0.8, 0.04), ("cat", 0.15, 0.07, 0.3), ("absorb", 0.35, 0.06, 0.7),
                   ("pipe", 0.05, 0.045)],
@@ -217,6 +218,10 @@ CLASS_TILT_DB = {
     # the recording is not (2-8 kHz only half matched: the cab adds road and
     # wind noise).
     "flathead": [-16, 10, 1, 5, 7, 22, 13, 17, 20, 17],
+    # Matched to a real MCI MC-9 coach's Detroit 6V92TA at idle (2026-11-02),
+    # within 2 dB from 63 Hz to 8 kHz: injector and gear clatter and blower
+    # noise make it bright, pulsing with every firing.
+    "detroit": [4, 22, 6, 22, 35, 42, 53, 50, 50, 44],
     "small": [-3, -3, -1, 0, 0, 0, 2, 2, 1, 0],
     "sport": [-2, -2, 0, 0, 0, 0, 2, 3, 2, 0],
     "two_stroke": [-6, -6, -3, 0, 0, 0, 3, 4, 3, 0],
@@ -228,7 +233,7 @@ PROFILE_CLASS = {
     "soviet_two_box": "small", "kei_small": "small", "aircooled_box": "vintage",
     "pickup_van": "car", "offroad_vintage": "vintage", "truck_medium": "big_diesel",
     "military_stack": "big_diesel", "truck_stack": "big_diesel", "truck_euro": "big_diesel",
-    "bus_rear": "big_diesel", "motorcycle_twin": "sport", "sportbike": "sport",
+    "bus_rear": "big_diesel", "bus_detroit": "detroit", "motorcycle_twin": "sport", "sportbike": "sport",
     "scooter_2t": "two_stroke", "kart": "two_stroke",
 }
 
@@ -242,6 +247,9 @@ FULL_THROTTLE_LOUDNESS_DBA = {
     "economy_small": 75, "soviet_two_box": 78, "kei_small": 76, "aircooled_box": 80,
     "pickup_van": 77, "offroad_vintage": 80, "truck_medium": 84, "military_stack": 88,
     "truck_stack": 88, "truck_euro": 84, "bus_rear": 82, "motorcycle_twin": 86,
+    # shortcut: the native loudness model levels RMS; this bright curve reads
+    # 7 dB louder in dB(A) than bus_rear at the same RMS, so 82 - 7.
+    "bus_detroit": 75,
     "sportbike": 88, "scooter_2t": 80, "kart": 92,
 }
 

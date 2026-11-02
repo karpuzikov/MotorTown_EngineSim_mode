@@ -29,16 +29,15 @@ FLATHEAD_V8 = dict(
     exhaust="single_crossover", crossover_inch=36, flame_speed=0.75,
 )
 
-# Detroit Diesel two-strokes: blower whine, gear and injector clatter and
-# (6V92TA) a turbo whistle come from a measured mechanical sound layer
-# (Engine Simulator only makes exhaust sound); single rear exhaust; heavy
-# coach flywheel. Firing orders 1L-3R-3L-4R-4L-2R-2L-1R (V8) and
+# Detroit Diesel two-strokes: single rear exhaust; heavy coach flywheel. The
+# 6V92TA (Cheetah) adds blower whine and turbo whistle tones measured on a
+# real coach with its "bus_detroit" exhaust (Engine Simulator only makes
+# exhaust sound). Firing orders 1L-3R-3L-4R-4L-2R-2L-1R (V8) and
 # 1L-3R-3L-2R-2L-1R (V6), left bank = cylinders 1.., right bank after.
 # shortcut: firing orders from the service-manual convention, not checked
 # against a manual; Engine Simulator still runs them as four-strokes at
 # twice the RPM (right firing rate, no ports or blower scavenging).
-DETROIT_TWO_STROKE = dict(mechanical="detroit_two_stroke", exhaust="single_crossover",
-                          crossover_inch=0, flywheel_lb=120)
+DETROIT_TWO_STROKE = dict(exhaust="single_crossover", crossover_inch=0, flywheel_lb=120)
 
 ENGINES = {
     # --- small cars / economy -------------------------------------------
@@ -288,7 +287,8 @@ ENGINES = {
         redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
     "detroit_6v92": dict(name="Detroit Diesel 6V92TA two-stroke V6 (MCI MC-9 1989)", layout="V", cyl=6,
         v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 6, 3, 5, 2, 4], numbering="ford",
-        redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
+        redline=2100, cr=17.0, style="diesel", rpm_scale=2, mechanical="detroit_two_stroke",
+        **DETROIT_TWO_STROKE),
     "iveco_f1c": dict(name="Iveco F1C 3.0 I4 diesel (minibus)", layout="I", cyl=4,
         bore=95.8, stroke=104.0, firing=[1, 3, 4, 2], redline=3800, cr=17.5, style="diesel"),
     "cummins_isl9": dict(name="Cummins ISL9 8.9 I6 diesel (buses, medium trucks)", layout="I", cyl=6,
@@ -447,7 +447,7 @@ VEHICLE_EXHAUSTS = {
     r"^tavan": "pickup_van", r"^sv200|^schoolbus": "truck_medium", r"^aircity|^citybus": "bus_rear",
     r"^trophy": "soviet_two_box", r"^raton": "supercar", r"^mammoth": "supercar",
     r"^neo": "turbo_sport", r"^kira": "truck_medium", r"^mitage": "car_modern",
-    r"^panther": "sports_modern", r"^cheetah": "bus_rear", r"^brutus": "truck_medium",
+    r"^panther": "sports_modern", r"^cheetah": "bus_detroit", r"^brutus": "truck_medium",
     r"^essam": "sports_modern", r"^micky": "economy_small", r"^vista": "turbo_sport",
     r"^golima": "truck_stack", r"^scooty": "scooter_2t", r"^fortem": "aircooled_box",
     r"^kudasemi": "truck_euro", r"^kuda": "truck_euro", r"^maity": "truck_euro",
