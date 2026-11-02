@@ -70,13 +70,23 @@ def generate(key, spec):
     redline = spec["redline"]
     scale = spec.get("rpm_scale", 1)
     sim_redline = redline * scale
-    # Airflow scaled like the GM LS model (5.7 L, 6500 rpm, k_carb 700).
+    # Airflow scaled like the GM LS model (5.7 L, 6500 rpm, k_carb 700),
+    # unless the real carburettor's rating is known.
     cfm = max(40.0, disp_l * 61.02 * sim_redline / 3456 * (1.1 if spec["style"] in ("sport", "bike") else 0.95))
     if spec.get("rpm_scale", 1) > 1:
         cfm /= scale  # same air per real revolution
+    cfm = spec.get("carb_cfm", cfm)
     per_cyl = disp_cyl_cc / 712.0
-    flow_scale = (bore / 96.0) ** 2
-    lift_scale = style["lift"] / 0.551
+    # Real valvetrain data when known (cam card, port flow): the engine's
+    # own breathing, not a style default.
+    cam = spec.get("cam") or dict(lift=style["lift"], intake_duration=style["dur"],
+                                  exhaust_duration=style["dur"] + 4, lsa=style["lsa"])
+    port_flow = spec.get("port_flow")
+    flow_scale = 1.0 if port_flow else (bore / 96.0) ** 2
+    lift_scale = 1.0 if port_flow else cam["lift"] / 0.551
+    if not port_flow:
+        port_flow = ([0, 1, 103, 156, 214, 249, 268, 280, 280, 281],
+                     [0, 1, 72, 113, 160, 196, 222, 235, 245, 246])
     # Small cylinders need finer steps (Engine Simulator's own bike/ATV
     # models run 20-40 kHz); 10+ cylinders run coarser to stay real-time.
     sim_freq = 40000 if disp_cyl_cc < 250 else 20000 if disp_cyl_cc < 500 else 10000 if n <= 8 else 8000
@@ -101,8 +111,7 @@ def generate(key, spec):
     w("private node head {")
     w("    input intake_camshaft;\n    input exhaust_camshaft;\n    input flip_display: false;")
     w("    alias output __out: head;")
-    for kind, table in (("intake", [0, 1, 103, 156, 214, 249, 268, 280, 280, 281]),
-                        ("exhaust", [0, 1, 72, 113, 160, 196, 222, 235, 245, 246])):
+    for kind, table in (("intake", port_flow[0]), ("exhaust", port_flow[1])):
         w(f"    function {kind}_flow(50 * units.thou * {lift_scale:.4f})")
         w(f"    {kind}_flow")
         for i, f in enumerate(table):
@@ -119,9 +128,11 @@ def generate(key, spec):
 
     w("private node turbulence_to_flame_speed_ratio {")
     w("    alias output __out:\n        function(5.0)\n            .add_sample(0.0, 3.0)")
+    # A side-valve (flathead) chamber burns slower than an overhead-valve one.
+    flame = spec.get("flame_speed", 1.0)
     for t in range(5, 50, 5):
         k = 1.5 if t == 5 else 1.75 if t == 10 else 2.0
-        w(f"            .add_sample({t}.0, {k} * {t}.0)")
+        w(f"            .add_sample({t}.0, {k * flame:.3f} * {t}.0)")
     w("            ;\n}\n")
 
     w(f"public node {key} {{")
@@ -137,6 +148,7 @@ def generate(key, spec):
     w(f"    label stroke({stroke} * units.mm)\n    label bore({bore} * units.mm)")
     w(f"    label rod_length({rod} * units.mm)\n    label rod_mass({max(250, 0.9 * disp_cyl_cc):.0f} * units.g)")
     w(f"    label compression_height({max(25, 0.32 * bore):.1f} * units.mm)")
+    fly_mass_lb = spec.get("flywheel_lb", fly_mass_lb)
     w(f"    label crank_mass({crank_mass_lb:.1f} * units.lb)\n    label flywheel_mass({fly_mass_lb:.1f} * units.lb)")
     w("    label flywheel_radius(6 * units.inch)")
     w("    label crank_moment(1.5 * disk_moment_of_inertia(mass: crank_mass, radius: stroke))")
@@ -178,10 +190,14 @@ def generate(key, spec):
     w(f"        outlet_flow_rate: k_carb({cfm * 1.43:.1f}),")
     w(f"        primary_tube_length: {12 + 2 * min(n, 8)} * units.inch,")
     w(f"        primary_flow_rate: k_carb({cfm * 0.71:.1f}),\n        velocity_decay: 1.0\n    )")
-    pipes = len(banks)
-    lengths = [100, 172] if pipes == 2 else [130]
+    # A single exhaust gathers both banks; the far bank's pulses travel a
+    # crossover pipe first (1940s-50s trucks): an uneven, loping rhythm.
+    single = spec.get("exhaust") == "single_crossover"
+    pipes = 1 if single else len(banks)
+    lengths = [130] if pipes == 1 else [100, 172]
     if spec["style"] in ("diesel", "truck"):
         lengths = [l * 1.2 for l in lengths]
+    crossover = spec.get("crossover_inch", 0) if single else 0
     for i in range(pipes):
         w(f"    exhaust_system exhaust{i}(es_params, audio_volume: {style['audio']},")
         w(f"        length: {lengths[i]:.0f} * units.inch, impulse_response: ir_lib.{style['ir']})")
@@ -198,8 +214,9 @@ def generate(key, spec):
             w("            piston: piston(piston_params, blowby: k_28inH2O(0.1)),")
             w("            connecting_rod: connecting_rod(cr_params),")
             w(f"            rod_journal: rj{c},\n            intake: intake,")
-            w(f"            exhaust_system: exhaust{i},\n            ignition_wire: wires.wire{c},")
-            w(f"            sound_attenuation: 1.0,\n            primary_length: {(len(cyls) - k) * 2 + 2} * units.inch\n        )")
+            w(f"            exhaust_system: exhaust{0 if single else i},\n            ignition_wire: wires.wire{c},")
+            primary = (len(cyls) - k) * 2 + 2 + (crossover if i else 0)
+            w(f"            sound_attenuation: 1.0,\n            primary_length: {primary} * units.inch\n        )")
         w(f"        .set_cylinder_head(head(intake_camshaft: camshaft.intake{i}, "
           f"exhaust_camshaft: camshaft.exhaust{i}, flip_display: {'true' if i else 'false'}))")
     w("")
@@ -211,17 +228,17 @@ def generate(key, spec):
     # Camshafts per bank: lobes in each bank's cylinder order, centred on
     # that cylinder's firing time (as in Engine Simulator's own scripts).
     cams = [f"private node camshafts {{"]
-    cams.append(f"    input lsa: {style['lsa']} * units.deg;")
+    cams.append(f"    input lsa: {cam['lsa']} * units.deg;")
     for i in range(len(banks)):
         cams.append(f"    output intake{i}: _intake{i};\n    output exhaust{i}: _exhaust{i};")
     cams.append(f"    label rot360(360 * units.deg)")
     cams.append(f"    camshaft_parameters params(advance: 0 * units.deg, base_radius: 0.75 * units.inch)")
     cams.append("    harmonic_cam_lobe intake_lobe(")
-    cams.append(f"        duration_at_50_thou: {style['dur']} * units.deg, gamma: 1.1,")
-    cams.append(f"        lift: {style['lift'] * 1000:.0f} * units.thou, steps: 256)")
+    cams.append(f"        duration_at_50_thou: {cam['intake_duration']} * units.deg, gamma: 1.1,")
+    cams.append(f"        lift: {cam['lift'] * 1000:.0f} * units.thou, steps: 256)")
     cams.append("    harmonic_cam_lobe exhaust_lobe(")
-    cams.append(f"        duration_at_50_thou: {style['dur'] + 4} * units.deg, gamma: 1.1,")
-    cams.append(f"        lift: {style['lift'] * 1000:.0f} * units.thou, steps: 256)")
+    cams.append(f"        duration_at_50_thou: {cam['exhaust_duration']} * units.deg, gamma: 1.1,")
+    cams.append(f"        lift: {cam['lift'] * 1000:.0f} * units.thou, steps: 256)")
     for i, angle in enumerate(banks):
         cams.append(f"    camshaft _intake{i}(params, lobe_profile: intake_lobe)")
         cams.append(f"    camshaft _exhaust{i}(params, lobe_profile: exhaust_lobe)")
@@ -239,9 +256,11 @@ def generate(key, spec):
     tail = []
     tail.append("    function timing_curve(1000 * units.rpm)\n    timing_curve")
     adv = style["adv"]
+    # Real distributor: (idle advance, full advance, rpm where it is reached).
+    idle_adv, full_adv, full_rpm = spec.get("timing", (10, adv, 0.5 * sim_redline))
     for r in range(0, 9):
         rpm = r * 1000 * max(1, sim_redline / 8000)
-        deg = 10 + (adv - 10) * min(1.0, rpm / (0.5 * sim_redline))
+        deg = idle_adv + (full_adv - idle_adv) * min(1.0, rpm / full_rpm)
         tail.append(f"        .add_sample({rpm:.0f} * units.rpm, {deg:.1f} * units.deg)")
     tail.append("    ignition_module ignition_module(timing_curve: timing_curve,")
     tail.append(f"        rev_limit: {sim_redline + 300 * scale} * units.rpm, limiter_duration: 0.1)")
@@ -293,6 +312,11 @@ TEMPLATES = {
 
 def template_for(key, spec):
     n, layout = spec["cyl"], spec["layout"]
+    if spec.get("cam"):
+        # Real valvetrain data: Engine Simulator's templates keep THEIR
+        # heads, cams, firing order and timing (in game the Dory's flathead
+        # was a modern GM LS with flathead bore and stroke: a buzz).
+        return None
     if spec["style"] == "diesel":
         # The petrol templates' cams, runners and exhausts made every truck
         # and bus sound like a sports car (in game: semis, Atlas dump).

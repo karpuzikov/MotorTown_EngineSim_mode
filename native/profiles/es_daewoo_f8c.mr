@@ -59,15 +59,15 @@ private node turbulence_to_flame_speed_ratio {
     alias output __out:
         function(5.0)
             .add_sample(0.0, 3.0)
-            .add_sample(5.0, 1.5 * 5.0)
-            .add_sample(10.0, 1.75 * 10.0)
-            .add_sample(15.0, 2.0 * 15.0)
-            .add_sample(20.0, 2.0 * 20.0)
-            .add_sample(25.0, 2.0 * 25.0)
-            .add_sample(30.0, 2.0 * 30.0)
-            .add_sample(35.0, 2.0 * 35.0)
-            .add_sample(40.0, 2.0 * 40.0)
-            .add_sample(45.0, 2.0 * 45.0)
+            .add_sample(5.0, 1.500 * 5.0)
+            .add_sample(10.0, 1.750 * 10.0)
+            .add_sample(15.0, 2.000 * 15.0)
+            .add_sample(20.0, 2.000 * 20.0)
+            .add_sample(25.0, 2.000 * 25.0)
+            .add_sample(30.0, 2.000 * 30.0)
+            .add_sample(35.0, 2.000 * 35.0)
+            .add_sample(40.0, 2.000 * 40.0)
+            .add_sample(45.0, 2.000 * 45.0)
             ;
 }
 

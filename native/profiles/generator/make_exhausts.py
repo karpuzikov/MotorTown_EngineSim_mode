@@ -211,16 +211,18 @@ RECORDED_EXHAUST_OCTAVES_DB = [-1.0, -2.9, 1.4, 4.5, 8.7, 0.0, -6.5, -17.7, -28.
 CLASS_TILT_DB = {
     "big_diesel": [4, 6, 6, 3, 0, 0, -2, -4, -6, -6],
     "car": [0] * 10,
-    # Matched to a real 1948 Ford F-1 flathead V8 recording (2026-11-02):
-    # less 250-500 Hz boom, more 63 Hz and 2-8 kHz (only half the recording's
-    # 2-8 kHz gap: its cab adds road and wind noise).
-    "vintage": [0, 13, 1, -9, -10, 4, 6, 10, 13, 10],
+    "vintage": [0, 1, 1, 0, 0, 0, 0, 0, -1, -2],  # flathead/air-cooled burble, no catalyst
+    # Matched to a real 1948 Ford F-1 flathead V8 recording (2026-11-02)
+    # with the true flathead engine: its slow-breathing side valves are dark,
+    # the recording is not (2-8 kHz only half matched: the cab adds road and
+    # wind noise).
+    "flathead": [-16, 10, 1, 5, 7, 22, 13, 17, 20, 17],
     "small": [-3, -3, -1, 0, 0, 0, 2, 2, 1, 0],
     "sport": [-2, -2, 0, 0, 0, 0, 2, 3, 2, 0],
     "two_stroke": [-6, -6, -3, 0, 0, 0, 3, 4, 3, 0],
 }
 PROFILE_CLASS = {
-    "vintage_single": "vintage", "classic_v8": "car", "muscle_glasspack": "sport",
+    "vintage_single": "flathead", "classic_v8": "car", "muscle_glasspack": "sport",
     "car_modern": "car", "luxury_quiet": "car", "sports_modern": "sport",
     "turbo_sport": "sport", "supercar": "sport", "economy_small": "small",
     "soviet_two_box": "small", "kei_small": "small", "aircooled_box": "vintage",

@@ -14,6 +14,21 @@ rpm_scale: two-stroke engines fire every revolution; simulated as a
   four-stroke at twice the RPM (same firing frequency).
 """
 
+# Ford flathead V8 (1938-53): stock cam 0.307" lift, 197/201 deg at 0.050",
+# 111.5 deg LSA (Tilden Technologies cam table); L-head ports flow ~40% of
+# a modern overhead-valve head; Holley 94 two-barrel (~160 cfm); a few
+# degrees idle advance to ~24 deg; 7.0" rods; heavy truck flywheel; single
+# exhaust, the right bank through a ~3 ft crossover pipe; slow side-valve burn.
+# shortcut: port flow, flame speed, timing and crossover are typical values,
+# not measured on a 239; replace them if a flow bench / shop manual appears.
+FLATHEAD_V8 = dict(
+    cam=dict(lift=0.307, intake_duration=197, exhaust_duration=201, lsa=111.5),
+    port_flow=([0, 1, 48, 72, 90, 102, 108, 110, 110, 110],
+               [0, 1, 40, 62, 78, 88, 94, 96, 96, 96]),
+    carb_cfm=160, timing=(4, 24, 3000), rod=177.8, flywheel_lb=45,
+    exhaust="single_crossover", crossover_inch=36, flame_speed=0.75,
+)
+
 ENGINES = {
     # --- small cars / economy -------------------------------------------
     "bmc_a_1275": dict(name="BMC A-Series 1275 I4 (Mini Cooper S)", layout="I", cyl=4,
@@ -77,9 +92,11 @@ ENGINES = {
         redline=5500, cr=8.0, style="muscle"),
 
     # --- V8 cross-plane -------------------------------------------------
+    # Side-valve flatheads: Ford stock cam card (Tilden Technologies), small
+    # L-head ports, a 1940s distributor, single exhaust with a crossover.
     "ford_flathead_239": dict(name="Ford Flathead 239 V8 (F-1 1948)", layout="V", cyl=8, v_angle=90,
-        bore=81.0, stroke=95.25, firing=[1, 5, 4, 8, 6, 3, 7, 2], numbering="ford",
-        redline=3800, cr=6.8, style="vintage", carb=True),
+        bore=80.96, stroke=95.25, firing=[1, 5, 4, 8, 6, 3, 7, 2], numbering="ford",
+        redline=3800, cr=6.8, style="vintage", carb=True, **FLATHEAD_V8),
     "chevy_305": dict(name="Chevrolet 305 V8 (Vandura)", layout="V", cyl=8, v_angle=90,
         bore=94.9, stroke=88.4, firing=[1, 8, 4, 3, 6, 5, 7, 2], numbering="gm",
         redline=4600, cr=8.6, style="truck", carb=True),
@@ -195,10 +212,10 @@ ENGINES = {
         redline=4600, cr=8.0, style="truck", carb=True),
     "ford_flathead_221": dict(name="Ford Flathead 221 V8 (1932 Ford Model 18)", layout="V", cyl=8,
         v_angle=90, bore=77.8, stroke=95.25, firing=[1, 5, 4, 8, 6, 3, 7, 2], numbering="ford",
-        redline=3800, cr=5.5, style="vintage", carb=True),
+        redline=3800, cr=5.5, style="vintage", carb=True, **FLATHEAD_V8),
     "ford_flathead_337": dict(name="Ford Flathead 337 V8 (F-7/F-8 Big Job 1948)", layout="V", cyl=8,
         v_angle=90, bore=88.9, stroke=111.1, firing=[1, 5, 4, 8, 6, 3, 7, 2], numbering="ford",
-        redline=3600, cr=6.4, style="vintage", carb=True),
+        redline=3600, cr=6.4, style="vintage", carb=True, **FLATHEAD_V8),
     "ford_351w": dict(name="Ford 351 Windsor V8 (F-150 1982)", layout="V", cyl=8, v_angle=90,
         bore=101.6, stroke=88.9, firing=[1, 3, 7, 2, 6, 5, 4, 8], numbering="ford",
         redline=5000, cr=8.3, style="truck", carb=True),

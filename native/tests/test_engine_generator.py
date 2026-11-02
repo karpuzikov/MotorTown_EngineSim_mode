@@ -44,6 +44,20 @@ class EngineGeneratorTests(unittest.TestCase):
                 decay_20_db = np.argmax(energy / energy[0] < 0.01) / make_exhausts.FS
                 self.assertLess(decay_20_db, 0.06)
 
+    def test_the_dory_has_a_true_flathead_not_a_gm_ls(self):
+        # In game the Dory buzzed: its engine was Engine Simulator's GM LS
+        # model with only flathead bore and stroke.
+        text = (ROOT / 'profiles/es_ford_flathead_239.mr').read_text()
+        self.assertNotIn('07_gm_ls', text)
+        self.assertIn('lift: 307 * units.thou', text)              # stock Ford cam
+        self.assertIn('duration_at_50_thou: 197 * units.deg', text)
+        self.assertIn('input lsa: 111.5 * units.deg', text)
+        self.assertIn('intake_flow_rate: k_carb(160.0)', text)     # Holley 94 two-barrel
+        self.assertIn('label rod_length(177.8 * units.mm)', text)
+        self.assertEqual(text.count('exhaust_system exhaust'), 1)  # single exhaust
+        order = re.findall(r'connect_wire\(wires.wire(\d)', text)
+        self.assertEqual(order, ['1', '5', '4', '8', '6', '3', '7', '2'])
+
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.
         for key, spec in real_engines.ENGINES.items():
@@ -62,10 +76,10 @@ class EngineGeneratorTests(unittest.TestCase):
             self.assertEqual(order, spec['firing'], key)
 
     def test_real_dimensions_reach_the_script(self):
-        text = (ROOT / 'profiles/es_ford_flathead_239.mr').read_text()
-        self.assertIn('label bore(81.0 * units.mm)', text)
-        self.assertIn('label stroke(95.25 * units.mm)', text)
-        self.assertIn('redline: 3800 * units.rpm', text)
+        text = (ROOT / 'profiles/es_chevy_350.mr').read_text()
+        self.assertIn('label bore(101.6 * units.mm)', text)
+        self.assertIn('label stroke(88.4 * units.mm)', text)
+        self.assertIn('redline: 5800 * units.rpm', text)
         self.assertIn("Engine Simulator's 07_gm_ls.mr model", text)
         self.assertTrue(text.rstrip().endswith('main()'))
         for key in ('bmw_n55', 'chrysler_440'):  # engine-only templates get a main
