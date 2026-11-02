@@ -168,7 +168,10 @@ bool LuaMuteLeaseEmitter::prepare() {
     std::uint64_t acknowledged = 0;
     try { acknowledged = std::stoull(number); }
     catch (...) { return transient_failure("ack_malformed"); }
-    if (acknowledged > m_sequence || m_sequence - acknowledged > 2) {
+    // Liveness is the 190-ms ACK age; the sequence only rejects replays.
+    // In game (Dory Wrecker) Lua routinely trailed by 3-6 packets: the
+    // old limit of 2 dropped the sound in and out every ~2 s.
+    if (acknowledged > m_sequence || m_sequence - acknowledged > MaxAckLag) {
         return transient_failure("ack_sequence_gap");
     }
     m_prepared = true;

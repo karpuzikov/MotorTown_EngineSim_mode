@@ -17,6 +17,7 @@ namespace mtes {
 // the original gain if the native module crashes or stops sending requests.
 class LuaMuteLeaseEmitter final : public StockEngineEmitter {
 public:
+    static constexpr std::uint64_t MaxAckLag = 10; // packets
     LuaMuteLeaseEmitter(std::filesystem::path temp, std::string session,
         std::string vehicle, std::string asset);
     bool prepare() override;

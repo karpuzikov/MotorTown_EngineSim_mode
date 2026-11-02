@@ -5,6 +5,7 @@
 #include "spatial_mix.h"
 
 #include <cassert>
+#include <cstdio>
 #include <cmath>
 #include <cstdint>
 #include <sstream>
@@ -15,24 +16,19 @@ using namespace mtes;
 namespace {
 bool near(double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; }
 
-// Feed the leveler a "raw" engine at levelDb (calibrated scale) for seconds,
-// rendered at the gain it asked for, in 20-ms worker ticks.
+// Feed the leveler a "raw" engine at levelDb (calibrated scale) and return
+// the output level (dBFS) over the last 100 ms.
 double run(LoudnessLeveler& leveler, double levelDb, double seconds) {
     const double amplitude = std::pow(10.0, levelDb / 20.0) * std::sqrt(2.0);
-    std::vector<std::int16_t> pcm(882);
-    double outDb = 0;
-    for (double t = 0; t < seconds; t += 0.02) {
-        const double gain = leveler.update(0.02);
-        double sum = 0;
-        for (std::size_t i = 0; i < pcm.size(); ++i) {
-            const double y = std::clamp(amplitude * gain * std::sin(i * 0.31), -1.0, 0.99997);
-            pcm[i] = static_cast<std::int16_t>(std::lround(y * 32768.0));
-            sum += (pcm[i] / 32768.0) * (pcm[i] / 32768.0);
-        }
-        leveler.observe(pcm.data(), pcm.size());
-        outDb = 10 * std::log10(sum / pcm.size());
-    }
-    return outDb;
+    std::vector<std::int16_t> pcm(static_cast<std::size_t>(seconds * 44100));
+    for (std::size_t i = 0; i < pcm.size(); ++i)
+        pcm[i] = static_cast<std::int16_t>(std::lround(amplitude * std::sin(i * 0.31) * 32767.0));
+    leveler.process(pcm.data(), pcm.size());
+    double sum = 0;
+    const std::size_t tail = 4410;
+    for (std::size_t i = pcm.size() - tail; i < pcm.size(); ++i)
+        sum += (pcm[i] / 32768.0) * (pcm[i] / 32768.0);
+    return 10 * std::log10(sum / tail);
 }
 } // namespace
 
@@ -50,23 +46,23 @@ int main() {
         assert(!parse_profile_output_gain(negative));
     }
 
-    // Leveler: full throttle stays at the reference, idle comes up but stays
-    // clearly quieter (in game: idle as loud as flat out was the complaint),
-    // and a throttle stab after idle is pulled down quickly.
+    // Leveler: full throttle stays at the reference; lifting off (raw -20 dB)
+    // or idling (-50 dB) is clearly quieter but never silent, and the level
+    // settles within ~0.2 s (no slow pumping after a lift-off or a shift).
     {
         LoudnessLeveler leveler;
         leveler.reset();
-        const double wot = run(leveler, LoudnessLeveler::ReferenceDbfs, 2.0);
+        const double wot = run(leveler, LoudnessLeveler::ReferenceDbfs, 1.0);
         assert(near(wot, LoudnessLeveler::ReferenceDbfs, 1.0));
-        const double idle = run(leveler, LoudnessLeveler::ReferenceDbfs - 50, 3.0);
+        const double lift = run(leveler, LoudnessLeveler::ReferenceDbfs - 20, 0.3);
+        assert(lift < wot - 4 && lift > wot - 10);
+        const double idle = run(leveler, LoudnessLeveler::ReferenceDbfs - 50, 0.5);
         assert(idle < wot - 10 && idle > wot - 20);
-        run(leveler, LoudnessLeveler::ReferenceDbfs, 0.4);
-        assert(leveler.gain_db() < 3.0);
-        // A fresh engine starts near idle gain, not silent.
+        const double back = run(leveler, LoudnessLeveler::ReferenceDbfs, 0.2);
+        assert(near(back, LoudnessLeveler::ReferenceDbfs, 1.5));
         LoudnessLeveler fresh;
         fresh.reset();
-        assert(fresh.gain_db() > 20);
-        assert(std::isfinite(fresh.update(0)) && std::isfinite(fresh.update(NAN)));
+        assert(fresh.gain_db() > 20); // a fresh engine is idling, not silent
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

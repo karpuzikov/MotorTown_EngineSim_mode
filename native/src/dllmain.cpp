@@ -157,6 +157,11 @@ public:
                     since >= std::chrono::seconds(5)) {
                     RC::Output::send<RC::LogLevel::Normal>(
                         STR("[MTES] Audio stage: {}\n"), audio_stage_name(stage));
+                    if (sample->mix) {
+                        RC::Output::send<RC::LogLevel::Normal>(
+                            STR("[MTES] 3D mix: gain {} pan {} low-pass {} Hz\n"),
+                            sample->mix->gain, sample->mix->pan, sample->mix->lowpass_hz);
+                    }
                     const auto drops = m_worker.total_drops();
                     if (drops != m_lastReportedDrops) {
                         using Stage = mtes::NativeAudioPipeline::Stage;

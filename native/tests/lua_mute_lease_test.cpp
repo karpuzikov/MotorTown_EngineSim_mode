@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     // No replay, vehicle confusion or old producer session can start sound.
     write(ack, response("0123456789ABCDE0", 50, token));
     assert(!emitter->prepare());
-    write(ack, response(sample.session, 45, token));
+    write(ack, response(sample.session, 50 - mtes::LuaMuteLeaseEmitter::MaxAckLag - 1, token));
     assert(!emitter->prepare());
     write(ack, response(sample.session, 50, token));
     assert(emitter->prepare());
@@ -70,7 +70,10 @@ int main(int argc, char** argv) {
     sample.sequence = 52;
     assert(emitter == lookup.stock_for(sample));
     assert(emitter->prepare()); // short ACK lag is permitted
-    sample.sequence = 55;
+    sample.sequence = 56; // Dory Wrecker in game: Lua routinely 3-6 packets behind
+    assert(emitter == lookup.stock_for(sample));
+    assert(emitter->prepare());
+    sample.sequence = 50 + mtes::LuaMuteLeaseEmitter::MaxAckLag + 1;
     assert(emitter == lookup.stock_for(sample));
     assert(!emitter->prepare()); // heartbeat lag is bounded
     assert(read(diagnostics).find("utc_ms=") != std::string::npos);

@@ -170,15 +170,6 @@ public:
         // pinned third-party library or changing the actual engine model.
         m_simulator->setTargetSynthesizerLatency(
             m_simulator->getSynthesizerInputLatency());
-#ifndef MTES_MEASURE_RAW_LEVELS // offline profile calibration measures fixed gain
-        if (m_calibrated) {
-            // The synthesizer's render thread reads this cap per sample, as
-            // it reads upstream's own setAudioParameters() values: a single
-            // aligned float store, changed slowly and smoothed per sample.
-            m_simulator->synthesizer().m_levelingFilter.p_maxLevel =
-                static_cast<float>(m_profileGain * m_leveler.update(seconds));
-        }
-#endif
         m_simulator->startFrame(seconds);
         const int steps = m_simulator->getFrameIterationCount();
         do {
@@ -198,7 +189,9 @@ public:
             frames, std::numeric_limits<int>::max()));
         const auto read = static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
-        if (m_calibrated) m_leveler.observe(dst, read);
+#ifndef MTES_MEASURE_RAW_LEVELS // offline profile calibration measures fixed gain
+        if (m_calibrated) m_leveler.process(dst, read);
+#endif
         return read;
     }
 

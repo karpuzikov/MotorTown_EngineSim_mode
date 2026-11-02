@@ -33,8 +33,7 @@ class AudioMixTests(unittest.TestCase):
                         backend.index('m_simulator->startFrame(seconds);'))
         self.assertIn('profile_output_gain(script)', backend)
         self.assertIn('profile_rpm_scale(script)', backend)  # two-strokes
-        self.assertIn('m_leveler.observe(dst, read)', backend)
-        self.assertIn('m_leveler.update(seconds)', backend)
+        self.assertIn('m_leveler.process(dst, read)', backend)  # feed-forward, no pumping
 
     def test_every_packaged_profile_is_calibrated(self):
         profiles = sorted((ROOT / 'profiles').glob('es_*.mr'))

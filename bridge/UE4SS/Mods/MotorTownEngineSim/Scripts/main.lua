@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.23, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.24, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -225,13 +225,15 @@ local function restore_leased_engine(reason)
     return true
 end
 
--- Mutes every engine-sound component of the leased car (re-scanned every
--- 20 ticks: the game can start layers late). Keeps each original gain.
+-- Mutes every engine-sound component of the leased car. Keeps each
+-- original gain.
 local extraScanTick = 0
 mute_extra_engine_audio = function(vehicle)
     if not leasedAudio or not leasedAudio.extras then return true end
     extraScanTick = extraScanTick + 1
-    if not leasedAudio.scanned or extraScanTick % 20 == 0 then
+    -- Once per lease: the stock layers are also silenced globally, and a
+    -- periodic component scan of a big truck hitched the game thread.
+    if not leasedAudio.scanned then
         leasedAudio.scanned = true
         for _, extra in ipairs(extra_engine_audio(vehicle, leasedAudio.extraAddresses)) do
             local original = tonumber(member(extra.component, "VolumeMultiplier"))
@@ -831,7 +833,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.23 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.24 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -1067,7 +1069,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.23" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.24" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1356,7 +1358,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.23 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.24 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then
