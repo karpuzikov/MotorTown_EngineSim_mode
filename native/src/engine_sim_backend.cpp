@@ -24,6 +24,9 @@ namespace mtes {
 namespace {
 
 constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
+// Peak-normalized vehicle exhaust responses, as loud as Engine Simulator's
+// "new" recordings (which use 0.01); its leveler sets the final level.
+constexpr double VehicleExhaustImpulseVolume = 0.01;
 
 // Engine Simulator's starter turns the crank to -starter_speed: negative
 // v_theta for most models, positive for those scripted with a negative
@@ -42,8 +45,10 @@ class EngineSimBackend final : public EngineBackend {
 public:
     ~EngineSimBackend() override { stop(); }
 
-    bool load(const std::string &script) override {
+    bool load(const std::string &engineSoundSpec) override {
         stop();
+        const auto spec = parse_engine_sound_spec(engineSoundSpec);
+        const auto &script = spec.script;
         if (script.empty() || !std::filesystem::is_regular_file(script)) return false;
 
         // The script engine creates the actual pistons, crankshaft, firing
@@ -105,7 +110,11 @@ public:
                     stop();
                     return false;
                 }
-                const auto impulse = impulse_wav_path(script, response->getFilename());
+                // The vehicle's own exhaust (make_exhausts.py) replaces the
+                // engine script's generic muffler recording.
+                const auto impulse = spec.exhaustImpulse.empty()
+                    ? impulse_wav_path(script, response->getFilename())
+                    : std::filesystem::path(spec.exhaustImpulse);
                 const auto samples = load_impulse_wav(impulse.string());
                 if (!usable_impulse_for_engine_sim(samples) ||
                     samples.size() > std::numeric_limits<unsigned int>::max()) {
@@ -114,7 +123,7 @@ public:
                 }
                 m_simulator->synthesizer().initializeImpulseResponse(
                     samples.data(), static_cast<unsigned int>(samples.size()),
-                    response->getVolume(), i);
+                    spec.exhaustImpulse.empty() ? response->getVolume() : VehicleExhaustImpulseVolume, i);
             }
             m_simulator->startAudioRenderingThread();
             return true;

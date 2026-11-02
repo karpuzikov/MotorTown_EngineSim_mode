@@ -107,6 +107,9 @@ add_custom_target(mtes-stage-dev ALL
     # Profiles are self-contained engines; they need only the impulse responses.
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es/sound-library" "${mtes_stage_mod}/assets/sound-library"
+    # Each vehicle's own exhaust (profiles/generator/make_exhausts.py).
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${mtes_profile_source}/exhaust" "${mtes_stage_mod}/assets/sound-library/mtes-exhaust"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es" "${mtes_stage_mod}/es"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different

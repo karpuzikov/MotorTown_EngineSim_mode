@@ -31,7 +31,8 @@ $required = @(
     'engine_profiles.tsv', 'engine_families.tsv', 'settings.ini', 'ENGINE_SIM_LICENSE.txt',
     'assets\es_ford_flathead_239.mr', 'assets\es_chevy_350.mr', 'assets\es_volvo_d13.mr',
     'assets\sound-library\smooth\smooth_39.wav',
-    'assets\sound-library\new\mild_exhaust.wav', 'es\engine_sim.mr'
+    'assets\sound-library\new\mild_exhaust.wav', 'assets\sound-library\mtes-exhaust\truck_stack.wav',
+    'es\engine_sim.mr'
 )
 foreach ($relative in $required) {
     $path = Join-Path $StageRoot $relative
@@ -39,7 +40,7 @@ foreach ($relative in $required) {
         throw "Incomplete staged development package; missing: $path"
     }
 }
-if (-not (Select-String -LiteralPath (Join-Path $StageRoot 'Scripts\main.lua') -Pattern 'Exporter v0.2.26 active' -Quiet)) {
+if (-not (Select-String -LiteralPath (Join-Path $StageRoot 'Scripts\main.lua') -Pattern 'Exporter v0.2.27 active' -Quiet)) {
     throw 'Refusing outdated staged Lua exporter.'
 }
 

@@ -12,13 +12,13 @@
 
 namespace mtes {
 
-TrafficEngineVoices::Voice::Voice() : engine(make_engine_sim_backend()) {}
+TrafficEngineVoices::Voice::Voice()
+    : engine(make_engine_sim_backend()), pcm(PcmBlockPool::FramesPerBlock) {}
 
 TrafficEngineVoices::TrafficEngineVoices(std::filesystem::path telemetryFile,
     VehicleProfileLookup& profiles, std::function<bool()> inForeground)
     : m_telemetryFile(std::move(telemetryFile)), m_profiles(profiles),
-      m_inForeground(std::move(inForeground)),
-      m_pcm(PcmBlockPool::FramesPerBlock) {}
+      m_inForeground(std::move(inForeground)) {}
 
 TrafficEngineVoices::~TrafficEngineVoices() { stop(); }
 
@@ -29,34 +29,46 @@ void TrafficEngineVoices::set_output_volume(double volume) noexcept {
 bool TrafficEngineVoices::start() noexcept {
     if (m_thread.joinable()) return true;
     try {
+        for (auto& voice : m_voices) {
+            voice.thread = std::jthread([this, &voice](std::stop_token token) {
+                run_voice(voice, token);
+            });
+        }
         m_thread = std::jthread([this](std::stop_token token) {
             using namespace std::chrono_literals;
-#ifdef _WIN32
-            // XAudio2Create needs COM on this thread (see NativeAudioWorker).
-            if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return;
-#endif
             while (!token.stop_requested()) {
                 const auto now = Clock::now();
-                tick(now);
+                std::vector<GameTelemetrySample> traffic;
+                try {
+                    if (m_inForeground()) traffic = read_fresh_traffic();
+                }
+                catch (...) {}
+                assign(std::move(traffic));
+                std::size_t playing = 0;
+                for (const auto& voice : m_voices) playing += voice.playing.load() ? 1 : 0;
+                m_playingVoices.store(playing);
                 std::this_thread::sleep_until(now + 20ms);
             }
-            for (auto& voice : m_voices) silence(voice);
-            m_playingVoices.store(0);
-#ifdef _WIN32
-            CoUninitialize();
-#endif
         });
         return true;
     }
     catch (...) {
+        stop();
         return false;
     }
 }
 
 void TrafficEngineVoices::stop() noexcept {
-    if (!m_thread.joinable()) return;
-    m_thread.request_stop();
-    m_thread.join();
+    if (m_thread.joinable()) {
+        m_thread.request_stop();
+        m_thread.join();
+    }
+    for (auto& voice : m_voices) {
+        if (!voice.thread.joinable()) continue;
+        voice.thread.request_stop();
+        voice.thread.join();
+    }
+    m_playingVoices.store(0);
 }
 
 // Lua rewrites the file every ~50 ms; an older file means Lua stopped.
@@ -74,6 +86,61 @@ std::vector<GameTelemetrySample> TrafficEngineVoices::read_fresh_traffic() const
         if (auto sample = parse_game_telemetry(line)) traffic.push_back(std::move(*sample));
     }
     return traffic;
+}
+
+void TrafficEngineVoices::assign(std::vector<GameTelemetrySample> traffic) noexcept {
+    try {
+        std::vector<std::string> voiceVehicles, trafficVehicles;
+        for (const auto& voice : m_voices) voiceVehicles.push_back(voice.assignedVehicle);
+        for (const auto& sample : traffic) trafficVehicles.push_back(sample.vehicle);
+        const auto assignment = assign_traffic_voices(voiceVehicles, trafficVehicles);
+        std::array<bool, MaxVoices> assigned{};
+        for (std::size_t i = 0; i < traffic.size(); ++i) {
+            if (assignment[i] < 0) continue;
+            auto& voice = m_voices[static_cast<std::size_t>(assignment[i])];
+            assigned[static_cast<std::size_t>(assignment[i])] = true;
+            voice.assignedVehicle = traffic[i].vehicle;
+            std::lock_guard<std::mutex> lock(voice.targetMutex);
+            voice.target = std::move(traffic[i]);
+        }
+        for (std::size_t v = 0; v < MaxVoices; ++v) {
+            if (assigned[v]) continue;
+            m_voices[v].assignedVehicle.clear();
+            std::lock_guard<std::mutex> lock(m_voices[v].targetMutex);
+            m_voices[v].target.reset();
+        }
+    }
+    catch (...) {}
+}
+
+void TrafficEngineVoices::run_voice(Voice& voice, std::stop_token token) noexcept {
+    using namespace std::chrono_literals;
+#ifdef _WIN32
+    // XAudio2Create needs COM on this thread (see NativeAudioWorker).
+    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return;
+#endif
+    while (!token.stop_requested()) {
+        const auto now = Clock::now();
+        try {
+            std::optional<GameTelemetrySample> target;
+            {
+                std::lock_guard<std::mutex> lock(voice.targetMutex);
+                target = voice.target;
+            }
+            if (target) play(voice, *target, now);
+            else silence(voice);
+        }
+        catch (...) {
+            silence(voice);
+        }
+        voice.playing.store(voice.started);
+        std::this_thread::sleep_until(now + 20ms);
+    }
+    silence(voice);
+    voice.playing.store(false);
+#ifdef _WIN32
+    CoUninitialize();
+#endif
 }
 
 void TrafficEngineVoices::silence(Voice& voice) noexcept {
@@ -95,9 +162,6 @@ void TrafficEngineVoices::play(Voice& voice, const GameTelemetrySample& sample,
     if (voice.vehicle != sample.vehicle || voice.script != *script) silence(voice);
     voice.vehicle = sample.vehicle;
     voice.script = *script;
-    // shortcut: a newly assigned vehicle compiles its engine on this thread
-    // (~0.3 s), briefly starving the other traffic voices; give each voice
-    // its own thread if that is audible in game.
     if (!voice.engine.update(sample.vehicle, *script, sample.state, now)) {
         silence(voice);
         return;
@@ -107,44 +171,16 @@ void TrafficEngineVoices::play(Voice& voice, const GameTelemetrySample& sample,
     voice.lastTick = now;
     if (firstTick) return; // the simulator fills its first buffer meanwhile
     const auto frames = std::clamp<std::size_t>(
-        static_cast<std::size_t>(std::lround(elapsed * 44100.0)), 1, m_pcm.size());
-    const auto rendered = voice.engine.render(m_pcm.data(), frames, now,
+        static_cast<std::size_t>(std::lround(elapsed * 44100.0)), 1, voice.pcm.size());
+    const auto rendered = voice.engine.render(voice.pcm.data(), frames, now,
         sample.engine_volume.value_or(1.0), sample.vehicle);
     if (rendered != frames) return; // underrun: a short gap, never partial PCM
     voice.sink.set_mix(sample.mix.value_or(SpatialMix{}));
-    if (!voice.sink.queue(m_pcm.data(), rendered)) {
+    if (!voice.sink.queue(voice.pcm.data(), rendered)) {
         silence(voice);
         return;
     }
     if (!voice.started) voice.started = voice.sink.start();
-}
-
-void TrafficEngineVoices::tick(Clock::time_point now) noexcept {
-    try {
-        std::vector<GameTelemetrySample> traffic;
-        if (m_inForeground()) traffic = read_fresh_traffic();
-        std::vector<std::string> voiceVehicles, trafficVehicles;
-        for (const auto& voice : m_voices) voiceVehicles.push_back(voice.vehicle);
-        for (const auto& sample : traffic) trafficVehicles.push_back(sample.vehicle);
-        const auto assignment = assign_traffic_voices(voiceVehicles, trafficVehicles);
-        std::array<bool, MaxVoices> playing{};
-        for (std::size_t i = 0; i < traffic.size(); ++i) {
-            if (assignment[i] < 0) continue;
-            auto& voice = m_voices[static_cast<std::size_t>(assignment[i])];
-            play(voice, traffic[i], now);
-            playing[static_cast<std::size_t>(assignment[i])] = !voice.vehicle.empty();
-        }
-        std::size_t count = 0;
-        for (std::size_t v = 0; v < MaxVoices; ++v) {
-            if (!playing[v]) silence(m_voices[v]);
-            else ++count;
-        }
-        m_playingVoices.store(count);
-    }
-    catch (...) {
-        for (auto& voice : m_voices) silence(voice);
-        m_playingVoices.store(0);
-    }
 }
 
 } // namespace mtes

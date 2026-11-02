@@ -31,6 +31,16 @@ int main() {
         assert(!parse_profile_directive(negative, "// mtes-rpm-scale:", 4));
     }
 
+    // A vehicle's exhaust rides along with its engine script.
+    {
+        const auto plain = parse_engine_sound_spec("C:/mod/assets/es_volvo_d13.mr");
+        assert(plain.script == "C:/mod/assets/es_volvo_d13.mr" && plain.exhaustImpulse.empty());
+        const auto truck = parse_engine_sound_spec(
+            "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
+        assert(truck.script == "C:/mod/assets/es_volvo_d13.mr");
+        assert(truck.exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
+    }
+
     // Unreal's equal-power pan; gain and settings volume multiply.
     {
         const auto centre = equal_power_gains(SpatialMix{1.0, 0.0, 0}, 1.0);

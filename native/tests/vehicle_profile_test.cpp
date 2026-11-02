@@ -1,5 +1,6 @@
 #include "game_telemetry.h"
 #include "vehicle_profile.h"
+#include "profile_level.h"
 
 #include <cassert>
 #include <filesystem>
@@ -198,5 +199,26 @@ int main(int argc, char** argv) {
         rules << "cue\tv6\tprofiles/v6.mr\t0-10\n"; // horsepower only on vehicle/asset
     }
     assert(!catalog.reload());
+
+    // A vehicle's own exhaust must be a packaged impulse response.
+    fs::create_directories(root / "assets/sound-library/mtes-exhaust");
+    { std::ofstream wav(root / "assets/sound-library/mtes-exhaust/truck_stack.wav"); wav << "RIFF"; }
+    {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "vehicle\t^kira\tprofiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav\n";
+    }
+    assert(catalog.reload());
+    car.engine_asset = "MHEngineDataAsset /Game/Cars/Parts/Engine/MediumDuty_190HP.MediumDuty_190HP";
+    const auto spec = parse_engine_sound_spec(*catalog.script_for(car));
+    assert(fs::equivalent(spec.script, root / "profiles/v6.mr"));
+    assert(fs::equivalent(spec.exhaustImpulse, root / "assets/sound-library/mtes-exhaust/truck_stack.wav"));
+    for (const char* bad : {"profiles/v6.mr#exhaust=mtes-exhaust/missing.wav",
+                            "profiles/v6.mr#exhaust=../../outside.wav",
+                            "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.mr"}) {
+        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
+        rules << "vehicle\t^kira\t" << bad << "\n";
+        rules.close();
+        assert(!catalog.reload());
+    }
     fs::remove(root / "engine_families.tsv");
 }

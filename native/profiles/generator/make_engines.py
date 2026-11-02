@@ -14,7 +14,9 @@ import argparse
 import math
 from pathlib import Path
 
-from real_engines import ENGINE_FAMILIES, ENGINES, FALLBACK, VEHICLES
+from real_engines import (DEFAULT_EXHAUST, ENGINE_FAMILIES, ENGINES, FALLBACK,
+    FALLBACK_EXHAUSTS, VEHICLE_EXHAUSTS, VEHICLES)
+from make_exhausts import PROFILES as EXHAUST_PROFILES
 
 OUT = Path(__file__).resolve().parents[1]
 INCH = 25.4
@@ -425,10 +427,13 @@ def horsepower_ranges(family, engines):
     return [(engine, f"{low}-{high}") for engine, low, high in runs]
 
 
-def rule_lines(field, pattern, engine):
+def rule_lines(field, pattern, engine, exhaust=None):
+    assert exhaust is None or exhaust in EXHAUST_PROFILES, exhaust
     def script(key):
         assert key == "-" or key in ENGINES, key
-        return "-" if key == "-" else f"assets/es_{key}.mr"
+        if key == "-":
+            return "-"
+        return f"assets/es_{key}.mr" + (f"#exhaust=mtes-exhaust/{exhaust}.wav" if exhaust else "")
     if isinstance(engine, tuple):
         return [f"{field}\t{pattern}\t{script(key)}\t{hp}" for key, hp in horsepower_ranges(*engine)]
     return [f"{field}\t{pattern}\t{script(engine)}"]
@@ -446,9 +451,9 @@ def write_families():
     for pattern, name, real, engine in VEHICLES:
         keys = engine[1] if isinstance(engine, tuple) else [engine]
         lines.append(f"# {name}: {real} -> " + ", ".join(dict.fromkeys(ENGINES[k]["name"] for k in keys)))
-        lines += rule_lines("vehicle", pattern, engine)
+        lines += rule_lines("vehicle", pattern, engine, VEHICLE_EXHAUSTS.get(pattern, DEFAULT_EXHAUST))
     for field, pattern, engine in FALLBACK:
-        lines += rule_lines(field, pattern, engine)
+        lines += rule_lines(field, pattern, engine, FALLBACK_EXHAUSTS.get(pattern, DEFAULT_EXHAUST))
     (OUT / "engine_families.tsv").write_text("\n".join(lines) + "\n")
 
 

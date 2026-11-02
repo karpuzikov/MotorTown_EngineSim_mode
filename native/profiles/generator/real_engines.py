@@ -401,3 +401,46 @@ FALLBACK = [
     ("maxrpm", "3301-4800", "chevy_350_truck"),
     ("maxrpm", "4801-7599", "chevy_350"),
 ]
+
+# Each vehicle's real exhaust layout (generator/make_exhausts.py PROFILES):
+# Motor Town has no exhaust parts, so the vehicle decides it.
+VEHICLE_EXHAUSTS = {
+    r"^liliput": "bus_rear", r"^jemusi": "military_stack", r"^koma": "economy_small",
+    r"^cora": "turbo_sport", r"^zino": "sports_modern", r"^duke": "turbo_sport",
+    r"^monarch": "luxury_quiet", r"^stinger": "muscle_glasspack", r"^spider": "sports_modern",
+    r"^cervos": "classic_v8", r"^tuscan": "muscle_glasspack", r"^boxy": "pickup_van",
+    r"^muhan": "pickup_van", r"^daffy": "kei_small", r"^dabo": "kei_small",
+    r"^policeinterceptor|^interceptor": "classic_v8", r"^nuke": "car_modern",
+    r"^vani": "pickup_van", r"^campy": "pickup_van", r"^elisa": "car_modern",
+    r"^nimo": "luxury_quiet", r"^ambi": "pickup_van", r"^dory": "vintage_single",
+    r"^hana": "pickup_van", r"^pulio": "truck_medium", r"^ranch": "pickup_van",
+    r"^stella": "economy_small", r"^enfo": "turbo_sport", r"^formula": "sports_modern",
+    r"^stagon": "car_modern", r"^raven": "vintage_single", r"^fl1": "truck_stack",
+    r"^tavan": "pickup_van", r"^sv200|^schoolbus": "truck_medium", r"^aircity|^citybus": "bus_rear",
+    r"^trophy": "soviet_two_box", r"^raton": "supercar", r"^mammoth": "supercar",
+    r"^neo": "turbo_sport", r"^kira": "truck_medium", r"^mitage": "car_modern",
+    r"^panther": "sports_modern", r"^cheetah": "bus_rear", r"^brutus": "truck_medium",
+    r"^essam": "sports_modern", r"^micky": "economy_small", r"^vista": "turbo_sport",
+    r"^golima": "truck_stack", r"^scooty": "scooter_2t", r"^fortem": "aircooled_box",
+    r"^kudasemi": "truck_euro", r"^kuda": "truck_euro", r"^maity": "truck_euro",
+    r"^dumpy|^mixi": "truck_euro", r"^lobo": "truck_euro", r"^bora": "kei_small",
+    r"^dumbi": "bus_rear", r"^voltex": "pickup_van", r"^magis": "turbo_sport",
+    r"^gunthoo": "motorcycle_twin", r"^savannah": "aircooled_box", r"^townie": "aircooled_box",
+    r"^bongo": "aircooled_box", r"^tronko": "truck_euro", r"^longhornsemi4x2": "truck_stack",
+    r"^longhorn": "truck_stack", r"^fox": "offroad_vintage", r"^kart|^scmkart": "kart",
+    r"^police": "car_modern",
+}
+
+# Exhaust of cars not listed (traffic, new vehicles), by the FALLBACK rule
+# that picked their engine.
+FALLBACK_EXHAUSTS = {
+    r"smal+-?block|302": "car_modern", r"heavymachine": "truck_euro",
+    r"heavyduty": "truck_stack", r"mediumduty": "truck_medium", r"bus": "bus_rear",
+    r"kart": "kart", r"scooter|2-?stroke|moped": "scooter_2t", r"bike_?i4": "sportbike",
+    r"bike|(^|[^a-z0-9])h2_": "motorcycle_twin", r"v10": "supercar", r"v12|ferrari_275": "supercar",
+    r"i4sport": "sports_modern", r"/bike/i4": "sportbike", r"/bike/": "motorcycle_twin",
+    r"2stroke|chainsaw": "scooter_2t", r"truck|midduty": "truck_medium",
+    r"diesel|truck": "truck_medium", "11000-40000": "sportbike", "0-3300": "truck_stack",
+    "3301-4800": "pickup_van",
+}
+DEFAULT_EXHAUST = "car_modern"

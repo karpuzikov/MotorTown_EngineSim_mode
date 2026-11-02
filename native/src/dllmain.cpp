@@ -6,6 +6,7 @@
 #include "engine_sim_backend.h"
 #include "lua_mute_lease.h"
 #include "mod_settings.h"
+#include "profile_level.h"
 #include "traffic_engine_voices.h"
 #include "vehicle_profile.h"
 #include "xaudio2_sink.h"
@@ -66,6 +67,15 @@ bool game_in_foreground() noexcept {
 #else
     return true;
 #endif
+}
+
+// "es_volvo_d13.mr + exhaust truck_stack.wav" for the log.
+std::string engine_sound_name(const std::string& engineSoundSpec) {
+    const auto spec = mtes::parse_engine_sound_spec(engineSoundSpec);
+    auto name = std::filesystem::path(spec.script).filename().string();
+    if (!spec.exhaustImpulse.empty())
+        name += " + exhaust " + std::filesystem::path(spec.exhaustImpulse).filename().string();
+    return name;
 }
 
 // Fixed log strings keep the in-game failure report readable even when the
@@ -232,7 +242,7 @@ public:
                 wide(sample->engine_cue.empty() ? "unknown" : sample->engine_cue),
                 sample->max_rpm,
                 wide(script && !script->empty()
-                    ? std::filesystem::path(*script).filename().string()
+                    ? engine_sound_name(*script)
                     : std::string("stock sound (electric or unknown)")));
             m_lastProfileVehicle = sample->vehicle;
             m_lastProfileAsset = sample->engine_asset;

@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.26, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.27, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -846,7 +846,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.26 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.27 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -1082,7 +1082,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.26" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.27" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1265,15 +1265,19 @@ local function scan_running_traffic(pc, playerVehicle)
     return chosen
 end
 
--- shortcut: a vehicle without a stock AudioComponent gets plain
--- inverse-distance loudness, centred; use its attenuation if one appears.
+-- Only engines the game itself is sounding: a running engine's stock
+-- AudioComponent plays (at silenced volume) and carries its 3D position.
+-- In game, parked buses without one played centred at the bus station.
 local function traffic_mix(pc, vehicle)
+    local engine = member(vehicle, "EngineComponent")
+    local channel = valid(engine) and member(engine, "AudioComponent") or nil
+    if not valid(channel) then return nil end
+    local okPlaying, playing = pcall(function() return channel:IsPlaying() end)
+    if okPlaying and playing == false then return nil end
+    if path_value(vehicle, "EngineComponent.IsIgnitionOn()") == false then return nil end
     local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
-    if ok and gain then return string.format("%.4f %.4f %.0f", gain, pan, lowpass) end
-    local lx, ly, lz = camera_location(pc)
-    local distance = lx and distance_to(vehicle, lx, ly, lz)
-    if not distance then return nil end
-    return string.format("%.4f 0.0000 0", math.min(1, 1000 / math.max(distance, 1000)))
+    if not ok or not gain then return nil end
+    return string.format("%.4f %.4f %.0f", gain, pan, lowpass)
 end
 
 local function write_traffic_telemetry(pc, playerVehicle)
@@ -1291,8 +1295,7 @@ local function write_traffic_telemetry(pc, playerVehicle)
             local throttle = tonumber(path_value(vehicle, "EngineComponent.GetThrottle()")) or 0
             if throttle ~= throttle then throttle = 0 end
             if throttle > 1 then throttle = throttle / 100 end
-            local ignition = path_value(vehicle, "EngineComponent.IsIgnitionOn()")
-            local running = ignition == true or (ignition == nil and rpm >= 100)
+            local running = true -- traffic_mix: ignition on, stock engine sound playing
             -- Gear does not reach the synthesizer; 0 (neutral) satisfies the format.
             lines[#lines + 1] = native_telemetry_packet(vehicle, rpm,
                 math.max(0, math.min(1, throttle)), running, 0, pc, trafficSequence, mixField)
@@ -1462,7 +1465,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.26 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.27 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

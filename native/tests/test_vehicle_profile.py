@@ -64,7 +64,7 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             for field, pattern, profile, hp in rules:
                 if field == wanted and name and pattern.search(name) and (
                         hp is None or (horsepower is not None and hp[0] <= horsepower <= hp[1])):
-                    return profile
+                    return profile.partition('#exhaust=')[0]
             return None
         if first('asset', asset) == '-':
             return None  # electric motors first, in any vehicle
@@ -81,7 +81,10 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         for field, _, profile, _ in self.rules():
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
-                self.assertTrue((ROOT / 'profiles' / Path(profile).name).is_file(), profile)
+                script, _, exhaust = profile.partition('#exhaust=mtes-exhaust/')
+                self.assertTrue((ROOT / 'profiles' / Path(script).name).is_file(), profile)
+                # Every vehicle and fallback carries its own exhaust.
+                self.assertTrue((ROOT / 'profiles/exhaust' / exhaust).is_file(), profile)
 
     def test_each_car_gets_its_real_counterparts_engine(self):
         cases = {
@@ -157,3 +160,14 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         # An electric motor keeps its stock sound in any vehicle.
         self.assertIsNone(self.resolve('Kira_Van_C /x', engine('Electric_300HP')))
         self.assertIsNone(self.resolve('EVan_C /x', engine('Electric_130HP')))
+
+    def test_vehicles_get_their_own_exhaust(self):
+        import re
+        lines = (ROOT / 'profiles/engine_families.tsv').read_text().splitlines()
+        def exhaust(pattern):
+            line = next(l for l in lines if l.startswith(f'vehicle\t{pattern}\t'))
+            return re.search(r'#exhaust=mtes-exhaust/(\w+)\.wav', line).group(1)
+        self.assertEqual(exhaust('^golima'), 'truck_stack')
+        self.assertEqual(exhaust('^kuda'), 'truck_euro')
+        self.assertEqual(exhaust('^scooty'), 'scooter_2t')
+        self.assertEqual(exhaust('^dory'), 'vintage_single')

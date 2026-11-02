@@ -26,6 +26,23 @@ inline std::optional<double> parse_profile_directive(std::istream& script,
     return std::nullopt;
 }
 
+// A vehicle's engine sound: an engine script, optionally with the vehicle's
+// own exhaust impulse response in place of the script's:
+//     "<engine.mr>#exhaust=<exhaust.wav>"   (engine_families.tsv, profiles/exhaust)
+struct EngineSoundSpec {
+    std::string script;
+    std::string exhaustImpulse; // empty: the script's own impulse responses
+};
+
+inline constexpr const char* ExhaustSpecMarker = "#exhaust=";
+
+inline EngineSoundSpec parse_engine_sound_spec(const std::string& spec) {
+    const auto marker = spec.find(ExhaustSpecMarker);
+    if (marker == std::string::npos) return {spec, {}};
+    return {spec.substr(0, marker),
+        spec.substr(marker + std::char_traits<char>::length(ExhaustSpecMarker))};
+}
+
 // Two-stroke engines fire every revolution. Engine Simulator only models
 // four-strokes, so such a profile runs at this multiple of the game RPM:
 //     // mtes-rpm-scale: 2

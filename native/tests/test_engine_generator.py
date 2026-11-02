@@ -20,6 +20,19 @@ class EngineGeneratorTests(unittest.TestCase):
                 self.assertEqual(committed, make_engines.build(key, spec),
                                  'run native/profiles/generator/make_engines.py')
 
+    def test_committed_exhausts_match_the_generator(self):
+        import wave
+        import make_exhausts
+        for profile in make_exhausts.PROFILES:
+            with self.subTest(exhaust=profile):
+                with wave.open(str(ROOT / f'profiles/exhaust/{profile}.wav')) as committed:
+                    self.assertEqual((committed.getnchannels(), committed.getframerate()), (1, 44100))
+                    data = committed.readframes(committed.getnframes())
+                expected = make_exhausts.impulse_response(make_exhausts.PROFILES[profile])
+                import numpy as np
+                self.assertEqual(data, np.round(expected * 32767).astype('<i2').tobytes(),
+                                 'run native/profiles/generator/make_exhausts.py')
+
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
         # Engine Simulator: TDC = journal - (bank - first bank), crank tdc = 90 + first bank.
         for key, spec in real_engines.ENGINES.items():

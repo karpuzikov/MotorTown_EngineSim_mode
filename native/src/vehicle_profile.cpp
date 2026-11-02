@@ -1,4 +1,5 @@
 #include "vehicle_profile.h"
+#include "profile_level.h"
 
 #include <algorithm>
 #include <cctype>
@@ -20,7 +21,7 @@ bool contained_in(const fs::path& file, const fs::path& root) {
 }
 
 // Validates a manifest-relative .mr path and resolves it inside root.
-std::optional<std::string> packaged_script(const fs::path& root, const std::string& text) {
+std::optional<std::string> packaged_mr(const fs::path& root, const std::string& text) {
     const fs::path relative(text);
     if (relative.is_absolute() || relative.has_root_name() ||
         relative.extension() != ".mr") return std::nullopt;
@@ -32,6 +33,32 @@ std::optional<std::string> packaged_script(const fs::path& root, const std::stri
     if (error || !contained_in(script, root) ||
         !fs::is_regular_file(script, error) || error) return std::nullopt;
     return script.string();
+}
+
+// A relative impulse-response path inside root/assets/sound-library.
+std::optional<std::string> packaged_impulse(const fs::path& root, const std::string& text) {
+    const fs::path relative(text);
+    if (relative.is_absolute() || relative.has_root_name() ||
+        relative.extension() != ".wav") return std::nullopt;
+    for (const auto& part : relative) {
+        if (part == "..") return std::nullopt;
+    }
+    std::error_code error;
+    const auto library = root / "assets" / "sound-library";
+    const auto impulse = fs::weakly_canonical(library / relative, error);
+    if (error || !contained_in(impulse, root) ||
+        !fs::is_regular_file(impulse, error) || error) return std::nullopt;
+    return impulse.string();
+}
+
+// "<engine.mr>" or "<engine.mr>#exhaust=<exhaust.wav>" (profile_level.h).
+std::optional<std::string> packaged_script(const fs::path& root, const std::string& text) {
+    const auto spec = parse_engine_sound_spec(text);
+    const auto script = packaged_mr(root, spec.script);
+    if (!script || spec.exhaustImpulse.empty()) return script;
+    const auto impulse = packaged_impulse(root, spec.exhaustImpulse);
+    if (!impulse) return std::nullopt;
+    return *script + ExhaustSpecMarker + *impulse;
 }
 
 std::vector<std::string> split_tabs(const std::string& line) {

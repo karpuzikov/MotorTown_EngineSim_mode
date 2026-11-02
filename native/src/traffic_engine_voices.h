@@ -10,6 +10,8 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -50,8 +52,9 @@ inline std::vector<int> assign_traffic_voices(const std::vector<std::string>& vo
 }
 
 // Engine Simulator sound for the running engines of OTHER vehicles near the
-// camera (traffic, a car left idling), each on its own Engine Simulator and
-// XAudio2 voice at its stock 3D mix. Stock engine sound is silenced globally,
+// camera (traffic, a car left idling), each on its own thread, Engine
+// Simulator and XAudio2 voice at its stock 3D mix (one shared thread glitched
+// in game once two or three engines played). Stock engine sound is silenced globally,
 // so there is no lease. Lua lists the nearest few in
 // %TEMP%/MotorTownEngineSim_traffic_telemetry.txt (MTES5 lines).
 class TrafficEngineVoices final {
@@ -75,15 +78,22 @@ private:
     struct Voice {
         EngineAudio engine;
         XAudio2Sink sink;
-        std::string vehicle;
+        std::string vehicle; // voice thread only
         std::string script;
         bool started = false;
         Clock::time_point lastTick{};
+        std::vector<std::int16_t> pcm;
+        std::mutex targetMutex;
+        std::optional<GameTelemetrySample> target; // set by the coordinator
+        std::string assignedVehicle;               // coordinator only
+        std::atomic<bool> playing{false};
+        std::jthread thread;
         Voice();
     };
 
     std::vector<GameTelemetrySample> read_fresh_traffic() const;
-    void tick(Clock::time_point now) noexcept;
+    void assign(std::vector<GameTelemetrySample> traffic) noexcept;
+    void run_voice(Voice& voice, std::stop_token token) noexcept;
     void play(Voice& voice, const GameTelemetrySample& sample, Clock::time_point now);
     static void silence(Voice& voice) noexcept;
 
@@ -91,9 +101,8 @@ private:
     VehicleProfileLookup& m_profiles;
     std::function<bool()> m_inForeground;
     std::array<Voice, MaxVoices> m_voices;
-    std::vector<std::int16_t> m_pcm;
     std::atomic<std::size_t> m_playingVoices{0};
-    std::jthread m_thread;
+    std::jthread m_thread; // coordinator: reads Lua's list, assigns voices
 };
 
 } // namespace mtes
