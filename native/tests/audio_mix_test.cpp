@@ -1,4 +1,5 @@
 // Spatial mix, settings and profile directive parsing (no audio device).
+#include "firing_harmonic_cut.h"
 #include "mod_settings.h"
 #include "profile_level.h"
 #include "spatial_mix.h"
@@ -56,6 +57,25 @@ int main() {
         assert(hatchback - idle > 5 && hatchback - idle < 10);
         assert(near(hatchback - engine_loudness_gain_db(74, 5200, 6500, 0.0), 3, 1e-9));
         assert(engine_loudness_gain_db(130, 9000, 6500, 1.0) == 0.0); // never above full scale
+    }
+
+    // The firing-harmonic cut keeps the firing thump (-1.5 dB) and cuts its
+    // 2nd harmonic (the three overlapping filters: ~18 dB at 14); 0 dB
+    // leaves the sound untouched.
+    {
+        const auto level_after_cut = [](double cutDb, double hz) {
+            FiringHarmonicCut cut(cutDb);
+            std::vector<std::int16_t> pcm(44100);
+            for (std::size_t i = 0; i < pcm.size(); ++i)
+                pcm[i] = static_cast<std::int16_t>(10000 * std::sin(2 * 3.14159265358979 * hz * i / 44100));
+            cut.process(pcm.data(), pcm.size(), 60.0);
+            double sum = 0;
+            for (std::size_t i = 22050; i < pcm.size(); ++i) sum += double(pcm[i]) * pcm[i];
+            return 20 * std::log10(std::sqrt(sum / 22050) / (10000 / std::sqrt(2.0)));
+        };
+        assert(std::abs(level_after_cut(14, 60)) < 2.0);
+        assert(level_after_cut(14, 120) < -14.0);
+        assert(std::abs(level_after_cut(0, 120)) < 0.1);
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

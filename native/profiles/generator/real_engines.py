@@ -286,7 +286,7 @@ ENGINES = {
         redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
     "detroit_6v92": dict(name="Detroit Diesel 6V92TA two-stroke V6 (MCI MC-9 1989)", layout="V", cyl=6,
         v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 6, 3, 5, 2, 4], numbering="ford",
-        redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
+        redline=2100, cr=17.0, style="diesel", rpm_scale=2, harmonic_cut_db=14, **DETROIT_TWO_STROKE),
     "iveco_f1c": dict(name="Iveco F1C 3.0 I4 diesel (minibus)", layout="I", cyl=4,
         bore=95.8, stroke=104.0, firing=[1, 3, 4, 2], redline=3800, cr=17.5, style="diesel"),
     "cummins_isl9": dict(name="Cummins ISL9 8.9 I6 diesel (buses, medium trucks)", layout="I", cyl=6,

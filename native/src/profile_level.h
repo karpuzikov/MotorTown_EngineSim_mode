@@ -96,4 +96,12 @@ inline double profile_rpm_scale(const std::string& path) {
     return parse_profile_directive(script, "// mtes-rpm-scale:", 4).value_or(1.0);
 }
 
+// dB cut of the 2nd-4th firing harmonics (firing_harmonic_cut.h); 0 = none:
+//     // mtes-harmonic-cut-db: 16
+inline double profile_harmonic_cut_db(const std::string& path) {
+    std::ifstream script(path);
+    if (!script) return 0.0;
+    return parse_profile_directive(script, "// mtes-harmonic-cut-db:", 40).value_or(0.0);
+}
+
 } // namespace mtes

@@ -218,14 +218,13 @@ CLASS_TILT_DB = {
     # the recording is not (2-8 kHz only half matched: the cab adds road and
     # wind noise).
     "flathead": [-16, 10, 1, 5, 7, 22, 13, 17, 20, 17],
-    # A real 1989 MCI MC-9's Detroit 6V92TA idling (cold start recording,
-    # 2026-11-02): the firing thump carries ~60-80% of the sound, clatter
-    # rides on top. The curve keeps the thump at -2..-4 dB of the total at
-    # every RPM (idle, cruise, full throttle); fitted to idle alone, the
-    # thump sank to -9 dB when driving: a "farting buzz" in game.
-    # shortcut: idle runs ~5 dB less clatter and +8 dB at 125 Hz vs the
-    # recording; no real driving recording to fit the rest.
-    "detroit": [26, 42, 28, 26, 36, 41, 43, 37, 41, 56],
+    # Fitted by an automated render-and-compare loop, together with the
+    # 6V92's 14 dB firing-harmonic cut, to a real 1989 MCI MC-9 idling (cold
+    # start recording, 2026-11-02): 1/3-octave bands within 3 dB from 40 Hz
+    # to 8 kHz (80-100 Hz +6, 315-400 Hz -5); the firing thump stays at
+    # -1..-5 dB of the total at idle, cruise and full throttle.
+    # shortcut: no real driving recording; driving keeps the idle balance.
+    "detroit": [20, 41, 26, 29, 35, 41, 44, 39, 43, 59],
     "small": [-3, -3, -1, 0, 0, 0, 2, 2, 1, 0],
     "sport": [-2, -2, 0, 0, 0, 0, 2, 3, 2, 0],
     "two_stroke": [-6, -6, -3, 0, 0, 0, 3, 4, 3, 0],
@@ -251,7 +250,9 @@ FULL_THROTTLE_LOUDNESS_DBA = {
     "economy_small": 75, "soviet_two_box": 78, "kei_small": 76, "aircooled_box": 80,
     "pickup_van": 77, "offroad_vintage": 80, "truck_medium": 84, "military_stack": 88,
     "truck_stack": 88, "truck_euro": 84, "bus_rear": 82, "motorcycle_twin": 86,
-    "bus_detroit": 82,
+    # shortcut: the native loudness model levels RMS before the 6V92's
+    # harmonic cut, which takes 4 dB(A) off; 82 + 4 lands on 82 dB(A).
+    "bus_detroit": 86,
     "sportbike": 88, "scooter_2t": 80, "kart": 92,
 }
 

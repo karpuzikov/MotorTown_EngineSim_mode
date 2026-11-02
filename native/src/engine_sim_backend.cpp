@@ -1,5 +1,6 @@
 #include "engine_sim_backend.h"
 #include "impulse_wav.h"
+#include "firing_harmonic_cut.h"
 #include "overrun_fuel_cut.h"
 #include "profile_level.h"
 
@@ -103,6 +104,7 @@ public:
             m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
             m_loudnessGain = -1.0; // first read() jumps to the target
             m_rpmScale = profile_rpm_scale(script);
+            m_harmonicCut.emplace(profile_harmonic_cut_db(script));
 
             const int exhausts = m_engine->getExhaustSystemCount();
             if (exhausts <= 0) {
@@ -143,6 +145,8 @@ public:
         if (!m_simulator || !m_engine || !m_transmission ||
             !std::isfinite(gameRpm) || !std::isfinite(throttle)) return false;
         const double rpm = gameRpm * m_rpmScale;
+        // Engine Simulator's four-stroke model fires cylinders/2 times a turn.
+        m_firingHz.store(rpm / 60.0 * m_engine->getCylinderCount() / 2.0);
 
         // Follow Motor Town crankshaft speed; its driving physics remain
         // authoritative. The simulator's dynamometer holds that speed while
@@ -216,6 +220,7 @@ public:
             frames, std::numeric_limits<int>::max()));
         const auto read = static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
+        if (m_harmonicCut) m_harmonicCut->process(dst, read, m_firingHz.load());
         if (m_fullThrottleLoudnessDba) {
             // ~80 ms glide: throttle and gear changes swell, never click.
             const double target = m_targetLoudnessGain.load();
@@ -257,6 +262,8 @@ private:
     double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
     OverrunFuelCut m_fuelCut;
     double m_rpmScale = 1.0;
+    std::optional<FiringHarmonicCut> m_harmonicCut; // read() thread after load()
+    std::atomic<double> m_firingHz{0.0};            // advance() thread -> read() thread
     std::optional<double> m_fullThrottleLoudnessDba;
     std::mt19937 m_random{0x4d544553u};
     std::normal_distribution<double> m_cycleVariation{0.0, 1.0};
