@@ -116,7 +116,7 @@ vehicle	^mitage	assets/es_mazda_skyactiv_25.mr#exhaust=mtes-exhaust/car_modern.w
 # Panther: 1989 Mazda MX-5 -> Mazda B6 1.6 I4 (MX-5 NA)
 vehicle	^panther	assets/es_mazda_b6.mr#exhaust=mtes-exhaust/sports_modern.wav#loudness=79
 # Cheetah MK1: 1989 MCI MC-9 -> Detroit Diesel 6V92TA two-stroke V6 (MCI MC-9 1989)
-vehicle	^cheetah	assets/es_detroit_6v92.mr#exhaust=mtes-exhaust/bus_detroit.wav#loudness=78
+vehicle	^cheetah	assets/es_detroit_6v92.mr#exhaust=mtes-exhaust/bus_detroit.wav#loudness=81
 # Brutus: 2013 Mercedes-Benz Unimog -> Mercedes OM934 5.1 I4 diesel (Unimog), Mercedes OM936 7.7 I6 diesel (Unimog U 530)
 vehicle	^brutus	assets/es_mercedes_om934.mr#exhaust=mtes-exhaust/truck_medium.wav#loudness=84	0-217
 vehicle	^brutus	assets/es_mercedes_om936.mr#exhaust=mtes-exhaust/truck_medium.wav#loudness=84	218-100000

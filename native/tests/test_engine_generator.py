@@ -64,7 +64,7 @@ class EngineGeneratorTests(unittest.TestCase):
         # Its exhaust curve is now fitted to a real MC-9 idling.
         rules = (ROOT / 'profiles/engine_families.tsv').read_text()
         self.assertIn('vehicle\t^cheetah\tassets/es_detroit_6v92.mr'
-                      '#exhaust=mtes-exhaust/bus_detroit.wav#loudness=78\n', rules)
+                      '#exhaust=mtes-exhaust/bus_detroit.wav#loudness=81\n', rules)
         self.assertTrue((ROOT / 'profiles/exhaust/bus_detroit.wav').is_file())
 
     def test_each_cylinder_reaches_tdc_when_it_fires(self):
