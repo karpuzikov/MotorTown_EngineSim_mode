@@ -1,4 +1,5 @@
 // Spatial mix, settings and profile directive parsing (no audio device).
+#include "mechanical_sound_layer.h"
 #include "mod_settings.h"
 #include "profile_level.h"
 #include "spatial_mix.h"
@@ -56,6 +57,27 @@ int main() {
         assert(hatchback - idle > 5 && hatchback - idle < 10);
         assert(near(hatchback - engine_loudness_gain_db(74, 5200, 6500, 0.0), 3, 1e-9));
         assert(engine_loudness_gain_db(130, 9000, 6500, 1.0) == 0.0); // never above full scale
+    }
+
+    // A Detroit two-stroke's blower whine follows engine speed (crank order
+    // 88); unknown presets do not exist; no RPM, no sound.
+    {
+        const auto spec = parse_engine_sound_spec("a.mr#exhaust=b.wav#mechanical=detroit_two_stroke#loudness=82");
+        assert(spec && spec->mechanicalPreset == "detroit_two_stroke" && spec->exhaustImpulse == "b.wav");
+        assert(spec->fullThrottleLoudnessDba && *spec->fullThrottleLoudnessDba == 82);
+        assert(!mechanical_sound_preset("unknown"));
+        MechanicalSoundLayer layer(*mechanical_sound_preset("detroit_two_stroke"));
+        std::vector<std::int16_t> pcm(44100, 0);
+        layer.add_to(pcm.data(), pcm.size(), 0.0, 0.0, 600.0, 0.1);
+        for (auto v : pcm) assert(v == 0);
+        layer.add_to(pcm.data(), pcm.size(), 600.0, 0.0, 600.0, 0.1);
+        const auto bin = [&](double hz) { // Goertzel power
+            const double k = 2 * std::cos(2 * 3.14159265358979 * hz / 44100);
+            double s1 = 0, s2 = 0;
+            for (auto v : pcm) { const double s0 = v + k * s1 - s2; s2 = s1; s1 = s0; }
+            return s1 * s1 + s2 * s2 - k * s1 * s2;
+        };
+        assert(bin(88 * 600 / 60.0) > 30 * bin(88 * 600 / 60.0 + 37)); // whine line over the noise
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

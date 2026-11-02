@@ -30,15 +30,18 @@ inline std::optional<double> parse_profile_directive(std::istream& script,
 // A vehicle's engine sound: an engine script, optionally with the vehicle's
 // own exhaust impulse response in place of the script's, and the vehicle's
 // real-world loudness (full-throttle pass-by dB(A) at 7.5 m):
-//     "<engine.mr>[#exhaust=<exhaust.wav>][#loudness=<dBA>]"   (engine_families.tsv)
+//     "<engine.mr>[#exhaust=<exhaust.wav>][#mechanical=<preset>][#loudness=<dBA>]"
+// (engine_families.tsv; presets: mechanical_sound_layer.h)
 struct EngineSoundSpec {
     std::string script;
     std::string exhaustImpulse;               // empty: the script's own impulse responses
     std::optional<double> fullThrottleLoudnessDba; // none: Engine Simulator's level as is
+    std::string mechanicalPreset;             // empty: exhaust sound only
 };
 
 inline constexpr const char* ExhaustSpecMarker = "#exhaust=";
 inline constexpr const char* LoudnessSpecMarker = "#loudness=";
+inline constexpr const char* MechanicalSpecMarker = "#mechanical=";
 
 // Fails (nullopt) on a malformed gain: a wrong level must not play.
 inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) {
@@ -55,6 +58,12 @@ inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) 
         }
         catch (...) { return std::nullopt; }
         spec.resize(loudnessAt);
+    }
+    const auto mechanicalAt = spec.find(MechanicalSpecMarker);
+    if (mechanicalAt != std::string::npos) {
+        parsed.mechanicalPreset = spec.substr(
+            mechanicalAt + std::char_traits<char>::length(MechanicalSpecMarker));
+        spec.resize(mechanicalAt);
     }
     const auto exhaustAt = spec.find(ExhaustSpecMarker);
     if (exhaustAt != std::string::npos) {

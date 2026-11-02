@@ -29,6 +29,17 @@ FLATHEAD_V8 = dict(
     exhaust="single_crossover", crossover_inch=36, flame_speed=0.75,
 )
 
+# Detroit Diesel two-strokes: blower whine, gear and injector clatter and
+# (6V92TA) a turbo whistle come from a measured mechanical sound layer
+# (Engine Simulator only makes exhaust sound); single rear exhaust; heavy
+# coach flywheel. Firing orders 1L-3R-3L-4R-4L-2R-2L-1R (V8) and
+# 1L-3R-3L-2R-2L-1R (V6), left bank = cylinders 1.., right bank after.
+# shortcut: firing orders from the service-manual convention, not checked
+# against a manual; Engine Simulator still runs them as four-strokes at
+# twice the RPM (right firing rate, no ports or blower scavenging).
+DETROIT_TWO_STROKE = dict(mechanical="detroit_two_stroke", exhaust="single_crossover",
+                          crossover_inch=0, flywheel_lb=120)
+
 ENGINES = {
     # --- small cars / economy -------------------------------------------
     "bmc_a_1275": dict(name="BMC A-Series 1275 I4 (Mini Cooper S)", layout="I", cyl=4,
@@ -200,8 +211,8 @@ ENGINES = {
         cyl=8, v_angle=90, bore=128.0, stroke=142.0, firing=[1, 5, 7, 2, 6, 3, 4, 8], numbering="ford",
         redline=2300, cr=17.0, style="diesel"),
     "detroit_8v71": dict(name="Detroit Diesel 8V71 two-stroke V8 (MCI MC-9)", layout="V", cyl=8,
-        v_angle=63.5, bore=108.0, stroke=127.0, firing=[1, 5, 3, 7, 4, 8, 2, 6], numbering="ford",
-        redline=2100, cr=17.0, style="diesel", rpm_scale=2),
+        v_angle=63.5, bore=108.0, stroke=127.0, firing=[1, 7, 3, 8, 4, 6, 2, 5], numbering="ford",
+        redline=2100, cr=18.7, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
     # --- engines of other trims and power options of the same real
     #     vehicles (a stronger Motor Town engine -> the real stronger one) ---
     "chevy_396": dict(name="Chevrolet 396 big-block V8 (Camaro SS 396, Nova SS 396)", layout="V",
@@ -273,11 +284,11 @@ ENGINES = {
     "volvo_d16": dict(name="Volvo D16 16.1 I6 diesel (FH16, VNL)", layout="I", cyl=6,
         bore=144.0, stroke=165.0, firing=[1, 5, 3, 6, 2, 4], redline=2100, cr=17.0, style="diesel"),
     "detroit_8v92": dict(name="Detroit Diesel 8V92 two-stroke V8 (Freightliner FLT)", layout="V", cyl=8,
-        v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 5, 3, 7, 4, 8, 2, 6], numbering="ford",
-        redline=2100, cr=17.0, style="diesel", rpm_scale=2),
-    "detroit_6v92": dict(name="Detroit Diesel 6V92 two-stroke V6 (MCI coaches)", layout="V", cyl=6,
-        v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 4, 2, 5, 3, 6], numbering="ford",
-        redline=2100, cr=17.0, style="diesel", rpm_scale=2),
+        v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 7, 3, 8, 4, 6, 2, 5], numbering="ford",
+        redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
+    "detroit_6v92": dict(name="Detroit Diesel 6V92TA two-stroke V6 (MCI MC-9 1989)", layout="V", cyl=6,
+        v_angle=63.5, bore=123.0, stroke=127.0, firing=[1, 6, 3, 5, 2, 4], numbering="ford",
+        redline=2100, cr=17.0, style="diesel", rpm_scale=2, **DETROIT_TWO_STROKE),
     "iveco_f1c": dict(name="Iveco F1C 3.0 I4 diesel (minibus)", layout="I", cyl=4,
         bore=95.8, stroke=104.0, firing=[1, 3, 4, 2], redline=3800, cr=17.5, style="diesel"),
     "cummins_isl9": dict(name="Cummins ISL9 8.9 I6 diesel (buses, medium trucks)", layout="I", cyl=6,
@@ -346,7 +357,7 @@ VEHICLES = [
     (r"^kira", "Kira", "1976 Magirus-Deutz 90D", ("mediumduty", ["deutz_f6l912", "deutz_f6l413f", "deutz_f8l413f", "deutz_f10l413f"])),
     (r"^mitage", "Mitage", "2012 Mazda CX-5", ("smallblock", ["mazda_skyactiv_20", "mazda_skyactiv_20", "mazda_skyactiv_25", "mazda_skyactiv_25"])),
     (r"^panther", "Panther", "1989 Mazda MX-5", "mazda_b6"),
-    (r"^cheetah", "Cheetah MK1", "1980 MCI MC-9", ("bus", ["detroit_6v92", "detroit_6v92", "detroit_6v92", "detroit_8v71"])),
+    (r"^cheetah", "Cheetah MK1", "1989 MCI MC-9", "detroit_6v92"),
     (r"^brutus", "Brutus", "2013 Mercedes-Benz Unimog", ("mediumduty", ["mercedes_om934", "mercedes_om936", "mercedes_om936", "mercedes_om936"])),
     (r"^essam", "Essam", "1969 Nissan Fairlady Z", "nissan_l24"),
     (r"^micky", "Micky", "Nissan Micra", "nissan_cg13"),

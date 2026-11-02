@@ -87,7 +87,7 @@ vehicle	^raven	assets/es_ford_model_b.mr#exhaust=mtes-exhaust/vintage_single.wav
 vehicle	^raven	assets/es_ford_flathead_221.mr#exhaust=mtes-exhaust/vintage_single.wav#loudness=78	278-100000
 # FL1: 1985 Freightliner FLT -> Cummins NTC 14 I6 diesel (Freightliner FLT), Detroit Diesel 8V92 two-stroke V8 (Freightliner FLT)
 vehicle	^fl1	assets/es_cummins_ntc14.mr#exhaust=mtes-exhaust/truck_stack.wav#loudness=88	0-392
-vehicle	^fl1	assets/es_detroit_8v92.mr#exhaust=mtes-exhaust/truck_stack.wav#loudness=88	393-100000
+vehicle	^fl1	assets/es_detroit_8v92.mr#exhaust=mtes-exhaust/truck_stack.wav#mechanical=detroit_two_stroke#loudness=88	393-100000
 # Tavan: 1983 GMC Vandura -> Chevrolet 305 V8 (Vandura), Chevrolet 350 V8 (Camaro SS / Nova SS)
 vehicle	^tavan	assets/es_chevy_305.mr#exhaust=mtes-exhaust/pickup_van.wav#loudness=77	0-158
 vehicle	^tavan	assets/es_chevy_350.mr#exhaust=mtes-exhaust/pickup_van.wav#loudness=77	159-100000
@@ -115,9 +115,8 @@ vehicle	^mitage	assets/es_mazda_skyactiv_20.mr#exhaust=mtes-exhaust/car_modern.w
 vehicle	^mitage	assets/es_mazda_skyactiv_25.mr#exhaust=mtes-exhaust/car_modern.wav#loudness=74	208-100000
 # Panther: 1989 Mazda MX-5 -> Mazda B6 1.6 I4 (MX-5 NA)
 vehicle	^panther	assets/es_mazda_b6.mr#exhaust=mtes-exhaust/sports_modern.wav#loudness=79
-# Cheetah MK1: 1980 MCI MC-9 -> Detroit Diesel 6V92 two-stroke V6 (MCI coaches), Detroit Diesel 8V71 two-stroke V8 (MCI MC-9)
-vehicle	^cheetah	assets/es_detroit_6v92.mr#exhaust=mtes-exhaust/bus_rear.wav#loudness=82	0-346
-vehicle	^cheetah	assets/es_detroit_8v71.mr#exhaust=mtes-exhaust/bus_rear.wav#loudness=82	347-100000
+# Cheetah MK1: 1989 MCI MC-9 -> Detroit Diesel 6V92TA two-stroke V6 (MCI MC-9 1989)
+vehicle	^cheetah	assets/es_detroit_6v92.mr#exhaust=mtes-exhaust/bus_rear.wav#mechanical=detroit_two_stroke#loudness=82
 # Brutus: 2013 Mercedes-Benz Unimog -> Mercedes OM934 5.1 I4 diesel (Unimog), Mercedes OM936 7.7 I6 diesel (Unimog U 530)
 vehicle	^brutus	assets/es_mercedes_om934.mr#exhaust=mtes-exhaust/truck_medium.wav#loudness=84	0-217
 vehicle	^brutus	assets/es_mercedes_om936.mr#exhaust=mtes-exhaust/truck_medium.wav#loudness=84	218-100000
