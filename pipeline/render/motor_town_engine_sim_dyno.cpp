@@ -1,6 +1,6 @@
 // Offline dynamometer for generated Engine Simulator scripts.
 //
-//   motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP]
+//   motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [OUTPUT_GAIN]
 //
 // Compiles the script with Engine Simulator's own compiler, holds the
 // crankshaft at each speed from 1000 rpm to redline at full throttle, and
@@ -34,7 +34,6 @@ constexpr double FrameSeconds = 1.0 / 60.0;
 constexpr double SettleSeconds = 1.5;
 constexpr double MeasureSeconds = 1.0;
 constexpr int AudioSampleRate = 44100;
-constexpr float MotorTownEngineSimOutputGain = 1.0f;
 
 void write_wav(const std::filesystem::path &path, const std::vector<std::int16_t> &samples) {
     std::ofstream file(path, std::ios::binary);
@@ -81,11 +80,13 @@ void run_frame(Simulator *simulator, std::vector<std::int16_t> *audio, double *t
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::cerr << "usage: motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP]\n";
+        std::cerr << "usage: motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [OUTPUT_GAIN]\n";
         return 2;
     }
     const std::filesystem::path outputDir = argv[2];
     const double rpmStep = argc > 3 ? std::stod(argv[3]) : 500.0;
+    // Being calibrated: one gain for every engine, chosen so the loudest stays below full scale.
+    const float outputGain = argc > 4 ? std::stof(argv[4]) : 1.0f;
     std::filesystem::create_directories(outputDir);
 
     es_script::Compiler compiler;
@@ -110,8 +111,8 @@ int main(int argc, char **argv) {
     audio.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
     // One fixed gain for every engine instead of the automatic leveler, so
     // loudness differences come from the simulation itself.
-    audio.levelerMinGain = MotorTownEngineSimOutputGain;
-    audio.levelerMaxGain = MotorTownEngineSimOutputGain;
+    audio.levelerMinGain = outputGain;
+    audio.levelerMaxGain = outputGain;
     simulator->synthesizer().setAudioParameters(audio);
     for (int i = 0; i < engine->getExhaustSystemCount(); ++i) {
         const ImpulseResponse *response = engine->getExhaustSystem(i)->getImpulseResponse();
