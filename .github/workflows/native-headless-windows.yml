@@ -4,6 +4,7 @@ on:
   push:
     branches: [feat/native-engine-audio]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   engine-sim-pcm:
