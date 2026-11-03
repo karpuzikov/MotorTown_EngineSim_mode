@@ -7,7 +7,7 @@ unit volume velocity leaving the engine, as an impulse response the
 synthesizer convolves with the physical exhaust signal (which already carries
 the radiation d/dt). Same rules for every car.
 
-    python3 -I pipeline/exhaust_acoustics.py "1987 Scania 113H"   # prints the response
+    python3 -I pipeline/exhaust_acoustics.py "1987 Scania 113H" scania_dsc11   # prints the response
 """
 
 import math
@@ -49,6 +49,7 @@ SILENCER_GEOMETRY = {
 CATALYST_GEOMETRY = (2.2, 3.0, True)
 CATALYST_POSITION_FRACTION = 0.15               # of the exhaust length, from the engine
 TAILPIPE_LENGTH_IN_PIPE_DIAMETERS = 6.0         # after the last silencer
+MANIFOLD_DIAMETER_IN_PIPE_DIAMETERS = 4.0       # short and wide: a lumped volume
 
 
 def section_matrix(length_m, diameter_m, frequencies_hz, absorptive=False):
@@ -71,9 +72,14 @@ def multiply(first, second):
     return (a1 * a2 + b1 * c2, a1 * b2 + b1 * d2, c1 * a2 + d1 * c2, c1 * b2 + d1 * d2)
 
 
-def exhaust_sections(exhaust, exhaust_length_m):
-    """(length, diameter, absorptive) from the engine to the tailpipe."""
+def exhaust_sections(exhaust, exhaust_length_m, manifold):
+    """(length, diameter, absorptive) from the exhaust valve to the tailpipe.
+    manifold: (primary length m, primary diameter m, manifold volume m3)."""
     pipe = exhaust["pipe_mm"] / 1000.0
+    primary_length, primary_diameter, manifold_volume = manifold
+    manifold_diameter = MANIFOLD_DIAMETER_IN_PIPE_DIAMETERS * pipe
+    manifold_sections = [(primary_length, primary_diameter, False),
+                         (manifold_volume / (math.pi * manifold_diameter ** 2 / 4.0), manifold_diameter, False)]
     chambers = []
     if exhaust.get("catalyst"):
         chambers.append((CATALYST_POSITION_FRACTION, CATALYST_GEOMETRY))
@@ -96,15 +102,15 @@ def exhaust_sections(exhaust, exhaust_length_m):
         sections.append((chamber_length, diameter_ratio * pipe, absorptive))
         cursor = start + chamber_length
     sections.append((max(exhaust_length_m - cursor, tailpipe), pipe, False))
-    return sections
+    return manifold_sections + sections
 
 
-def exhaust_impulse_response(exhaust, exhaust_length_m):
+def exhaust_impulse_response(exhaust, exhaust_length_m, manifold):
     frequencies = np.fft.rfftfreq(IMPULSE_RESPONSE_SAMPLES * 4, 1.0 / SAMPLE_RATE_HZ)
     frequencies[0] = 1e-3                     # the response is smooth at DC
     total = (np.ones_like(frequencies), np.zeros_like(frequencies),
              np.zeros_like(frequencies), np.ones_like(frequencies))
-    for length, diameter, absorptive in exhaust_sections(exhaust, exhaust_length_m):
+    for length, diameter, absorptive in exhaust_sections(exhaust, exhaust_length_m, manifold):
         total = multiply(total, section_matrix(length, diameter, frequencies, absorptive))
     outlet = exhaust["pipe_mm"] / 2000.0
     outlet_impedance = (1.0 / (math.pi * outlet ** 2))
@@ -135,11 +141,13 @@ def write_wav_int16(path, response):
 if __name__ == "__main__":
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
     import generate_engine_scripts as generator
-    _, cars = generator.load_specs()
+    engines, cars = generator.load_specs()
     car = next(c for c in cars if c["real_car"] == sys.argv[1])
+    engine = engines[sys.argv[2]]
     length = generator.exhaust_length_m(car)
-    print(exhaust_sections(car["exhaust"], length))
-    h = exhaust_impulse_response(car["exhaust"], length)
+    manifold = generator.exhaust_manifold(engine, car, generator.derive(engine, car))
+    print(exhaust_sections(car["exhaust"], length, manifold))
+    h = exhaust_impulse_response(car["exhaust"], length, manifold)
     spectrum = np.abs(np.fft.rfft(h, 16384))
     bins = np.fft.rfftfreq(16384, 1 / SAMPLE_RATE_HZ)
     for low, high in [(20, 60), (60, 150), (150, 300), (300, 600), (600, 1200), (1200, 3000), (3000, 8000)]:

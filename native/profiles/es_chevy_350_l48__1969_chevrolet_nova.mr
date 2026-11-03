@@ -82,7 +82,7 @@ public node motor_town_engine {
         primary_tube_length: 0.200 * units.m,
         primary_flow_rate: k_carb(968.0),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1969_chevrolet_nova.wav", volume: 0.03317267)
+    impulse_response car_exhaust(filename: "exhaust/chevy_350_l48__1969_chevrolet_nova.wav", volume: 0.00734388)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

@@ -74,7 +74,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(908.0),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1932_ford_5_window_coupe.wav", volume: 0.05107345)
+    impulse_response car_exhaust(filename: "exhaust/ford_model_b_33__1932_ford_5_window_coupe.wav", volume: 0.00979014)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

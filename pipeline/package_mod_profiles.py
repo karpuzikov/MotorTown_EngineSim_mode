@@ -93,7 +93,7 @@ def horsepower_ranges(engines):
 def write_script(engine, car, name):
     script, derived = generator.engine_script(engine, car)
     (PROFILES_DIR / f"{name}.mr").write_text(script)
-    generator.write_car_exhaust_impulse(PROFILES_DIR, car)
+    generator.write_car_exhaust_impulse(PROFILES_DIR, engine, car)
     boost = generator.boost(engine, derived)
     if boost:
         (PROFILES_DIR / f"{name}.boost.json").write_text(generator.json.dumps(boost))

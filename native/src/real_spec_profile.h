@@ -27,9 +27,11 @@ namespace mtes {
 // (100 with Engine Simulator's generic muffler recording); the physical
 // exhaust responses pass ~13x more at 100 Hz-1 kHz (7.5), and the pipe flow
 // losses take x3.7 off again (median 100 Hz-1 kHz). 27.8 then played a
-// loaded semi under its own tyres in game (3D mix 0.3); x5 (+14 dB) puts the
-// fleet's median full load at 70% of redline near -12 dBFS, like stock cues.
-inline constexpr float MotorTownEngineSimRealSpecOutputGain = 140.0f;
+// loaded semi under its own tyres in game (3D mix 0.3). With the exhaust
+// manifold in the responses, 100 (+11 dB) puts the fleet's median full load
+// at 70% of redline near -15 dBFS, like stock cues; 140 pushed the loudest
+// (Detroit two-strokes, V12s, a semi at peak torque) into the soft clip.
+inline constexpr float MotorTownEngineSimRealSpecOutputGain = 100.0f;
 // Full-scale peaks bend smoothly above half scale instead of clipping.
 inline constexpr float MotorTownEngineSimRealSpecSoftClipKnee = 0.5f;
 

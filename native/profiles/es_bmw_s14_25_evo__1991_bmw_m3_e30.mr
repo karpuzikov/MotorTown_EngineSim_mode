@@ -74,7 +74,7 @@ public node motor_town_engine {
         primary_tube_length: 0.750 * units.m,
         primary_flow_rate: k_carb(952.1),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1991_bmw_m3_e30.wav", volume: 0.00533245)
+    impulse_response car_exhaust(filename: "exhaust/bmw_s14_25_evo__1991_bmw_m3_e30.wav", volume: 0.00375063)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

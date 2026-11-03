@@ -79,7 +79,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(2067.7),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1985_freightliner_fla.wav", volume: 0.02107712)
+    impulse_response car_exhaust(filename: "exhaust/cummins_ntc_big_cam__1985_freightliner_fla.wav", volume: 0.00657664)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)
