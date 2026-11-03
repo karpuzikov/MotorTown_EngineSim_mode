@@ -71,10 +71,6 @@ FALLBACK_RULES = [
 ]
 
 
-def slug(text):
-    return re.sub(r"[^a-z0-9]+", "_", generator.ascii_script_text(text).lower()).strip("_")
-
-
 def vehicle_key(game_id):
     # vehicle_profile.cpp matches the blueprint class lower-cased without "_".
     # shortcut: motortown.info ids, assumed to prefix the blueprint class
@@ -97,6 +93,7 @@ def horsepower_ranges(engines):
 def write_script(engine, car, name):
     script, derived = generator.engine_script(engine, car)
     (PROFILES_DIR / f"{name}.mr").write_text(script)
+    generator.write_car_exhaust_impulse(PROFILES_DIR, car)
     boost = generator.boost(engine, derived)
     if boost:
         (PROFILES_DIR / f"{name}.boost.json").write_text(generator.json.dumps(boost))
@@ -120,7 +117,7 @@ def main():
                 vehicle_rules.append((vehicle_key(game_id), f"vehicle\t^{vehicle_key(game_id)}\t-"))
             continue
         options = [engines[engine_id] for engine_id in car["engines"]]
-        scripts = {engine["id"]: write_script(engine, car, f"es_{engine['id']}__{slug(car['real_car'])}")
+        scripts = {engine["id"]: write_script(engine, car, f"es_{engine['id']}__{generator.car_slug(car)}")
                    for engine in options}
         for game_id in car["game_ids"]:
             key = vehicle_key(game_id)

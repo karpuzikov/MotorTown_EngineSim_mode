@@ -12,6 +12,7 @@ which parts are not physically modelled yet.
 """
 
 import json
+import re
 import os
 import unicodedata
 import math
@@ -163,6 +164,35 @@ def interpolate(table, x):
         if x <= x1:
             return y0 + (x - x0) / (x1 - x0) * (y1 - y0)
     return table[-1][1]
+
+
+def car_slug(car):
+    return re.sub(r"[^a-z0-9]+", "_", ascii_script_text(car["real_car"]).lower()).strip("_")
+
+
+_CAR_EXHAUST_RESPONSES = {}
+
+
+def car_exhaust_response(car):
+    """The car's exhaust impulse response from its real layout (exhaust_acoustics)."""
+    import exhaust_acoustics
+    if car["real_car"] not in _CAR_EXHAUST_RESPONSES:
+        _CAR_EXHAUST_RESPONSES[car["real_car"]] = exhaust_acoustics.exhaust_impulse_response(
+            car["exhaust"], exhaust_length_m(car))
+    return _CAR_EXHAUST_RESPONSES[car["real_car"]]
+
+
+def car_exhaust_impulse(car):
+    """(path relative to the script, volume) of the car's exhaust impulse WAV."""
+    import numpy
+    return f"exhaust/{car_slug(car)}.wav", float(numpy.max(numpy.abs(car_exhaust_response(car))))
+
+
+def write_car_exhaust_impulse(output_dir, car):
+    import exhaust_acoustics
+    path = Path(output_dir) / car_exhaust_impulse(car)[0]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    exhaust_acoustics.write_wav_int16(path, car_exhaust_response(car))
 
 
 def load_specs():
@@ -448,7 +478,7 @@ def engine_script(engine, car):
     redline = engine["redline_rpm"]
     out = ["// mtes-real-spec-profile: 1"] + (["// mtes-fuel-load-control: 1"] if diesel else []) + [
            'import "engine_sim.mr"', "", "units units()", "constants constants()",
-           "impulse_response_library ir_lib()", ""] + flame_speed_node(engine)
+           ""] + flame_speed_node(engine)
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
     out += [f"    engine engine(",
@@ -504,8 +534,10 @@ def engine_script(engine, car):
             f"        primary_tube_length: {d['primary_tube_length']:.3f} * units.m,",
             f"        primary_flow_rate: k_carb({area_flow_cfm(d['exhaust_runner_area']):.1f}),",
             f"        velocity_decay: 1.0, audio_volume: 1.0)"]
+    impulse_file, impulse_volume = car_exhaust_impulse(car)
+    out.append(f"    impulse_response car_exhaust(filename: \"{impulse_file}\", volume: {impulse_volume:.8f})")
     for index in range(exhaust_count):
-        out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: ir_lib.default_0)")
+        out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: car_exhaust)")
     out.append("")
 
     for side in ("intake", "exhaust"):
@@ -595,6 +627,7 @@ def main(arguments):
             entry["skipped"] = str(error)
         else:
             (output_dir / f"{engine_id}.mr").write_text(script)
+            write_car_exhaust_impulse(output_dir, car)
             entry["script"] = f"{engine_id}.mr"
             entry["boost"] = boost(engine, derived)
             if entry["boost"]:
