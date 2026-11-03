@@ -95,6 +95,7 @@ FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCAL
 # walls, which Engine Simulator does not model. Default 0.8.
 # Refit on all 112 engines (2026-11-03 full run: NA petrol median +15 %).
 MAX_BURNING_EFFICIENCY = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_BURN_EFFICIENCY", "0.44"))
+DIESEL_BURN_SPEED_FACTOR = 3.0
 FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed(), "
                         f"max_burning_efficiency: {MAX_BURNING_EFFICIENCY}")
 # Boost: the pressure ratio that lifts the model's unboosted full-load mean
@@ -135,11 +136,17 @@ FUEL_SCRIPT = {
 FUEL_SCRIPT["multifuel"] = FUEL_SCRIPT["diesel"]
 
 
-def flame_speed_node():
-    """Engine Simulator's default turbulence-to-flame-speed curve, scaled."""
+def flame_speed_node(engine):
+    """Engine Simulator's default turbulence-to-flame-speed curve, scaled.
+
+    Compression ignition: injected fuel that has mixed during the ignition
+    delay burns almost at once (the diesel knock), much faster than a spark
+    flame front; DIESEL_BURN_SPEED_FACTOR stands in for that rapid rise.
+    """
+    scale = FLAME_SPEED_SCALE * (DIESEL_BURN_SPEED_FACTOR if engine["fuel"] in ("diesel", "multifuel") else 1.0)
     samples = [(0.0, 3.0)] + [(x, 1.5 * x) for x in range(5, 50, 5)]
     lines = ["private node motor_town_flame_speed {", "    alias output __out:", "        function(5.0)"]
-    lines += [f"            .add_sample({x:.1f}, {FLAME_SPEED_SCALE * y:.4f})" for x, y in samples]
+    lines += [f"            .add_sample({x:.1f}, {scale * y:.4f})" for x, y in samples]
     lines[-1] += ";"
     return lines + ["}", ""]
 
@@ -440,7 +447,7 @@ def engine_script(engine, car):
     diesel = engine["fuel"] in ("diesel", "multifuel")
     redline = engine["redline_rpm"]
     out = ["// mtes-real-spec-profile: 1", 'import "engine_sim.mr"', "", "units units()", "constants constants()",
-           "impulse_response_library ir_lib()", ""] + flame_speed_node()
+           "impulse_response_library ir_lib()", ""] + flame_speed_node(engine)
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
     out += [f"    engine engine(",
