@@ -70,8 +70,14 @@ MINIMUM_SIMULATION_FREQUENCY_HZ = 10000
 # Engine Simulator burns too slowly: best-torque spark advance hit 58 deg on
 # every engine (real: 25-40). One flame-speed factor for the whole fleet,
 # fitted once against rated figures; the calibration run may override it.
-FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE", "1.0"))
-FLAME_SPEED_ARGUMENT = "turbulence_to_flame_speed_ratio: motor_town_flame_speed()"
+# Fit 2026-11-03: x3 puts best-torque advance at 22-35 deg.
+FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE", "3.0"))
+# With realistic burn speed the model made ~1.56x rated torque (median of
+# 8 engines); this one burn efficiency stands in for the heat lost to the
+# walls, which Engine Simulator does not model. Default 0.8.
+MAX_BURNING_EFFICIENCY = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_BURN_EFFICIENCY", "0.51"))
+FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed(), "
+                        f"max_burning_efficiency: {MAX_BURNING_EFFICIENCY}")
 FUEL_SCRIPT = {
     "petrol": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     "multifuel": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
