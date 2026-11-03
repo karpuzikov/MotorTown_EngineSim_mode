@@ -1,0 +1,42 @@
+[
+ {
+  "engine": "bmc_a_1275s",
+  "not_modelled": [],
+  "status": "measured",
+  "torque_nm": 92,
+  "torque_rpm": 2000,
+  "power_hp": 50,
+  "power_rpm": 5000,
+  "torque_error_pct": -13.8,
+  "power_error_pct": -32.9,
+  "rated": {
+   "power_hp": 75,
+   "power_rpm": 5800,
+   "torque_nm": 107,
+   "torque_rpm": 3000,
+   "redline_rpm": 6500
+  },
+  "max_rms_dbfs": -20.3,
+  "max_clipped_fraction": 0
+ },
+ {
+  "engine": "lambo_l539_65",
+  "not_modelled": [],
+  "status": "measured",
+  "torque_nm": 521,
+  "torque_rpm": 3000,
+  "power_hp": 411,
+  "power_rpm": 7000,
+  "torque_error_pct": -24.5,
+  "power_error_pct": -40.5,
+  "rated": {
+   "power_hp": 690,
+   "power_rpm": 8250,
+   "torque_nm": 690,
+   "torque_rpm": 5500,
+   "redline_rpm": 8500
+  },
+  "max_rms_dbfs": -4.9,
+  "max_clipped_fraction": 0.0837495
+ }
+]

@@ -1,0 +1,4 @@
+bmc_a_1275s                  power    50 hp @ 5000 (rated 75 @5800, -32.9%)  torque    92 N*m @ 2000 (rated 107 @3000, -13.8%)  level -20.3 dBFS  
+lambo_l539_65                power   411 hp @ 7000 (rated 690 @8250, -40.5%)  torque   521 N*m @ 3000 (rated 690 @5500, -24.5%)  level -4.9 dBFS  
+
+2 measured, mean |power error| 36.7%
