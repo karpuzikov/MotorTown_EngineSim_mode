@@ -59,6 +59,7 @@ CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
 PIPE_DISCHARGE_COEFFICIENT = 0.8                 # straight pipe or runner, not a valve
 DIESEL_FULL_LOAD_LAMBDA = 1.45                   # diesels burn lean even at full load
+ENGINE_SIM_INTAKE_LAMBDA = 0.8                   # fixed in Engine Simulator's Intake::process
 SIMULATION_FREQUENCY_PER_REDLINE_RPM = 2.0
 MINIMUM_SIMULATION_FREQUENCY_HZ = 10000
 
@@ -169,9 +170,13 @@ def area_flow_cfm(area_m2):
 
 
 def intake_molecular_afr(engine):
-    """Oxygen molecules per fuel molecule in the intake charge at full load."""
+    """The intake's molecular_afr input at full load.
+
+    Engine Simulator's intake always mixes 0.8 x this ratio (lambda 0.8, a
+    petrol full-power mixture), so a lean diesel charge divides that back out.
+    """
     if engine["fuel"] == "diesel":
-        return 17.75 * DIESEL_FULL_LOAD_LAMBDA
+        return 17.75 * DIESEL_FULL_LOAD_LAMBDA / ENGINE_SIM_INTAKE_LAMBDA
     return 25.0 / 2.0
 
 

@@ -2,10 +2,8 @@ name: Real-spec engine dyno (Windows)
 
 # Generates every engine script from the real-car specs, runs each on the
 # offline dynamometer and uploads measured power/torque plus WAV renders.
+# A full run takes over an hour; start it by hand (gh workflow run).
 on:
-  push:
-    branches: [restart/real-spec-pipeline]
-    paths: ['pipeline/**', '.github/workflows/real-spec-dyno.yml']
   workflow_dispatch:
     inputs:
       engines:
@@ -33,7 +31,15 @@ jobs:
       - name: Install Engine Simulator build dependencies
         shell: pwsh
         run: |
+          # The Chocolatey feed times out now and then; fall back to the release zip.
           choco install winflexbison3 -y --no-progress
+          if (-not (Get-Command win_flex -ErrorAction SilentlyContinue)) {
+            $zip = Join-Path $env:RUNNER_TEMP 'winflexbison.zip'
+            Invoke-WebRequest 'https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip' -OutFile $zip
+            $dir = Join-Path $env:RUNNER_TEMP 'winflexbison'
+            Expand-Archive $zip -DestinationPath $dir
+            Add-Content $env:GITHUB_PATH $dir
+          }
           & 'C:\vcpkg\vcpkg.exe' install 'sdl2:x64-windows' 'sdl2-image:x64-windows' 'boost-filesystem:x64-windows'
 
       - name: Build dynamometer
