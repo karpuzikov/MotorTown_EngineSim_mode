@@ -13,7 +13,7 @@ include(FetchContent)
 # profiles. FetchContent keeps the checkout inside the build directory.
 FetchContent_Declare(mtes_engine_sim
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 140406396ebdd9e682d267869f33643fc5897800
+    GIT_TAG 551312bfdc1926bd4d87e49a45a61478ed0d3266
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_GetProperties(mtes_engine_sim)
 if(NOT mtes_engine_sim_POPULATED)
