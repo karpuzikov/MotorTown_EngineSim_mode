@@ -11,10 +11,15 @@ include(FetchContent)
 # the lifetime fixes this build used to patch in, plus physically based
 # exhaust sound, intake boost and two-stroke support used by the real-spec
 # profiles. FetchContent keeps the checkout inside the build directory.
+set(motor_town_engine_sim_core_commit 140406396ebdd9e682d267869f33643fc5897800)
+# One checkout per pinned commit: the Piranha fix below edits the checkout,
+# so moving an existing one to another commit makes Git refuse (local changes).
+string(SUBSTRING "${motor_town_engine_sim_core_commit}" 0 7 motor_town_engine_sim_core_short)
 FetchContent_Declare(mtes_engine_sim
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 140406396ebdd9e682d267869f33643fc5897800
-    GIT_SUBMODULES_RECURSE TRUE)
+    GIT_TAG ${motor_town_engine_sim_core_commit}
+    GIT_SUBMODULES_RECURSE TRUE
+    SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/mtes_engine_sim-${motor_town_engine_sim_core_short}-src")
 FetchContent_GetProperties(mtes_engine_sim)
 if(NOT mtes_engine_sim_POPULATED)
     FetchContent_Populate(mtes_engine_sim)

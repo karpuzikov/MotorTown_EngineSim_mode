@@ -72,7 +72,7 @@ jobs:
       - name: Run actual combustion audio smoke
         shell: pwsh
         run: |
-          $assets = Join-Path (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path 'assets'
+          $assets = Join-Path (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-*-src').Path 'assets'
           $original = Get-Content -Raw (Join-Path $assets 'main.mr')
           $defaultEngine = 'engines/atg-video-2/01_subaru_ej25_eh.mr'
           if (-not $original.Contains($defaultEngine)) { throw 'Pinned engine test fixture changed' }
@@ -99,7 +99,7 @@ jobs:
       - name: Run packaged profiles with only assets shipped in the native mod
         shell: pwsh
         run: |
-          $source = (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path
+          $source = (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-*-src').Path
           $trial = Join-Path (Resolve-Path 'native/build-windows').Path 'packaged-trial'
           $assets = Join-Path $trial 'assets'
           New-Item -ItemType Directory -Force -Path $assets | Out-Null
