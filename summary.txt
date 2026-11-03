@@ -1,0 +1,3 @@
+detroit_6v92ta               power   498 hp @ 2000 (rated 335 @2100, +48.6%)  torque  1772 N*m @ 2000 (rated 1298 @1300, +36.5%)  level -12.2 dBFS  not modelled: two-stroke: no crankcase model, scavenge pressure fixed by rule, compression ignition (spark at injection timing), turbo: boost from rated torque, no lag or wastegate
+
+1 measured, mean |power error| 48.6%

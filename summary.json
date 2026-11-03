@@ -1,0 +1,26 @@
+[
+ {
+  "engine": "detroit_6v92ta",
+  "not_modelled": [
+   "two-stroke: no crankcase model, scavenge pressure fixed by rule",
+   "compression ignition (spark at injection timing)",
+   "turbo: boost from rated torque, no lag or wastegate"
+  ],
+  "status": "measured",
+  "torque_nm": 1772,
+  "torque_rpm": 2000,
+  "power_hp": 498,
+  "power_rpm": 2000,
+  "torque_error_pct": 36.5,
+  "power_error_pct": 48.6,
+  "rated": {
+   "power_hp": 335,
+   "power_rpm": 2100,
+   "torque_nm": 1298,
+   "torque_rpm": 1300,
+   "redline_rpm": 2100
+  },
+  "max_rms_dbfs": -12.2,
+  "max_clipped_fraction": 0.000226306
+ }
+]
