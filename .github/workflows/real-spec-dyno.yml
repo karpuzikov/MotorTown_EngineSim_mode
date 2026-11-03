@@ -1,0 +1,77 @@
+name: Real-spec engine dyno (Windows)
+
+# Generates every engine script from the real-car specs, runs each on the
+# offline dynamometer and uploads measured power/torque plus WAV renders.
+on:
+  push:
+    branches: [restart/real-spec-pipeline]
+    paths: ['pipeline/**', '.github/workflows/real-spec-dyno.yml']
+  workflow_dispatch:
+    inputs:
+      engines:
+        description: 'Space-separated engine ids (empty = all)'
+        required: false
+        default: ''
+      rpm_step:
+        description: 'Dyno speed step, rpm'
+        required: false
+        default: '500'
+
+jobs:
+  dyno:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Unit tests for the script generator
+        run: python -m unittest discover -s pipeline/tests -v
+
+      - name: Install Engine Simulator build dependencies
+        shell: pwsh
+        run: |
+          choco install winflexbison3 -y --no-progress
+          & 'C:\vcpkg\vcpkg.exe' install 'sdl2:x64-windows' 'sdl2-image:x64-windows' 'boost-filesystem:x64-windows'
+
+      - name: Build dynamometer
+        shell: pwsh
+        run: |
+          cmake -S pipeline/render -B build-dyno -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE='C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+          cmake --build build-dyno --config Release --target motor_town_engine_sim_dyno --parallel 4
+
+      - name: Generate scripts and run the dynamometer
+        shell: pwsh
+        run: |
+          $run = New-Item -ItemType Directory -Force -Path 'dyno-run'
+          Copy-Item -Recurse 'build-dyno/_deps/motor_town_engine_sim_core-src/es' (Join-Path $run 'es')
+          $engines = "${{ github.event.inputs.engines }}".Split(' ', [StringSplitOptions]::RemoveEmptyEntries)
+          python -I pipeline/generate_engine_scripts.py (Join-Path $run 'assets') @engines
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $step = "${{ github.event.inputs.rpm_step }}"
+          if (-not $step) { $step = '500' }
+          $exe = (Resolve-Path 'build-dyno/Release/motor_town_engine_sim_dyno.exe').Path
+          Push-Location $run
+          New-Item -ItemType Directory -Force -Path 'results' | Out-Null
+          $failed = @()
+          foreach ($script in Get-ChildItem 'assets/*.mr') {
+            $out = Join-Path 'results' $script.BaseName
+            & $exe $script.FullName $out $step *> "$out.log"
+            if ($LASTEXITCODE -ne 0) {
+              $failed += $script.BaseName
+              if (Test-Path 'error_log.log') { Copy-Item 'error_log.log' "$out.compile.log" }
+            }
+          }
+          Copy-Item 'assets/manifest.json' 'results/manifest.json'
+          Pop-Location
+          python -I pipeline/compare_dyno_to_rated.py dyno-run/results | Tee-Object dyno-run/results/summary.txt
+          if ($failed.Count) { Write-Host "Failed: $($failed -join ' ')" }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dyno-results
+          path: dyno-run/results
