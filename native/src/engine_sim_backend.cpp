@@ -46,6 +46,10 @@ void spin_forward(Engine *engine, double speed) {
     }
 }
 
+std::atomic<bool> g_exhaustResponseEnabled{true};
+// Without the exhaust's losses the raw source is ~20 dB louder at peaks.
+constexpr double RawSourceTestVolume = 0.1;
+
 class EngineSimBackend final : public EngineBackend {
 public:
     ~EngineSimBackend() override { stop(); }
@@ -130,7 +134,9 @@ public:
                 const auto impulse = spec.exhaustImpulse.empty()
                     ? impulse_wav_path(script, response->getFilename())
                     : std::filesystem::path(spec.exhaustImpulse);
-                const auto samples = load_impulse_wav(impulse.string());
+                const auto samples = g_exhaustResponseEnabled.load()
+                    ? load_impulse_wav(impulse.string())
+                    : std::vector<std::int16_t>{INT16_MAX};
                 if (!usable_impulse_for_engine_sim(samples) ||
                     samples.size() > std::numeric_limits<unsigned int>::max()) {
                     stop();
@@ -138,7 +144,8 @@ public:
                 }
                 m_simulator->synthesizer().initializeImpulseResponse(
                     samples.data(), static_cast<unsigned int>(samples.size()),
-                    spec.exhaustImpulse.empty() ? response->getVolume() : VehicleExhaustImpulseVolume, i);
+                    !g_exhaustResponseEnabled.load() ? RawSourceTestVolume
+                    : spec.exhaustImpulse.empty() ? response->getVolume() : VehicleExhaustImpulseVolume, i);
             }
             m_simulator->startAudioRenderingThread();
             return true;
@@ -285,6 +292,10 @@ private:
 };
 
 } // namespace
+
+void set_engine_sim_exhaust_response_enabled(bool enabled) {
+    g_exhaustResponseEnabled.store(enabled);
+}
 
 std::unique_ptr<EngineBackend> make_engine_sim_backend() {
     return std::make_unique<EngineSimBackend>();

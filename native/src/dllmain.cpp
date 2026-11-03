@@ -131,6 +131,9 @@ public:
         const auto settings = mtes::load_mod_settings(module_root());
         m_sink.set_output_volume(settings.volume);
         m_traffic.set_output_volume(settings.volume);
+        mtes::set_engine_sim_exhaust_response_enabled(settings.exhaustResponse);
+        if (!settings.exhaustResponse)
+            RC::Output::send<RC::LogLevel::Normal>(STR("[MTES] Test: exhaust response off (raw engine sound)\n"));
         m_output.set_capture_file(temp_file("MotorTownEngineSim_player_engine.wav"));
         m_profilesReady = m_profiles.reload();
         const bool workerStarted = m_profilesReady && m_worker.start();
