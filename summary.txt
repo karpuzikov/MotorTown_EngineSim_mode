@@ -1,0 +1,4 @@
+scania_dsc11                 power   355 hp @ 2000 (rated 360 @2000, -1.4%)  torque  1264 N*m @ 2000 (rated None @None, unrated)  level -22.8 dBFS  not modelled: compression ignition (spark at injection timing), turbo: boost from rated torque, no lag or wastegate
+chevy_350_l48                power   271 hp @ 5000 (rated 300 @4800, -9.8%)  torque   487 N*m @ 2000 (rated 515 @3200, -5.5%)  level -20.9 dBFS  
+
+2 measured, mean |power error| 5.6%

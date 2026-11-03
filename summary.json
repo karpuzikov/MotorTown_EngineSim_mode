@@ -1,0 +1,45 @@
+[
+ {
+  "engine": "scania_dsc11",
+  "not_modelled": [
+   "compression ignition (spark at injection timing)",
+   "turbo: boost from rated torque, no lag or wastegate"
+  ],
+  "status": "measured",
+  "torque_nm": 1264,
+  "torque_rpm": 2000,
+  "power_hp": 355,
+  "power_rpm": 2000,
+  "torque_error_pct": null,
+  "power_error_pct": -1.4,
+  "rated": {
+   "power_hp": 360,
+   "power_rpm": 2000,
+   "torque_nm": null,
+   "torque_rpm": null,
+   "redline_rpm": 2200
+  },
+  "max_rms_dbfs": -22.8,
+  "max_clipped_fraction": 0
+ },
+ {
+  "engine": "chevy_350_l48",
+  "not_modelled": [],
+  "status": "measured",
+  "torque_nm": 487,
+  "torque_rpm": 2000,
+  "power_hp": 271,
+  "power_rpm": 5000,
+  "torque_error_pct": -5.5,
+  "power_error_pct": -9.8,
+  "rated": {
+   "power_hp": 300,
+   "power_rpm": 4800,
+   "torque_nm": 515,
+   "torque_rpm": 3200,
+   "redline_rpm": 5600
+  },
+  "max_rms_dbfs": -20.9,
+  "max_clipped_fraction": 0
+ }
+]
