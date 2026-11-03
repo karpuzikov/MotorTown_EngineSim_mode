@@ -181,10 +181,12 @@ def car_slug(car):
     return re.sub(r"[^a-z0-9]+", "_", ascii_script_text(car["real_car"]).lower()).strip("_")
 
 
-# Engine Simulator's own recorded exhaust response, the one its most lifelike
-# demo engines use. The real-layout acoustic model (removed 2026-11-03) made a
-# smooth synthetic hum in game: "nothing like Engine Simulator".
-EXHAUST_IMPULSE_RESPONSE = "ir_lib.mild_exhaust_0_reverb"
+# Engine Simulator's own recorded exhaust response that comes closest to a real
+# recording (1948 Ford F-1 flathead V8, the Dory's car; 2026-11-04,
+# pipeline/compare_to_recording.py): octave bands 63 Hz-16 kHz within 4.2 dB
+# RMS. mild_exhaust_0_reverb, used by its demo engines, was 8.4 dB off: 10-14 dB
+# short above 2 kHz and too boomy below 250 Hz, "cartoonish" in game.
+EXHAUST_IMPULSE_RESPONSE = "ir_lib.minimal_muffling_01"
 
 
 def exhaust_count_for(engine, car):
