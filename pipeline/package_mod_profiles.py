@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import generate_engine_scripts as generator  # noqa: E402
 
 PROFILES_DIR = Path(__file__).resolve().parents[1] / "native" / "profiles"
+HANDMADE_DIR = Path(__file__).resolve().parent / "handmade"
 
 # Vehicles not listed: Motor Town engine asset / cue / max-rpm patterns
 # (kept from the previous profile set) -> a representative real engine.
@@ -91,6 +92,12 @@ def horsepower_ranges(engines):
 
 
 def write_script(engine, car, name):
+    """The engine as written by hand in pipeline/handmade (real specs, Engine
+    Simulator's own style) when one exists, else generated."""
+    handmade = HANDMADE_DIR / f"{name}.mr"
+    if handmade.is_file():
+        (PROFILES_DIR / f"{name}.mr").write_text(handmade.read_text())
+        return f"assets/{name}.mr"
     script, derived = generator.engine_script(engine, car)
     (PROFILES_DIR / f"{name}.mr").write_text(script)
     boost = generator.boost(engine, derived)

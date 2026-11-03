@@ -21,3 +21,10 @@ class PackageModProfilesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HandmadeProfileTest(unittest.TestCase):
+    def test_handmade_script_replaces_the_generated_one(self):
+        name = "es_ford_flathead_239__1948_ford_f_1"
+        packaged = (packager.PROFILES_DIR / f"{name}.mr").read_text()
+        self.assertEqual(packaged, (packager.HANDMADE_DIR / f"{name}.mr").read_text())
