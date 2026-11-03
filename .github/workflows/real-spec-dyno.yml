@@ -22,6 +22,10 @@ on:
         description: 'Calibration only: flame-speed factor override (empty = generator default)'
         required: false
         default: ''
+      rule_overrides:
+        description: 'Calibration only: JSON of generator rule constants to replace'
+        required: false
+        default: ''
       find_mbt:
         description: 'Search the best spark advance (find-mbt) or use the script timing (empty)'
         required: false
@@ -73,6 +77,7 @@ jobs:
           $engines = "${{ github.event.inputs.engines }}".Split(' ', [StringSplitOptions]::RemoveEmptyEntries)
           $env:MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE = "${{ github.event.inputs.flame_speed_scale }}"
           if (-not $env:MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE) { Remove-Item Env:MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE }
+          $env:MOTOR_TOWN_ENGINE_SIM_RULE_OVERRIDES = '${{ github.event.inputs.rule_overrides }}'
           python -I pipeline/generate_engine_scripts.py (Join-Path $run 'assets') @engines
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $step = "${{ github.event.inputs.rpm_step }}"

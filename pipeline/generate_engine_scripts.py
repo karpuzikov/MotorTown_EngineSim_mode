@@ -78,6 +78,9 @@ FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCAL
 MAX_BURNING_EFFICIENCY = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_BURN_EFFICIENCY", "0.51"))
 FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed(), "
                         f"max_burning_efficiency: {MAX_BURNING_EFFICIENCY}")
+# Calibration runs only: {"RULE_NAME": value} replaces any rule constant above.
+globals().update(json.loads(os.environ.get("MOTOR_TOWN_ENGINE_SIM_RULE_OVERRIDES") or "{}"))
+
 FUEL_SCRIPT = {
     "petrol": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     "multifuel": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
