@@ -57,7 +57,8 @@ PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
 INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
-EXHAUST_OUTLET_DISCHARGE_COEFFICIENT = 0.8
+PIPE_DISCHARGE_COEFFICIENT = 0.8                 # straight pipe or runner, not a valve
+DIESEL_FULL_LOAD_LAMBDA = 1.45                   # diesels burn lean even at full load
 SIMULATION_FREQUENCY_PER_REDLINE_RPM = 2.0
 MINIMUM_SIMULATION_FREQUENCY_HZ = 10000
 
@@ -160,7 +161,18 @@ def valve_flow_cfm(diameter_m, lift_m, valve_count):
 def pipe_flow_cfm(diameter_m):
     area = math.pi * diameter_m ** 2 / 4.0
     velocity = math.sqrt(2.0 * PRESSURE_1_5_INCH_HG_PA / AIR_DENSITY_KG_M3)
-    return EXHAUST_OUTLET_DISCHARGE_COEFFICIENT * area * velocity * CUBIC_METRES_PER_SECOND_TO_CFM
+    return PIPE_DISCHARGE_COEFFICIENT * area * velocity * CUBIC_METRES_PER_SECOND_TO_CFM
+
+
+def area_flow_cfm(area_m2):
+    return pipe_flow_cfm(math.sqrt(4.0 * area_m2 / math.pi))
+
+
+def intake_molecular_afr(engine):
+    """Oxygen molecules per fuel molecule in the intake charge at full load."""
+    if engine["fuel"] == "diesel":
+        return 17.75 * DIESEL_FULL_LOAD_LAMBDA
+    return 25.0 / 2.0
 
 
 def exhaust_length_m(car):
@@ -318,7 +330,8 @@ def engine_script(engine, car):
             f"        plenum_volume: {d['plenum_volume'] * 1000:.4f} * units.L,",
             f"        plenum_cross_section_area: {d['intake_runner_area'] * engine['cylinders'] * 1e4:.3f} * units.cm2,",
             f"        intake_flow_rate: k_carb({d['throttle_cfm']:.1f}),",
-            f"        runner_flow_rate: k_carb({d['intake_port_peak_cfm']:.1f}),",
+            f"        runner_flow_rate: k_carb({area_flow_cfm(d['intake_runner_area']):.1f}),",
+            f"        molecular_afr: {intake_molecular_afr(engine):.4f},",
             f"        runner_length: {INTAKE_RUNNER_LENGTH_M} * units.m,",
             f"        idle_flow_rate: k_carb(0.0),",
             f"        idle_throttle_plate_position: 0.995,",
@@ -328,7 +341,7 @@ def engine_script(engine, car):
             f"        length: {d['exhaust_length']:.3f} * units.m,",
             f"        outlet_flow_rate: k_carb({d['exhaust_outlet_cfm']:.1f}),",
             f"        primary_tube_length: {d['primary_tube_length']:.3f} * units.m,",
-            f"        primary_flow_rate: k_carb({d['exhaust_port_peak_cfm']:.1f}),",
+            f"        primary_flow_rate: k_carb({area_flow_cfm(d['exhaust_runner_area']):.1f}),",
             f"        velocity_decay: 1.0, audio_volume: 1.0)"]
     for index in range(exhaust_count):
         out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: ir_lib.default_0)")

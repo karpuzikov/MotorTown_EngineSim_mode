@@ -34,6 +34,7 @@ constexpr double FrameSeconds = 1.0 / 60.0;
 constexpr double SettleSeconds = 1.5;
 constexpr double MeasureSeconds = 1.0;
 constexpr int AudioSampleRate = 44100;
+constexpr float MotorTownEngineSimOutputGain = 1.0f;
 
 void write_wav(const std::filesystem::path &path, const std::vector<std::int16_t> &samples) {
     std::ofstream file(path, std::ios::binary);
@@ -107,6 +108,10 @@ int main(int argc, char **argv) {
     audio.inputSampleNoise = static_cast<float>(engine->getInitialJitter());
     audio.airNoise = static_cast<float>(engine->getInitialNoise());
     audio.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
+    // One fixed gain for every engine instead of the automatic leveler, so
+    // loudness differences come from the simulation itself.
+    audio.levelerMinGain = MotorTownEngineSimOutputGain;
+    audio.levelerMaxGain = MotorTownEngineSimOutputGain;
     simulator->synthesizer().setAudioParameters(audio);
     for (int i = 0; i < engine->getExhaustSystemCount(); ++i) {
         const ImpulseResponse *response = engine->getExhaustSystem(i)->getImpulseResponse();
