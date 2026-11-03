@@ -1,11 +1,14 @@
 // Offline dynamometer for generated Engine Simulator scripts.
 //
-//   motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [OUTPUT_GAIN]
+//   motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [OUTPUT_GAIN] [find-mbt]
 //
 // Compiles the script with Engine Simulator's own compiler, holds the
 // crankshaft at each speed from 1000 rpm to redline at full throttle, and
 // writes OUTPUT_DIR/dyno.json (measured torque and power, output level) plus
 // one 44.1 kHz mono WAV per speed. Same simulator and synthesizer as the mod.
+//
+// find-mbt first searches, every 1000 rpm, the spark advance that gives the
+// most torque (MBT, as an engine calibrator would) and runs the sweep with it.
 #include "impulse_wav.h"
 
 #include "compiler.h"
@@ -58,8 +61,14 @@ void spin_forward(Engine *engine, double speed) {
 }
 
 struct DynoPoint {
-    double rpm, torqueNm, powerHp, rmsDbfs, peakDbfs, clippedFraction;
+    double rpm, sparkAdvanceDeg, torqueNm, powerHp, rmsDbfs, peakDbfs, clippedFraction;
 };
+
+constexpr double MbtSearchMinDeg = 0.0;
+constexpr double MbtSearchMaxDeg = 60.0;
+constexpr int MbtSearchEvaluations = 7;
+constexpr double MbtSettleSeconds = 0.5;
+constexpr double MbtMeasureRevolutions = 8.0;   // four 4-stroke cycles
 
 // One frame of physics, then the synthesizer renders it on this thread.
 void run_frame(Simulator *simulator, std::vector<std::int16_t> *audio, double *torqueSum, int *torqueSteps) {
@@ -77,6 +86,50 @@ void run_frame(Simulator *simulator, std::vector<std::int16_t> *audio, double *t
     }
 }
 
+// Holds the crankshaft at rpm with the spark advanced by advanceDeg for
+// settleSeconds, then returns the mean torque over measureSeconds.
+double hold_torque_nm(Simulator *simulator, Engine *engine, double rpm, double advanceDeg,
+                      double settleSeconds, double measureSeconds, std::vector<std::int16_t> *audio) {
+    const double speed = units::rpm(rpm);
+    Function *timing = engine->getIgnitionModule()->getTimingCurve();
+    timing->setOutputScale(1.0);
+    const double scriptAdvance = timing->sampleTriangle(speed);
+    timing->setOutputScale(std::abs(scriptAdvance) > 1e-9 ? units::angle(advanceDeg, units::deg) / scriptAdvance : 0.0);
+    simulator->m_dyno.m_rotationSpeed = speed;
+    spin_forward(engine, speed);
+    for (double t = 0; t < settleSeconds; t += FrameSeconds) run_frame(simulator, nullptr, nullptr, nullptr);
+    double torqueSum = 0.0;
+    int torqueSteps = 0;
+    for (double t = 0; t < measureSeconds; t += FrameSeconds) run_frame(simulator, audio, &torqueSum, &torqueSteps);
+    return torqueSteps ? torqueSum / torqueSteps / units::torque(1.0, units::Nm) : 0.0;
+}
+
+// Golden-section search for the advance with the most torque.
+double find_mbt_deg(Simulator *simulator, Engine *engine, double rpm) {
+    const double measure = MbtMeasureRevolutions * 60.0 / rpm;
+    auto torque = [&](double deg) { return hold_torque_nm(simulator, engine, rpm, deg, MbtSettleSeconds, measure, nullptr); };
+    const double ratio = (std::sqrt(5.0) - 1.0) / 2.0;
+    double a = MbtSearchMinDeg, b = MbtSearchMaxDeg;
+    double c = b - ratio * (b - a), d = a + ratio * (b - a);
+    double fc = torque(c), fd = torque(d);
+    for (int i = 2; i < MbtSearchEvaluations; ++i) {
+        if (fc > fd) { b = d; d = c; fd = fc; c = b - ratio * (b - a); fc = torque(c); }
+        else { a = c; c = d; fc = fd; d = a + ratio * (b - a); fd = torque(d); }
+    }
+    return fc > fd ? c : d;
+}
+
+double interpolate(const std::vector<std::pair<double, double>> &table, double x) {
+    if (x <= table.front().first) return table.front().second;
+    for (std::size_t i = 1; i < table.size(); ++i) {
+        if (x <= table[i].first) {
+            const double t = (x - table[i - 1].first) / (table[i].first - table[i - 1].first);
+            return table[i - 1].second + t * (table[i].second - table[i - 1].second);
+        }
+    }
+    return table.back().second;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -88,6 +141,7 @@ int main(int argc, char **argv) {
     const double rpmStep = argc > 3 ? std::stod(argv[3]) : 500.0;
     // Being calibrated: one gain for every engine, chosen so the loudest stays below full scale.
     const float outputGain = argc > 4 ? std::stof(argv[4]) : 1.0f;
+    const bool findMbt = argc > 5 && std::string(argv[5]) == "find-mbt";
     std::filesystem::create_directories(outputDir);
 
     es_script::Compiler compiler;
@@ -138,17 +192,24 @@ int main(int argc, char **argv) {
     output.transmission->setClutchPressure(0.0);
 
     const double redlineRpm = engine->getRedline() / units::rpm(1.0);
+    std::vector<std::pair<double, double>> mbt;
+    if (findMbt) {
+        for (double rpm = 1000.0; rpm < redlineRpm + 999.0; rpm += 1000.0) {
+            const double at = std::min(rpm, redlineRpm);
+            mbt.emplace_back(at, find_mbt_deg(simulator, engine, at));
+            std::cout << "MBT " << at << " rpm: " << mbt.back().second << " deg\n";
+        }
+    }
     std::vector<DynoPoint> points;
     for (double rpm = 1000.0; rpm <= redlineRpm + 1.0; rpm += rpmStep) {
         const double speed = units::rpm(rpm);
-        simulator->m_dyno.m_rotationSpeed = speed;
-        spin_forward(engine, speed);
-        for (double t = 0; t < SettleSeconds; t += FrameSeconds) run_frame(simulator, nullptr, nullptr, nullptr);
-
+        Function *timing = engine->getIgnitionModule()->getTimingCurve();
+        timing->setOutputScale(1.0);
+        const double advance = mbt.empty()
+            ? timing->sampleTriangle(speed) / units::angle(1.0, units::deg)
+            : interpolate(mbt, rpm);
         std::vector<std::int16_t> pcm;
-        double torqueSum = 0.0;
-        int torqueSteps = 0;
-        for (double t = 0; t < MeasureSeconds; t += FrameSeconds) run_frame(simulator, &pcm, &torqueSum, &torqueSteps);
+        const double torque = hold_torque_nm(simulator, engine, rpm, advance, SettleSeconds, MeasureSeconds, &pcm);
 
         double squares = 0.0, peak = 0.0;
         std::size_t clipped = 0;
@@ -158,8 +219,7 @@ int main(int argc, char **argv) {
             clipped += std::abs(int(s)) >= 32767;
         }
         const double rms = pcm.empty() ? 0.0 : std::sqrt(squares / pcm.size());
-        const double torque = torqueSteps ? torqueSum / torqueSteps / units::torque(1.0, units::Nm) : 0.0;
-        points.push_back({rpm, torque, torque * speed / 745.7,
+        points.push_back({rpm, advance, torque, torque * speed / 745.7,
             20.0 * std::log10(std::max(rms, 1.0) / 32768.0),
             20.0 * std::log10(std::max(peak, 1.0) / 32768.0),
             pcm.empty() ? 0.0 : double(clipped) / pcm.size()});
@@ -177,10 +237,14 @@ int main(int argc, char **argv) {
          << ", \"points\": [";
     for (std::size_t i = 0; i < points.size(); ++i) {
         const auto &p = points[i];
-        json << (i ? ", " : "") << "{\"rpm\": " << p.rpm << ", \"torque_nm\": " << p.torqueNm
+        json << (i ? ", " : "") << "{\"rpm\": " << p.rpm << ", \"spark_advance_deg\": " << p.sparkAdvanceDeg
+             << ", \"torque_nm\": " << p.torqueNm
              << ", \"power_hp\": " << p.powerHp << ", \"rms_dbfs\": " << p.rmsDbfs
              << ", \"peak_dbfs\": " << p.peakDbfs << ", \"clipped_fraction\": " << p.clippedFraction << "}";
     }
+    json << "], \"mbt_spark_advance\": [";
+    for (std::size_t i = 0; i < mbt.size(); ++i)
+        json << (i ? ", " : "") << "[" << mbt[i].first << ", " << mbt[i].second << "]";
     json << "]}\n";
     simulator->releaseSimulation();
     return 0;

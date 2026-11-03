@@ -18,11 +18,19 @@ on:
         description: 'Fixed synthesizer output gain for every engine'
         required: false
         default: '1.0'
+      find_mbt:
+        description: 'Search the best spark advance (find-mbt) or use the script timing (empty)'
+        required: false
+        default: ''
 
 jobs:
   dyno:
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -65,13 +73,16 @@ jobs:
           if (-not $step) { $step = '500' }
           $gain = "${{ github.event.inputs.output_gain }}"
           if (-not $gain) { $gain = '1.0' }
+          $mbt = "${{ github.event.inputs.find_mbt }}"
           $exe = (Resolve-Path 'build-dyno/Release/motor_town_engine_sim_dyno.exe').Path
           Push-Location $run
           New-Item -ItemType Directory -Force -Path 'results' | Out-Null
           $failed = @()
-          foreach ($script in Get-ChildItem 'assets/*.mr') {
+          $scripts = @(Get-ChildItem 'assets/*.mr' | Sort-Object Name)
+          for ($index = ${{ matrix.shard }}; $index -lt $scripts.Count; $index += 4) {
+            $script = $scripts[$index]
             $out = Join-Path 'results' $script.BaseName
-            & $exe $script.FullName $out $step $gain *> "$out.log"
+            & $exe $script.FullName $out $step $gain $mbt *> "$out.log"
             if ($LASTEXITCODE -ne 0) {
               $failed += $script.BaseName
               if (Test-Path 'error_log.log') { Copy-Item 'error_log.log' "$out.compile.log" }
@@ -82,6 +93,7 @@ jobs:
           python -I pipeline/compare_dyno_to_rated.py dyno-run/results | Tee-Object dyno-run/results/summary.txt
           # Artifacts may be unreachable for whoever reads the run; print the essentials.
           foreach ($dyno in Get-ChildItem 'dyno-run/results/*/dyno.json') { Get-Content $dyno }
+          foreach ($log in Get-ChildItem 'dyno-run/results/*.log') { Write-Host "----- $($log.BaseName)"; Get-Content $log -Tail 25 }
           foreach ($name in $failed | Select-Object -First 3) {
             Write-Host "===== $name"
             Get-Content "dyno-run/results/$name.log" -Tail 40
@@ -92,5 +104,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: dyno-results
+          name: dyno-results-${{ matrix.shard }}
           path: dyno-run/results

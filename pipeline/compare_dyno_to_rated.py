@@ -24,6 +24,8 @@ def summarize(results_dir):
         dyno_file = results_dir / entry["engine"] / "dyno.json"
         if "skipped" in entry:
             row["status"] = "skipped: " + entry["skipped"]
+        elif not (results_dir / f"{entry['engine']}.log").exists():
+            continue  # run by another shard
         elif not dyno_file.exists():
             row["status"] = "failed"
         else:

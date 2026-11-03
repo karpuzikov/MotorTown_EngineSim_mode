@@ -9,7 +9,7 @@ include(FetchContent)
 # simulation rate, intake supply pressure, physically based exhaust sound.
 FetchContent_Declare(motor_town_engine_sim_core
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 37f2e3d7761e1812677a0c078128f6b42d4bc172
+    GIT_TAG 50d485f7c2c6ebd038412d8aa37e1b7ae71498c0
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_GetProperties(motor_town_engine_sim_core)
 if(NOT motor_town_engine_sim_core_POPULATED)
