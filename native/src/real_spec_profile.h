@@ -25,8 +25,9 @@ namespace mtes {
 // Tailpipe sound pressure (Pa at 1 m) to PCM: one gain for every engine, so
 // loudness differences come from the simulation. Dyno-calibrated 2026-11-03
 // (100 with Engine Simulator's generic muffler recording); the physical
-// exhaust responses pass ~13x more at 100 Hz-1 kHz.
-inline constexpr float MotorTownEngineSimRealSpecOutputGain = 7.5f;
+// exhaust responses pass ~13x more at 100 Hz-1 kHz (7.5), and the pipe flow
+// losses take x3.7 off again (median 100 Hz-1 kHz).
+inline constexpr float MotorTownEngineSimRealSpecOutputGain = 27.8f;
 
 inline bool is_real_spec_profile(const std::string& scriptPath) {
     std::ifstream script(scriptPath);

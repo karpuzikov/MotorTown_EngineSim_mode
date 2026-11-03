@@ -74,7 +74,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(433.6),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1983_nissan_micra_k10.wav", volume: 0.04708206)
+    impulse_response car_exhaust(filename: "exhaust/1983_nissan_micra_k10.wav", volume: 0.02092671)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

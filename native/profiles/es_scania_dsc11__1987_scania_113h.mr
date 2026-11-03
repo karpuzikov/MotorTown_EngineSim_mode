@@ -63,7 +63,7 @@ public node motor_town_engine {
         moment_of_inertia: 0.00285798 * units.kg * units.m * units.m,
         center_of_mass: 0.0, length: 0.239250 * units.m)
     intake intake(
-        plenum_volume: 11.0209 * units.L,
+        plenum_volume: 1.1021 * units.L,
         plenum_cross_section_area: 227.654 * units.cm2,
         intake_flow_rate: k_carb(2568.7),
         runner_flow_rate: k_carb(2363.3),
@@ -79,7 +79,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(1512.5),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1987_scania_113h.wav", volume: 0.04446376)
+    impulse_response car_exhaust(filename: "exhaust/1987_scania_113h.wav", volume: 0.02076830)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

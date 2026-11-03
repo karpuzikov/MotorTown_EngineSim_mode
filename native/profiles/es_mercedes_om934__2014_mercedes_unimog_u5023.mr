@@ -59,7 +59,7 @@ public node motor_town_engine {
         moment_of_inertia: 0.00160975 * units.kg * units.m * units.m,
         center_of_mass: 0.0, length: 0.222750 * units.m)
     intake intake(
-        plenum_volume: 5.1318 * units.L,
+        plenum_volume: 0.5132 * units.L,
         plenum_cross_section_area: 128.090 * units.cm2,
         intake_flow_rate: k_carb(1359.2),
         runner_flow_rate: k_carb(1994.5),
@@ -75,7 +75,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(1276.5),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/2014_mercedes_unimog_u5023.wav", volume: 0.05681417)
+    impulse_response car_exhaust(filename: "exhaust/2014_mercedes_unimog_u5023.wav", volume: 0.03686309)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

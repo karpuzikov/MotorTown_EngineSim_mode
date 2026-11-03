@@ -63,7 +63,7 @@ public node motor_town_engine {
         moment_of_inertia: 0.00087068 * units.kg * units.m * units.m,
         center_of_mass: 0.0, length: 0.178200 * units.m)
     intake intake(
-        plenum_volume: 5.5047 * units.L,
+        plenum_volume: 0.5505 * units.L,
         plenum_cross_section_area: 152.663 * units.cm2,
         intake_flow_rate: k_carb(1866.2),
         runner_flow_rate: k_carb(1584.8),
@@ -79,7 +79,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(1014.3),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1977_iveco_zeta.wav", volume: 0.09877295)
+    impulse_response car_exhaust(filename: "exhaust/1977_iveco_zeta.wav", volume: 0.04518224)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

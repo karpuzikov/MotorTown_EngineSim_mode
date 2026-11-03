@@ -67,7 +67,7 @@ public node motor_town_engine {
         moment_of_inertia: 0.00280620 * units.kg * units.m * units.m,
         center_of_mass: 0.0, length: 0.234300 * units.m)
     intake intake(
-        plenum_volume: 14.6180 * units.L,
+        plenum_volume: 1.4618 * units.L,
         plenum_cross_section_area: 308.337 * units.cm2,
         intake_flow_rate: k_carb(3871.7),
         runner_flow_rate: k_carb(2400.6),
@@ -83,7 +83,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(1536.4),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1983_steinwinter_supercargo_2040.wav", volume: 0.05655477)
+    impulse_response car_exhaust(filename: "exhaust/1983_steinwinter_supercargo_2040.wav", volume: 0.01684447)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

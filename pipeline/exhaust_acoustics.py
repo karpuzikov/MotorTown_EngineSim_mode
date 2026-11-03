@@ -16,9 +16,13 @@ import sys
 import numpy as np
 
 SAMPLE_RATE_HZ = 44100
-IMPULSE_RESPONSE_SAMPLES = 4096                 # 93 ms; the convolution is direct-form
+IMPULSE_RESPONSE_SAMPLES = 2048                 # 46 ms, past the decay; the convolution is direct-form
 EXHAUST_GAS_SPEED_OF_SOUND = 450.0              # m/s, mean of ~700 K at the engine and cooler at the tail
 WALL_LOSS_PER_SQRT_HZ = 3.0e-5                  # Np/m * m / sqrt(Hz): viscous and thermal pipe losses
+# Mean-flow, joint and temperature-gradient losses. Without them the pipes rang
+# for 50-80 ms (90 % energy): in game "hollow, like something rubbing a pipe".
+# 0.3 Np/m brings 90 % of the energy inside ~10 ms.
+FLOW_LOSS_NP_PER_M = 0.3
 # Packed (fibre/perforated) silencers: Np/m per kHz, rising to 2 kHz. Fit so
 # packed boxes take ~15-25 dB off the 1-8 kHz band (2026-11-03: unpacked
 # chambers left the Scania's 600-800 Hz pipe resonances 25 dB over its firing
@@ -51,7 +55,7 @@ def section_matrix(length_m, diameter_m, frequencies_hz, absorptive=False):
     """Transfer matrix [[A, B], [C, D]] of a uniform lossy pipe section."""
     area = math.pi * diameter_m ** 2 / 4.0
     characteristic_impedance = 1.0 / area      # rho*c cancels in the response
-    attenuation = WALL_LOSS_PER_SQRT_HZ * np.sqrt(frequencies_hz) / (diameter_m / 2.0)
+    attenuation = WALL_LOSS_PER_SQRT_HZ * np.sqrt(frequencies_hz) / (diameter_m / 2.0) + FLOW_LOSS_NP_PER_M
     if absorptive:
         attenuation = attenuation + ABSORPTIVE_LOSS_PER_KHZ * np.minimum(
             frequencies_hz, ABSORPTIVE_LOSS_SATURATES_AT_HZ) / 1000.0
@@ -111,7 +115,7 @@ def exhaust_impulse_response(exhaust, exhaust_length_m):
     tailpipe_per_engine_volume_velocity = 1.0 / (c * radiation + d)
     response = np.fft.irfft(tailpipe_per_engine_volume_velocity)[:IMPULSE_RESPONSE_SAMPLES]
     fade = np.ones(IMPULSE_RESPONSE_SAMPLES)
-    fade[-512:] = np.hanning(1024)[512:]
+    fade[-256:] = np.hanning(512)[256:]
     return response * fade
 
 

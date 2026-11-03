@@ -75,6 +75,10 @@ THROTTLE_CFM_MARGIN = 6.0                        # fleet fit 2026-11-03 (was 1.2
 CARBURETTOR_RATED_CFM = {"carb-1bbl": 200.0, "carb-2bbl": 350.0, "carb-4bbl": 650.0}
 CARBURETTOR_FLOW_SCALE = 4.0
 PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
+# A diesel's fuel is injected in the cylinder; Engine Simulator premixes it in
+# the intake, so a small premix volume keeps the pedal response immediate
+# (the full-size plenum lagged several revolutions in game).
+DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT = 0.1
 INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
@@ -404,7 +408,8 @@ def derive(engine, car):
         "flywheel_radius": FLYWHEEL_RADIUS_M_AT_1_LITRE * displacement_litres ** FLYWHEEL_RADIUS_EXPONENT,
         "friction_torque": CRANK_FRICTION_MEAN_PRESSURE_PA * displacement_litres / 1000.0 / (4.0 * math.pi),
         "throttle_cfm": throttle_cfm(engine, displacement_ci),
-        "plenum_volume": PLENUM_VOLUME_TO_DISPLACEMENT * displacement_litres / 1000.0,
+        "plenum_volume": (DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT if engine["fuel"] in ("diesel", "multifuel")
+                          else PLENUM_VOLUME_TO_DISPLACEMENT) * displacement_litres / 1000.0,
         "exhaust_pipe": pipe, "exhaust_outlet_cfm": pipe_flow_cfm(pipe),
         "exhaust_length": exhaust_length_m(car),
         "primary_tube_length": PRIMARY_LENGTH_BY_MANIFOLD_M[car["exhaust"]["manifold"]],

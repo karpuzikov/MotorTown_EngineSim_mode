@@ -63,7 +63,7 @@ public node motor_town_engine {
         moment_of_inertia: 0.00487357 * units.kg * units.m * units.m,
         center_of_mass: 0.0, length: 0.278850 * units.m)
     intake intake(
-        plenum_volume: 14.9475 * units.L,
+        plenum_volume: 1.4948 * units.L,
         plenum_cross_section_area: 298.030 * units.cm2,
         intake_flow_rate: k_carb(3325.6),
         runner_flow_rate: k_carb(3093.9),
@@ -79,7 +79,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(1980.1),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/2014_volvo_vnl.wav", volume: 0.01961245)
+    impulse_response car_exhaust(filename: "exhaust/2014_volvo_vnl.wav", volume: 0.00942120)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

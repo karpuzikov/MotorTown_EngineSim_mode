@@ -82,7 +82,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(922.8),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1979_dodge_ram_van.wav", volume: 0.05127077)
+    impulse_response car_exhaust(filename: "exhaust/1979_dodge_ram_van.wav", volume: 0.02107274)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

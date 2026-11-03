@@ -70,7 +70,7 @@ public node motor_town_engine {
         primary_tube_length: 0.750 * units.m,
         primary_flow_rate: k_carb(513.5),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1981_citroen_2cv.wav", volume: 0.14637287)
+    impulse_response car_exhaust(filename: "exhaust/1981_citroen_2cv.wav", volume: 0.09320745)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)
