@@ -93,18 +93,18 @@ FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCAL
 # With realistic burn speed the model made ~1.56x rated torque (median of
 # 8 engines); this one burn efficiency stands in for the heat lost to the
 # walls, which Engine Simulator does not model. Default 0.8.
-MAX_BURNING_EFFICIENCY = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_BURN_EFFICIENCY", "0.51"))
+# Refit on all 112 engines (2026-11-03 full run: NA petrol median +15 %).
+MAX_BURNING_EFFICIENCY = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_BURN_EFFICIENCY", "0.44"))
 FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed(), "
                         f"max_burning_efficiency: {MAX_BURNING_EFFICIENCY}")
 # Boost: the pressure ratio that lifts the model's unboosted full-load mean
 # effective pressure (measured, petrol median of 14 engines 2026-11-03) to
 # the rated torque.
-# Measured per (fuel, cycle), 2026-11-03: petrol 4-stroke median of 14 NA
-# engines; diesel 4-stroke from the Volvo D13; two-strokes from the three
-# Detroits and the Vespa run at their scavenge pressure.
+# Measured per (fuel, cycle), 2026-11-03, then refit to the full-fleet median
+# error of each group at burn efficiency 0.44.
 UNBOOSTED_MODEL_BMEP_PA = {
-    ("petrol", 4): 11.3e5, ("multifuel", 4): 11.8e5, ("diesel", 4): 11.8e5,
-    ("diesel", 2): 4.8e5, ("petrol-oil", 2): 3.4e5,
+    ("petrol", 4): 9.8e5, ("multifuel", 4): 12.1e5, ("diesel", 4): 12.1e5,
+    ("diesel", 2): 3.7e5, ("petrol-oil", 2): 2.6e5,
 }
 BOOST_PRESSURE_RATIO_LIMITS = (1.0, 3.5)
 TURBO_BOOST_STARTS_AT_TORQUE_RPM_FRACTION = 0.4   # exhaust energy too low below this
