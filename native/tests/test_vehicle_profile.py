@@ -82,10 +82,11 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         for field, _, profile, _ in self.rules():
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
-                # Real-spec profiles (pipeline/package_mod_profiles.py): no
-                # per-vehicle exhaust recording or loudness override.
-                self.assertRegex(profile, r'^assets/es_\w+\.mr$')
-                script = ROOT / 'profiles' / Path(profile).name
+                # Real-spec profiles (pipeline/package_mod_profiles.py): every
+                # vehicle plays the one fleet exhaust response; no loudness override.
+                self.assertRegex(profile, r'^assets/es_\w+\.mr#exhaust=mtes-exhaust/fleet\.wav$')
+                self.assertTrue((ROOT / 'profiles/sound-library/mtes-exhaust/fleet.wav').is_file())
+                script = ROOT / 'profiles' / Path(profile.partition('#')[0]).name
                 self.assertTrue(script.is_file(), profile)
                 self.assertTrue(script.read_text().startswith('// mtes-real-spec-profile: 1'), profile)
 
@@ -166,7 +167,7 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         import re
         lines = (ROOT / 'profiles/engine_families.tsv').read_text().splitlines()
         def collector_cm2(key):
-            script = next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2]
+            script = next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2].partition('#')[0]
             text = (ROOT / 'profiles' / Path(script).name).read_text()
             return float(re.search(r'collector_cross_section_area: ([0-9.]+)', text).group(1))
         self.assertGreater(collector_cm2('golimasemi'), 4 * collector_cm2('elisa'))  # a semi vs a sedan

@@ -226,13 +226,13 @@ public node ford_flathead_239_8rt {
     )
     exhaust_system exhaust_right(
         es_params,
-        audio_volume: 20.0,
+        audio_volume: 1.0,
         length: 110 * units.inch,
         impulse_response: ir_lib.real_engine_1
     )
     exhaust_system exhaust_left(
         es_params,
-        audio_volume: 20.0,
+        audio_volume: 1.0,
         length: (110 + 30) * units.inch,
         impulse_response: ir_lib.real_engine_1
     )

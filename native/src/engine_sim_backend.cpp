@@ -29,9 +29,10 @@ namespace mtes {
 namespace {
 
 constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
-// Peak-normalized vehicle exhaust responses, as loud as Engine Simulator's
-// "new" recordings (which use 0.01); its leveler sets the final level.
-constexpr double VehicleExhaustImpulseVolume = 0.01;
+// Volume of a rule's own exhaust response (#exhaust=): the fleet-wide one made
+// by pipeline/tune_impulse_to_recording.py, stored at half the volume of the
+// library response it was made from so the equalizer boost fits 16 bits.
+constexpr double VehicleExhaustImpulseVolume = 0.02;
 
 // Engine Simulator's starter turns the crank to -starter_speed: negative
 // v_theta for most models, positive for those scripted with a negative

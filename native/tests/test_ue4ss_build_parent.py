@@ -99,10 +99,9 @@ class UE4SSParentBuildTests(unittest.TestCase):
             self.assertTrue((package / 'Scripts/main.lua').is_file())
             self.assertTrue((package / 'engine_profiles.tsv').is_file())
             self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239__1948_ford_f_1.mr'
-                          '#exhaust=mtes-exhaust/es_ford_flathead_239__1948_ford_f_1.wav\t99-100000',
+                          '#exhaust=mtes-exhaust/fleet.wav\t99-100000',
                           (package / 'engine_families.tsv').read_text())
-            self.assertTrue((package / 'assets/sound-library/mtes-exhaust'
-                             / 'es_ford_flathead_239__1948_ford_f_1.wav').is_file())
+            self.assertTrue((package / 'assets/sound-library/mtes-exhaust/fleet.wav').is_file())
             self.assertTrue((package / 'assets/es_ford_flathead_239__1948_ford_f_1.mr').is_file())
             self.assertTrue((package / 'assets/es_lambo_l539_65.mr').is_file())
             self.assertTrue((package / 'assets/es_volvo_d13.boost.json').is_file())  # turbo boost travels with it

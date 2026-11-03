@@ -29,9 +29,11 @@ class HandmadeProfileTest(unittest.TestCase):
         packaged = (packager.PROFILES_DIR / f"{name}.mr").read_text()
         self.assertEqual(packaged, (packager.HANDMADE_DIR / f"{name}.mr").read_text())
 
-    def test_handmade_exhaust_response_ships_and_is_played_instead_of_the_script_s(self):
-        name = "es_ford_flathead_239__1948_ford_f_1"
-        shipped = packager.EXHAUST_DIR / f"{name}.wav"
-        self.assertEqual(shipped.read_bytes(), (packager.HANDMADE_DIR / f"{name}.wav").read_bytes())
-        rule = f"assets/{name}.mr#exhaust={packager.EXHAUST_LIBRARY_PATH}/{name}.wav"
-        self.assertIn(rule, (packager.PROFILES_DIR / "engine_families.tsv").read_text())
+    def test_every_vehicle_gets_the_one_fleet_exhaust_response(self):
+        self.assertEqual((packager.EXHAUST_DIR / "fleet.wav").read_bytes(),
+                         packager.FLEET_EXHAUST_SOURCE.read_bytes())
+        rules = [line.split("\t") for line in (packager.PROFILES_DIR / "engine_families.tsv").read_text().splitlines()
+                 if line and not line.startswith("#")]
+        scripted = [rule for rule in rules if rule[2] != "-"]
+        self.assertGreater(len(scripted), 100)
+        self.assertEqual([rule for rule in scripted if not rule[2].endswith(packager.FLEET_EXHAUST_SUFFIX)], [])

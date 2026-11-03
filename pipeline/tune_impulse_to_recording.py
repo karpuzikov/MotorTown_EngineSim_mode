@@ -2,9 +2,10 @@
 
     python3 -I pipeline/tune_impulse_to_recording.py REAL.wav[:start:seconds] RENDER.wav BASE_IR.wav BASE_VOLUME OUT.wav
 
-RENDER.wav is the engine played through BASE_IR (the volume its script gives
-it: 0.001 for the archive/ library responses) at the recording's speeds (an
-rpm sweep over the range the recording covers). The third-octave difference
+RENDER.wav is a pipeline-generated engine of the recorded car played through
+BASE_IR (the volume its script gives it: 0.01 for the new/ library responses)
+at the recording's speeds (an rpm sweep over the range the recording covers).
+The result is the one exhaust response for every vehicle (pillar 3). The third-octave difference
 between recording and render, with the overall level removed, becomes a
 minimum-phase equalizer that is convolved into BASE_IR, so the pipe's own
 resonances survive and only the tonal balance moves. Written as a mono 16-bit
@@ -31,7 +32,7 @@ LOW_CUT_HZ = 25                     # nothing below is engine sound; fall 12 dB 
 FILTER_LENGTH = 4096
 FREQUENCY_POINTS = 1 << 14
 TAIL_FADE_SAMPLES = 2000
-PLAYBACK_VOLUME = 0.01              # engine_sim_backend.cpp VehicleExhaustImpulseVolume
+PLAYBACK_VOLUME = 0.02              # engine_sim_backend.cpp VehicleExhaustImpulseVolume (headroom for the equalizer boost)
 
 
 def band_levels_db(spec):
