@@ -79,6 +79,17 @@ FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCAL
 MAX_BURNING_EFFICIENCY = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_BURN_EFFICIENCY", "0.51"))
 FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed(), "
                         f"max_burning_efficiency: {MAX_BURNING_EFFICIENCY}")
+# Boost: the pressure ratio that lifts the model's unboosted full-load mean
+# effective pressure (measured, petrol median of 14 engines 2026-11-03) to
+# the rated torque. Diesel reference is a first guess until measured.
+UNBOOSTED_MODEL_BMEP_PA = {"petrol": 11.3e5, "multifuel": 11.3e5, "diesel": 6.5e5}
+BOOST_PRESSURE_RATIO_LIMITS = (1.0, 3.5)
+TURBO_BOOST_STARTS_AT_TORQUE_RPM_FRACTION = 0.4   # exhaust energy too low below this
+TORQUE_RISE_WHEN_TORQUE_UNKNOWN = 1.3              # peak torque / torque at rated power
+COMPRESSOR_EFFICIENCY = 0.70
+INTERCOOLER_OUTLET_K = 320.0
+AMBIENT_K = 298.15
+
 # Calibration runs only: {"RULE_NAME": value} replaces any rule constant above.
 globals().update(json.loads(os.environ.get("MOTOR_TOWN_ENGINE_SIM_RULE_OVERRIDES") or "{}"))
 
@@ -290,6 +301,33 @@ def derive(engine, car):
     }
 
 
+def rated_peak_torque_nm(engine):
+    if engine.get("torque_nm"):
+        return engine["torque_nm"]
+    power_w = engine["power_hp"] * 745.7
+    return TORQUE_RISE_WHEN_TORQUE_UNKNOWN * power_w / (engine["power_rpm"] * 2 * math.pi / 60)
+
+
+def boost(engine, derived):
+    """Full-load boost the dyno and the mod apply to the intake, or None."""
+    if engine["aspiration"] == "NA":
+        return None
+    displacement = derived["displacement_litres"] / 1000.0
+    rated_bmep = 4 * math.pi * rated_peak_torque_nm(engine) / displacement
+    ratio = rated_bmep / UNBOOSTED_MODEL_BMEP_PA[engine["fuel"]]
+    ratio = min(max(ratio, BOOST_PRESSURE_RATIO_LIMITS[0]), BOOST_PRESSURE_RATIO_LIMITS[1])
+    torque_rpm = engine.get("torque_rpm") or 0.6 * engine["power_rpm"]
+    exhaust_driven = engine["aspiration"] in ("turbo", "twin-turbo")
+    compressed_k = AMBIENT_K * (1 + (ratio ** 0.2857 - 1) / COMPRESSOR_EFFICIENCY)
+    return {
+        "kind": engine["aspiration"],
+        "full_load_pressure_ratio": round(ratio, 3),
+        "boost_start_rpm": round(TURBO_BOOST_STARTS_AT_TORQUE_RPM_FRACTION * torque_rpm) if exhaust_driven else 0,
+        "full_boost_rpm": round(torque_rpm),
+        "charge_temperature_k": round(min(compressed_k, INTERCOOLER_OUTLET_K) if engine.get("intercooled") else compressed_k, 1),
+    }
+
+
 def not_modelled(engine):
     gaps = []
     if engine["cycle"] == 2:
@@ -297,7 +335,7 @@ def not_modelled(engine):
     if engine["fuel"] == "diesel":
         gaps.append("compression ignition (spark at injection timing)")
     if engine["aspiration"] != "NA":
-        gaps.append(f"{engine['aspiration']} boost")
+        gaps.append(f"{engine['aspiration']}: boost from rated torque, no lag or wastegate")
     return gaps
 
 
@@ -466,6 +504,9 @@ def main(arguments):
         else:
             (output_dir / f"{engine_id}.mr").write_text(script)
             entry["script"] = f"{engine_id}.mr"
+            entry["boost"] = boost(engine, derived)
+            if entry["boost"]:
+                (output_dir / f"{engine_id}.boost.json").write_text(json.dumps(entry["boost"]))
             entry["derived"] = {key: round(value, 6) for key, value in derived.items()}
         manifest.append(entry)
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=1))

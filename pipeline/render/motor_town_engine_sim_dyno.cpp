@@ -15,6 +15,7 @@
 #include "engine.h"
 #include "exhaust_system.h"
 #include "impulse_response.h"
+#include "intake.h"
 #include "piston_engine_simulator.h"
 #include "simulator.h"
 #include "synthesizer.h"
@@ -29,6 +30,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -87,11 +90,48 @@ void run_frame(Simulator *simulator, std::vector<std::int16_t> *audio, double *t
     }
 }
 
+// Full-load boost from SCRIPT.boost.json (written by the generator), if any.
+struct FullLoadBoost {
+    double pressureRatio = 1.0, startRpm = 0.0, fullRpm = 1.0, chargeTemperatureK = 298.15;
+};
+
+double json_number(const std::string &text, const std::string &key) {
+    const auto at = text.find("\"" + key + "\"");
+    if (at == std::string::npos) throw std::runtime_error("boost file lacks " + key);
+    return std::stod(text.substr(text.find(':', at) + 1));
+}
+
+FullLoadBoost read_boost(const std::filesystem::path &script) {
+    std::filesystem::path path = script;
+    path.replace_extension(".boost.json");
+    FullLoadBoost boost;
+    std::ifstream file(path);
+    if (!file) return boost;
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    boost.pressureRatio = json_number(text, "full_load_pressure_ratio");
+    boost.startRpm = json_number(text, "boost_start_rpm");
+    boost.fullRpm = json_number(text, "full_boost_rpm");
+    boost.chargeTemperatureK = json_number(text, "charge_temperature_k");
+    return boost;
+}
+
+FullLoadBoost g_boost; // shortcut: global for this one-engine tool
+
+void apply_boost(Engine *engine, const FullLoadBoost &boost, double rpm) {
+    const double build = std::clamp((rpm - boost.startRpm) / std::max(1.0, boost.fullRpm - boost.startRpm), 0.0, 1.0);
+    const double ratio = 1.0 + (boost.pressureRatio - 1.0) * build;
+    for (int i = 0; i < engine->getIntakeCount(); ++i) {
+        engine->getIntake(i)->setSupplyPressure(units::pressure(ratio, units::atm));
+        engine->getIntake(i)->setSupplyTemperature(298.15 + (boost.chargeTemperatureK - 298.15) * build);
+    }
+}
+
 // Holds the crankshaft at rpm with the spark advanced by advanceDeg for
 // settleSeconds, then returns the mean torque over measureSeconds.
 double hold_torque_nm(Simulator *simulator, Engine *engine, double rpm, double advanceDeg,
                       double settleSeconds, double measureSeconds, std::vector<std::int16_t> *audio) {
     const double speed = units::rpm(rpm);
+    apply_boost(engine, g_boost, rpm);
     Function *timing = engine->getIgnitionModule()->getTimingCurve();
     timing->setOutputScale(1.0);
     const double scriptAdvance = timing->sampleTriangle(speed);
@@ -143,6 +183,7 @@ int main(int argc, char **argv) {
     // Being calibrated: one gain for every engine, chosen so the loudest stays below full scale.
     const float outputGain = argc > 4 ? std::stof(argv[4]) : 1.0f;
     const bool findMbt = argc > 5 && std::string(argv[5]) == "find-mbt";
+    g_boost = read_boost(argv[1]);
     std::filesystem::create_directories(outputDir);
 
     es_script::Compiler compiler;
