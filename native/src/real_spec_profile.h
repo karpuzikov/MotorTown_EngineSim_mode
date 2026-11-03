@@ -9,8 +9,6 @@
 
 #include "engine.h"
 #include "intake.h"
-#include "piston_engine_simulator.h"
-#include "synthesizer.h"
 #include "units.h"
 
 #include <algorithm>
@@ -22,39 +20,9 @@
 
 namespace mtes {
 
-// Tailpipe sound pressure (Pa at 1 m) to PCM: one gain for every engine, so
-// loudness differences come from the simulation. Earlier gains (27.8-140)
-// were fitted while Engine Simulator's derivative mix (dF_F_mix, now off)
-// dominated the output. 1120 puts the fleet's median full load at 70% of
-// redline near -17 dBFS, like stock cues (dyno renders 2026-11-03).
-inline constexpr float MotorTownEngineSimRealSpecOutputGain = 1120.0f;
-// Full-scale peaks bend smoothly above half scale instead of clipping.
-inline constexpr float MotorTownEngineSimRealSpecSoftClipKnee = 0.5f;
-
 inline bool is_real_spec_profile(const std::string& scriptPath) {
     std::ifstream script(scriptPath);
     return script && parse_profile_directive(script, "// mtes-real-spec-profile:", 1).has_value();
-}
-
-// Physical exhaust sound at the fixed gain, with Engine Simulator's automatic
-// leveler pinned (its min/max gain parameters never reach the filter).
-inline void use_real_spec_sound(Simulator* simulator) {
-    static_cast<PistonEngineSimulator*>(simulator)->m_physicalExhaustSound = true;
-    auto audio = simulator->synthesizer().getAudioParameters();
-    audio.volume = MotorTownEngineSimRealSpecOutputGain;
-    audio.softClipKnee = MotorTownEngineSimRealSpecSoftClipKnee;
-    // Engine Simulator multiplies its signal by low-passed white noise ("air
-    // noise"). On the physical tailpipe pressure that chops every exhaust pulse
-    // into a noise burst: in game a semi buzzed "like a wire rubbing a fan".
-    audio.airNoise = 0.0f;
-    // Engine Simulator also mixes in the time derivative of its input
-    // ("high-frequency gain" 0.01, per audio sample): above ~16 Hz it
-    // dominated, so the already radiated d/dt signal played as its second
-    // derivative, a click train (in game "knocking against a fan").
-    audio.dF_F_mix = 0.0f;
-    simulator->synthesizer().setAudioParameters(audio);
-    simulator->synthesizer().m_levelingFilter.p_minLevel = 1.0f;
-    simulator->synthesizer().m_levelingFilter.p_maxLevel = 1.0f;
 }
 
 // Diesels have no throttle plate: they meter fuel. Profiles marked

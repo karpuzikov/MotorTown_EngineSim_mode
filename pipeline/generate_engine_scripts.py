@@ -20,7 +20,6 @@ import sys
 from pathlib import Path
 
 PIPELINE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(PIPELINE_DIR))  # sibling exhaust_acoustics under python -I
 
 # Air at 20 C, 1 atm; pressure drops used by Engine Simulator's flow units.
 AIR_DENSITY_KG_M3 = 1.204
@@ -89,12 +88,6 @@ DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT = 0.1
 INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
-# Exhaust manifold (and turbine housing) gas volume per litre of displacement.
-# With the primaries' gas mass it is a low-pass in front of the pipe: without
-# it each cylinder's valve-flow kink reached the tailpipe as a click (in game
-# a semi's idle knocked "like something hitting a fan"). Headers end in a
-# small collector.
-MANIFOLD_VOLUME_TO_DISPLACEMENT = {"cast-log": 0.5, "cast": 0.5, "turbo": 0.6, "tubular": 0.2}
 PIPE_DISCHARGE_COEFFICIENT = 3.2                 # fleet fit 2026-11-03; Engine Simulator's pipe flow needs ~4x the bench figure
 DIESEL_FULL_LOAD_LAMBDA = 1.45                   # diesels burn lean even at full load
 ENGINE_SIM_INTAKE_LAMBDA = 0.8                   # fixed in Engine Simulator's Intake::process
@@ -188,44 +181,15 @@ def car_slug(car):
     return re.sub(r"[^a-z0-9]+", "_", ascii_script_text(car["real_car"]).lower()).strip("_")
 
 
-_CAR_EXHAUST_RESPONSES = {}
+# Engine Simulator's own recorded exhaust response, the one its most lifelike
+# demo engines use. The real-layout acoustic model (removed 2026-11-03) made a
+# smooth synthetic hum in game: "nothing like Engine Simulator".
+EXHAUST_IMPULSE_RESPONSE = "ir_lib.mild_exhaust_0_reverb"
 
 
 def exhaust_count_for(engine, car):
     banks = bank_angles_deg(engine)
     return 2 if len(banks) == 2 and car["exhaust"]["layout"] == "dual" else 1
-
-
-def exhaust_manifold(engine, car, d):
-    """(primary length m, primary diameter m, manifold volume m3) feeding one exhaust."""
-    volume = (MANIFOLD_VOLUME_TO_DISPLACEMENT[car["exhaust"]["manifold"]]
-              * d["displacement_litres"] / 1000.0 / exhaust_count_for(engine, car))
-    return d["primary_tube_length"], math.sqrt(4.0 * d["exhaust_runner_area"] / math.pi), volume
-
-
-def car_exhaust_response(engine, car):
-    """The exhaust impulse response from the car's real layout and the engine's
-    manifold (exhaust_acoustics)."""
-    import exhaust_acoustics
-    key = (engine["id"], car["real_car"])
-    if key not in _CAR_EXHAUST_RESPONSES:
-        _CAR_EXHAUST_RESPONSES[key] = exhaust_acoustics.exhaust_impulse_response(
-            car["exhaust"], exhaust_length_m(car), exhaust_manifold(engine, car, derive(engine, car)))
-    return _CAR_EXHAUST_RESPONSES[key]
-
-
-def car_exhaust_impulse(engine, car):
-    """(path relative to the script, volume) of the exhaust impulse WAV."""
-    import numpy
-    return (f"exhaust/{engine['id']}__{car_slug(car)}.wav",
-            float(numpy.max(numpy.abs(car_exhaust_response(engine, car)))))
-
-
-def write_car_exhaust_impulse(output_dir, engine, car):
-    import exhaust_acoustics
-    path = Path(output_dir) / car_exhaust_impulse(engine, car)[0]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    exhaust_acoustics.write_wav_int16(path, car_exhaust_response(engine, car))
 
 
 def load_specs():
@@ -532,7 +496,7 @@ def engine_script(engine, car):
     diesel = engine["fuel"] in ("diesel", "multifuel")
     redline = engine["redline_rpm"]
     out = ["// mtes-real-spec-profile: 1"] + (["// mtes-fuel-load-control: 1"] if diesel else []) + [
-           'import "engine_sim.mr"', "", "units units()", "constants constants()",
+           'import "engine_sim.mr"', "", "units units()", "constants constants()", "impulse_response_library ir_lib()",
            ""] + flame_speed_node(engine)
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
@@ -589,10 +553,8 @@ def engine_script(engine, car):
             f"        primary_tube_length: {d['primary_tube_length']:.3f} * units.m,",
             f"        primary_flow_rate: k_carb({area_flow_cfm(d['exhaust_runner_area']):.1f}),",
             f"        velocity_decay: 1.0, audio_volume: 1.0)"]
-    impulse_file, impulse_volume = car_exhaust_impulse(engine, car)
-    out.append(f"    impulse_response car_exhaust(filename: \"{impulse_file}\", volume: {impulse_volume:.8f})")
     for index in range(exhaust_count):
-        out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: car_exhaust)")
+        out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: {EXHAUST_IMPULSE_RESPONSE})")
     out.append("")
 
     for side in ("intake", "exhaust"):
@@ -682,7 +644,6 @@ def main(arguments):
             entry["skipped"] = str(error)
         else:
             (output_dir / f"{engine_id}.mr").write_text(script)
-            write_car_exhaust_impulse(output_dir, engine, car)
             entry["script"] = f"{engine_id}.mr"
             entry["boost"] = boost(engine, derived)
             if entry["boost"]:

@@ -46,10 +46,6 @@ void spin_forward(Engine *engine, double speed) {
     }
 }
 
-std::atomic<bool> g_exhaustResponseEnabled{true};
-// The exhaust passes ~-10 dB of the raw source's level (Scania, cruising).
-constexpr double RawSourceTestVolume = 0.3;
-
 class EngineSimBackend final : public EngineBackend {
 public:
     ~EngineSimBackend() override { stop(); }
@@ -106,12 +102,13 @@ public:
             // target and clipped ~4% of samples.
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
-            // Real-spec profiles: physical loudness at one fixed gain, and
-            // boost from the generator; no per-profile level or tone fixes.
+            // Real-spec profiles: Engine Simulator's own sound and leveler, as
+            // in its app (in game a physical tailpipe model and a pinned
+            // leveler made a synthetic hum); boost and fuel metering from the
+            // generator; no per-profile level or tone fixes.
             m_realSpec = is_real_spec_profile(script);
             m_boost = m_realSpec ? read_full_load_boost(script) : FullLoadBoost{};
             m_fuelLoadControl = m_realSpec ? read_fuel_load_control(script, m_engine) : FuelLoadControl{};
-            if (m_realSpec) use_real_spec_sound(m_simulator);
             m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
             m_loudnessGain = -1.0; // first read() jumps to the target
             m_rpmScale = profile_rpm_scale(script);
@@ -134,9 +131,7 @@ public:
                 const auto impulse = spec.exhaustImpulse.empty()
                     ? impulse_wav_path(script, response->getFilename())
                     : std::filesystem::path(spec.exhaustImpulse);
-                const auto samples = g_exhaustResponseEnabled.load()
-                    ? load_impulse_wav(impulse.string())
-                    : std::vector<std::int16_t>{INT16_MAX};
+                const auto samples = load_impulse_wav(impulse.string());
                 if (!usable_impulse_for_engine_sim(samples) ||
                     samples.size() > std::numeric_limits<unsigned int>::max()) {
                     stop();
@@ -144,8 +139,7 @@ public:
                 }
                 m_simulator->synthesizer().initializeImpulseResponse(
                     samples.data(), static_cast<unsigned int>(samples.size()),
-                    !g_exhaustResponseEnabled.load() ? RawSourceTestVolume
-                    : spec.exhaustImpulse.empty() ? response->getVolume() : VehicleExhaustImpulseVolume, i);
+                    spec.exhaustImpulse.empty() ? response->getVolume() : VehicleExhaustImpulseVolume, i);
             }
             m_simulator->startAudioRenderingThread();
             return true;
@@ -292,10 +286,6 @@ private:
 };
 
 } // namespace
-
-void set_engine_sim_exhaust_response_enabled(bool enabled) {
-    g_exhaustResponseEnabled.store(enabled);
-}
 
 std::unique_ptr<EngineBackend> make_engine_sim_backend() {
     return std::make_unique<EngineSimBackend>();

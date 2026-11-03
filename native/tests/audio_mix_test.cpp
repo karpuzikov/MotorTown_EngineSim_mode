@@ -103,9 +103,5 @@ int main() {
         assert(parse_mod_settings(broken).volume == 1.0);
         std::istringstream empty("");
         assert(parse_mod_settings(empty).volume == 1.0);
-        std::istringstream exhaustDefault("volume = 1\n");
-        assert(parse_mod_settings(exhaustDefault).exhaustResponse);
-        std::istringstream exhaustOff("exhaust_response = off\n");
-        assert(!parse_mod_settings(exhaustOff).exhaustResponse);
     }
 }

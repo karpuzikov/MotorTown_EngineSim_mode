@@ -87,16 +87,3 @@ class ClosedThrottleTest(unittest.TestCase):
         self.assertAlmostEqual(leak_cfm * generator.choked_to_carb_rating_flow_ratio(), idle_scfm, places=3)
         self.assertGreater(position, 0.995)
 
-
-class ExhaustManifoldTest(unittest.TestCase):
-    def test_exhaust_starts_with_the_primary_and_the_manifold_volume(self):
-        engine = ENGINES["scania_dsc11"]
-        car = next(c for c in CARS if c["real_car"] == "1987 Scania 113H")
-        derived = generator.derive(engine, car)
-        manifold = generator.exhaust_manifold(engine, car, derived)
-        import exhaust_acoustics
-        sections = exhaust_acoustics.exhaust_sections(car["exhaust"], generator.exhaust_length_m(car), manifold)
-        (primary_length, primary_diameter, _), (length, diameter, _) = sections[:2]
-        self.assertEqual(primary_length, derived["primary_tube_length"])
-        volume = length * generator.math.pi * diameter ** 2 / 4
-        self.assertAlmostEqual(volume, generator.MANIFOLD_VOLUME_TO_DISPLACEMENT["turbo"] * derived["displacement_litres"] / 1000)

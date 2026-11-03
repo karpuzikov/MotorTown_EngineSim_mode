@@ -11,10 +11,8 @@ namespace mtes {
 
 // Player-editable settings.ini in the mod folder:
 //     volume = 1.0   ; 1 = Motor Town's own engine loudness, 0.5 = half
-//     exhaust_response = off   ; test: raw engine sound, no exhaust pipe model
 struct ModSettings {
     double volume = 1.0;
-    bool exhaustResponse = true;
 };
 
 inline std::string trim_setting(std::string text) {
@@ -34,10 +32,6 @@ inline ModSettings parse_mod_settings(std::istream& input) {
         if (equals == std::string::npos) continue;
         const auto key = trim_setting(line.substr(0, equals));
         const auto value = trim_setting(line.substr(equals + 1));
-        if (key == "exhaust_response") {
-            settings.exhaustResponse = value != "off";
-            continue;
-        }
         if (key != "volume") continue;
         try {
             std::size_t used = 0;
