@@ -45,8 +45,6 @@ class FiringGeometryTest(unittest.TestCase):
 class ScriptGenerationTest(unittest.TestCase):
     def test_every_four_stroke_engine_produces_a_script(self):
         for engine in ENGINES.values():
-            if engine["cycle"] != 4:
-                continue
             script, derived = generator.engine_script(engine, generator.first_car_using(engine["id"], CARS))
             self.assertIn("set_engine(motor_town_engine())", script)
             self.assertTrue(script.isascii(), engine["id"])
@@ -58,9 +56,14 @@ class ScriptGenerationTest(unittest.TestCase):
         swept = derived["displacement_litres"] / 8 / 1000.0
         self.assertAlmostEqual((swept + derived["chamber_volume"]) / derived["chamber_volume"], 10.25)
 
-    def test_two_strokes_are_reported_not_faked(self):
-        with self.assertRaises(NotImplementedError):
-            generator.engine_script(ENGINES["detroit_8v71"], generator.first_car_using("detroit_8v71", CARS))
+    def test_two_stroke_fires_and_opens_every_revolution(self):
+        script, _ = generator.engine_script(ENGINES["detroit_8v71"], generator.first_car_using("detroit_8v71", CARS))
+        self.assertIn("sparks_per_cycle: 2", script)
+        self.assertIn("lobes_per_cycle: 2", script)
+        self.assertEqual(generator.firing_angles_deg(ENGINES["detroit_8v71"])[7], 45.0)
+        boost = generator.boost(ENGINES["vespa_150_2t"], generator.derive(
+            ENGINES["vespa_150_2t"], generator.first_car_using("vespa_150_2t", CARS)))
+        self.assertGreaterEqual(boost["full_load_pressure_ratio"], 1.25)
 
 
 if __name__ == "__main__":

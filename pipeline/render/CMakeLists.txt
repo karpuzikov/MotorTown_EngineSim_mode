@@ -6,10 +6,11 @@ project(MotorTownEngineSimDyno LANGUAGES CXX)
 
 include(FetchContent)
 # Fork branch feat/physical-exhaust-sound: anti-alias cut tied to the
-# simulation rate, intake supply pressure, physically based exhaust sound.
+# simulation rate, intake supply pressure, physically based exhaust sound,
+# two-stroke lobes and sparks per cycle.
 FetchContent_Declare(motor_town_engine_sim_core
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 50d485f7c2c6ebd038412d8aa37e1b7ae71498c0
+    GIT_TAG 95a0db56b4a7240026c8e5e521e9d8418997dc45
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_GetProperties(motor_town_engine_sim_core)
 if(NOT motor_town_engine_sim_core_POPULATED)

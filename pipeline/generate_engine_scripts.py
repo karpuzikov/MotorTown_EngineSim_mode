@@ -42,6 +42,17 @@ CAM_DURATION_BASE_DEG = 170.0                    # duration at 0.050" lift
 CAM_DURATION_PER_PISTON_SPEED_DEG = 3.3          # per m/s mean piston speed at rated power
 CAM_DURATION_LIMITS_DEG = (190.0, 260.0)
 CAM_LOBE_SEPARATION_DEG = 112.0
+# Two-strokes: events once per revolution, centred in crank degrees after TDC.
+# Uniflow (Detroit): liner intake ports and poppet exhaust valves.
+UNIFLOW_INTAKE_PORT_DURATION_DEG = 96.0          # centred on BDC
+UNIFLOW_EXHAUST_VALVE_DURATION_DEG = 146.0
+UNIFLOW_EXHAUST_VALVE_CENTRE_DEG = 165.0
+# Crankcase-scavenged (piston-port / rotary-valve): exhaust and transfer ports.
+PORTED_EXHAUST_PORT_DURATION_DEG = 170.0         # centred on BDC
+PORTED_TRANSFER_PORT_DURATION_DEG = 125.0        # centred on BDC
+INTAKE_PORT_AREA_TO_BORE_AREA = 0.50
+EXHAUST_PORT_AREA_TO_BORE_AREA = 0.35
+TWO_STROKE_MINIMUM_SCAVENGE_PRESSURE_RATIO = 1.25  # crankcase or blower must push the charge in
 SPARK_ADVANCE_IDLE_DEG = 12.0
 SPARK_ADVANCE_FULL_DEG = 34.0
 SPARK_FULL_ADVANCE_AT_REDLINE_FRACTION = 0.55
@@ -82,7 +93,7 @@ FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed
 # Boost: the pressure ratio that lifts the model's unboosted full-load mean
 # effective pressure (measured, petrol median of 14 engines 2026-11-03) to
 # the rated torque. Diesel reference is a first guess until measured.
-UNBOOSTED_MODEL_BMEP_PA = {"petrol": 11.3e5, "multifuel": 11.3e5, "diesel": 6.5e5}
+UNBOOSTED_MODEL_BMEP_PA = {"petrol": 11.3e5, "petrol-oil": 11.3e5, "multifuel": 11.3e5, "diesel": 6.5e5}
 BOOST_PRESSURE_RATIO_LIMITS = (1.0, 3.5)
 TURBO_BOOST_STARTS_AT_TORQUE_RPM_FRACTION = 0.4   # exhaust energy too low below this
 TORQUE_RISE_WHEN_TORQUE_UNKNOWN = 1.3              # peak torque / torque at rated power
@@ -266,6 +277,13 @@ def derive(engine, car):
     exhaust_valve = (engine.get("exhaust_valve_mm") or 0) / 1000.0 or \
         EXHAUST_VALVE_TO_INTAKE_VALVE * intake_valve
     lift = VALVE_LIFT_TO_DIAMETER * intake_valve
+    bore_area = math.pi * bore ** 2 / 4.0
+
+    def port(area_fraction, duration_deg, centre_deg):
+        # A port as one equivalent valve whose curtain equals its full area.
+        diameter = math.sqrt(4.0 * area_fraction * bore_area / (math.pi * VALVE_THROAT_AREA_FRACTION))
+        return {"diameter": diameter, "count": 1, "lift": diameter / 4.0,
+                "duration": duration_deg, "centre": centre_deg}
     power_rpm = engine.get("power_rpm") or 0.8 * engine["redline_rpm"]
     piston_speed = 2.0 * stroke * power_rpm / 60.0
     duration = min(max(CAM_DURATION_BASE_DEG + CAM_DURATION_PER_PISTON_SPEED_DEG * piston_speed,
@@ -275,20 +293,35 @@ def derive(engine, car):
     intake_valve_area = intake_valves * math.pi * intake_valve ** 2 / 4.0
     exhaust_valve_area = exhaust_valves * math.pi * exhaust_valve ** 2 / 4.0
     displacement_ci = displacement_litres * 61.0237
+    if engine["cycle"] == 4:
+        intake_event = {"diameter": intake_valve, "count": intake_valves, "lift": lift,
+                        "duration": duration, "centre": 360.0 + CAM_LOBE_SEPARATION_DEG}
+        exhaust_event = {"diameter": exhaust_valve, "count": exhaust_valves, "lift": lift,
+                         "duration": duration, "centre": 360.0 - CAM_LOBE_SEPARATION_DEG}
+    elif engine["valvetrain"] in ("piston-port", "rotary-valve"):
+        intake_event = port(INTAKE_PORT_AREA_TO_BORE_AREA, PORTED_TRANSFER_PORT_DURATION_DEG, 180.0)
+        exhaust_event = port(EXHAUST_PORT_AREA_TO_BORE_AREA, PORTED_EXHAUST_PORT_DURATION_DEG, 180.0)
+    else:  # uniflow: every poppet valve is an exhaust valve
+        intake_event = port(INTAKE_PORT_AREA_TO_BORE_AREA, UNIFLOW_INTAKE_PORT_DURATION_DEG, 180.0)
+        uniflow_valve = INTAKE_VALVE_TO_BORE[4] * bore
+        exhaust_event = {"diameter": uniflow_valve, "count": valves,
+                         "lift": VALVE_LIFT_TO_DIAMETER * uniflow_valve,
+                         "duration": UNIFLOW_EXHAUST_VALVE_DURATION_DEG,
+                         "centre": UNIFLOW_EXHAUST_VALVE_CENTRE_DEG}
+    intake_valve_area = intake_event["count"] * math.pi * intake_event["diameter"] ** 2 / 4.0
+    exhaust_valve_area = exhaust_event["count"] * math.pi * exhaust_event["diameter"] ** 2 / 4.0
     pipe = car["exhaust"]["pipe_mm"] / 1000.0
     return {
         "bore": bore, "stroke": stroke, "rod": rod,
         "compression_height": COMPRESSION_HEIGHT_TO_BORE * bore,
         "chamber_volume": swept_per_cylinder / (compression - 1.0),
         "displacement_litres": displacement_litres,
-        "intake_valves": intake_valves, "exhaust_valves": exhaust_valves,
-        "intake_valve": intake_valve, "exhaust_valve": exhaust_valve,
-        "lift": lift, "cam_duration": duration,
+        "intake_event": intake_event, "exhaust_event": exhaust_event,
         "intake_runner_area": RUNNER_AREA_TO_VALVE_AREA * intake_valve_area,
         "exhaust_runner_area": RUNNER_AREA_TO_VALVE_AREA * exhaust_valve_area,
         "port_length": HEAD_PORT_LENGTH_TO_BORE * bore,
-        "intake_port_peak_cfm": valve_flow_cfm(intake_valve, lift, intake_valves),
-        "exhaust_port_peak_cfm": valve_flow_cfm(exhaust_valve, lift, exhaust_valves),
+        "intake_port_peak_cfm": valve_flow_cfm(intake_event["diameter"], intake_event["lift"], intake_event["count"]),
+        "exhaust_port_peak_cfm": valve_flow_cfm(exhaust_event["diameter"], exhaust_event["lift"], exhaust_event["count"]),
         "piston_mass": piston_mass, "rod_mass": ROD_MASS_TO_PISTON_MASS * piston_mass,
         "crank_mass": CRANK_MASS_KG_PER_LITRE * displacement_litres,
         "flywheel_mass": FLYWHEEL_MASS_KG_AT_1_LITRE * displacement_litres ** FLYWHEEL_MASS_EXPONENT,
@@ -313,14 +346,17 @@ def rated_peak_torque_nm(engine):
 
 def boost(engine, derived):
     """Full-load boost the dyno and the mod apply to the intake, or None."""
-    if engine["aspiration"] == "NA":
+    if engine["aspiration"] == "NA" and engine["cycle"] == 4:
         return None
     displacement = derived["displacement_litres"] / 1000.0
-    rated_bmep = 4 * math.pi * rated_peak_torque_nm(engine) / displacement
+    radians_per_cycle = 2 * math.pi * (2 if engine["cycle"] == 4 else 1)
+    rated_bmep = radians_per_cycle * rated_peak_torque_nm(engine) / displacement
     ratio = rated_bmep / UNBOOSTED_MODEL_BMEP_PA[engine["fuel"]]
-    ratio = min(max(ratio, BOOST_PRESSURE_RATIO_LIMITS[0]), BOOST_PRESSURE_RATIO_LIMITS[1])
+    minimum = TWO_STROKE_MINIMUM_SCAVENGE_PRESSURE_RATIO if engine["cycle"] == 2 else BOOST_PRESSURE_RATIO_LIMITS[0]
+    ratio = min(max(ratio, minimum), BOOST_PRESSURE_RATIO_LIMITS[1])
     torque_rpm = engine.get("torque_rpm") or 0.6 * engine["power_rpm"]
-    exhaust_driven = engine["aspiration"] in ("turbo", "twin-turbo")
+    # Detroit turbo two-strokes keep a Roots blower: boost from idle.
+    exhaust_driven = engine["aspiration"] in ("turbo", "twin-turbo") and engine["cycle"] == 4
     compressed_k = AMBIENT_K * (1 + (ratio ** 0.2857 - 1) / COMPRESSOR_EFFICIENCY)
     return {
         "kind": engine["aspiration"],
@@ -334,7 +370,7 @@ def boost(engine, derived):
 def not_modelled(engine):
     gaps = []
     if engine["cycle"] == 2:
-        gaps.append("two-stroke cycle")
+        gaps.append("two-stroke: no crankcase model, scavenge pressure fixed by rule")
     if engine["fuel"] == "diesel":
         gaps.append("compression ignition (spark at injection timing)")
     if engine["aspiration"] != "NA":
@@ -353,8 +389,6 @@ def flow_function(name, peak_cfm, diameter_m, valve_count, lift_m):
 
 
 def engine_script(engine, car):
-    if engine["cycle"] != 4:
-        raise NotImplementedError(f"{engine['id']}: two-stroke cycle needs new simulation code")
     d = derive(engine, car)
     fire = firing_angles_deg(engine)
     banks_deg = bank_angles_deg(engine)
@@ -425,25 +459,27 @@ def engine_script(engine, car):
         out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: ir_lib.default_0)")
     out.append("")
 
-    out += flow_function("intake_flow", d["intake_port_peak_cfm"], d["intake_valve"],
-                         d["intake_valves"], d["lift"])
-    out += flow_function("exhaust_flow", d["exhaust_port_peak_cfm"], d["exhaust_valve"],
-                         d["exhaust_valves"], d["lift"])
-    out += [f"    harmonic_cam_lobe cam_lobe(duration_at_50_thou: {d['cam_duration']:.2f} * units.deg,",
-            f"        gamma: 1.1, lift: {d['lift']:.6f} * units.m, steps: 256)", ""]
+    for side in ("intake", "exhaust"):
+        event = d[f"{side}_event"]
+        out += flow_function(f"{side}_flow", None, event["diameter"], event["count"], event["lift"])
+        out += [f"    harmonic_cam_lobe {side}_lobe(duration_at_50_thou: {event['duration']:.2f} * units.deg,",
+                f"        gamma: 1.1, lift: {event['lift']:.6f} * units.m, steps: 256)"]
+    lobes_per_cycle = 1 if engine["cycle"] == 4 else 2
+    out.append("")
 
     pitch = CYLINDER_PITCH_TO_BORE * d["bore"]
     deck = d["stroke"] / 2 + d["rod"] + d["compression_height"]
     for bank_index, (bank, bank_deg) in enumerate(zip(banks, banks_deg)):
         exhaust = f"exhaust{bank_index if exhaust_count == 2 else 0}"
-        out += [f"    camshaft intake_cam{bank_index}(advance: 0.0, base_radius: 0.5 * units.inch, lobe_profile: cam_lobe)",
-                f"    camshaft exhaust_cam{bank_index}(advance: 0.0, base_radius: 0.5 * units.inch, lobe_profile: cam_lobe)",
+        out += [f"    camshaft intake_cam{bank_index}(advance: 0.0, base_radius: 0.5 * units.inch, "
+                f"lobe_profile: intake_lobe, lobes_per_cycle: {lobes_per_cycle})",
+                f"    camshaft exhaust_cam{bank_index}(advance: 0.0, base_radius: 0.5 * units.inch, "
+                f"lobe_profile: exhaust_lobe, lobes_per_cycle: {lobes_per_cycle})",
                 f"    cylinder_bank b{bank_index}(angle: {bank_deg:.4f} * units.deg, bore: {d['bore']:.6f} * units.m,",
                 f"        deck_height: {deck:.6f} * units.m)"]
         for position, cylinder in enumerate(bank):
-            centre = CAM_LOBE_SEPARATION_DEG
-            out += [f"    intake_cam{bank_index}.add_lobe((360 + {centre} + {fire[cylinder]:.4f}) * units.deg)",
-                    f"    exhaust_cam{bank_index}.add_lobe((360 - {centre} + {fire[cylinder]:.4f}) * units.deg)",
+            out += [f"    intake_cam{bank_index}.add_lobe(({d['intake_event']['centre']} + {fire[cylinder]:.4f}) * units.deg)",
+                    f"    exhaust_cam{bank_index}.add_lobe(({d['exhaust_event']['centre']} + {fire[cylinder]:.4f}) * units.deg)",
                     f"    ignition_wire wire{cylinder}()",
                     f"    b{bank_index}.add_cylinder(",
                     f"        piston: piston(piston_params, blowby: k_28inH2O(0.0)),",
@@ -472,7 +508,8 @@ def engine_script(engine, car):
                 * min(1.0, max(0.0, (rpm - 1000.0) / (full_rpm - 1000.0)))
         out.append(f"    timing_curve.add_sample({rpm} * units.rpm, {advance:.2f} * units.deg)")
     out.append(f"    ignition_module ignition_module(timing_curve: timing_curve, "
-               f"rev_limit: {redline + 300} * units.rpm, limiter_duration: 0.1)")
+               f"rev_limit: {redline + 300} * units.rpm, limiter_duration: 0.1, "
+               f"sparks_per_cycle: {lobes_per_cycle})")
     for cylinder in engine["firing_order"]:
         out.append(f"    ignition_module.connect_wire(wire{cylinder}, {fire[cylinder]:.4f} * units.deg)")
     out += ["    engine.add_ignition_module(ignition_module)", "}", ""]
@@ -510,7 +547,8 @@ def main(arguments):
             entry["boost"] = boost(engine, derived)
             if entry["boost"]:
                 (output_dir / f"{engine_id}.boost.json").write_text(json.dumps(entry["boost"]))
-            entry["derived"] = {key: round(value, 6) for key, value in derived.items()}
+            entry["derived"] = {key: round(value, 6) if isinstance(value, float) else value
+                                for key, value in derived.items()}
         manifest.append(entry)
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=1))
     skipped = [entry["engine"] for entry in manifest if "skipped" in entry]
