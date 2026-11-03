@@ -68,3 +68,21 @@ class ScriptGenerationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClosedThrottleTest(unittest.TestCase):
+    def test_choked_leak_passes_more_than_its_rating(self):
+        # Choked at idle vacuum vs the 1.5 inHg rating point (gamma 1.4).
+        self.assertAlmostEqual(generator.choked_to_carb_rating_flow_ratio(), 2.225, places=2)
+
+    def test_closed_plate_leak_feeds_idle_at_idle_vacuum(self):
+        # Regression: a fixed 0.995 plate on the 6x throttle idled at 0.6-0.93 atm.
+        engine = ENGINES["chevy_350_l48"]
+        displacement_ci = 350.0
+        wide_open = generator.throttle_cfm(engine, displacement_ci)
+        position = generator.closed_throttle_plate_position(engine, displacement_ci, wide_open)
+        leak_cfm = wide_open * generator.math.cos(position * generator.math.pi / 2)
+        idle_rpm = min(max(0.25 * engine["redline_rpm"], 600.0), 900.0)
+        idle_scfm = displacement_ci / 1728.0 * idle_rpm / 2 * generator.IDLE_MANIFOLD_PRESSURE_ATM
+        self.assertAlmostEqual(leak_cfm * generator.choked_to_carb_rating_flow_ratio(), idle_scfm, places=3)
+        self.assertGreater(position, 0.995)

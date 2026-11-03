@@ -74,6 +74,13 @@ THROTTLE_CFM_MARGIN = 6.0                        # fleet fit 2026-11-03 (was 1.2
 # ratings at 1.5 inHg, scaled like every pipe flow in this model (x4).
 CARBURETTOR_RATED_CFM = {"carb-1bbl": 200.0, "carb-2bbl": 350.0, "carb-4bbl": 650.0}
 CARBURETTOR_FLOW_SCALE = 4.0
+# Pedal released, the throttle plate's leak and idle air feed a warm engine
+# at its idle speed with typical idle manifold vacuum. (A fixed 0.995 plate
+# leaked 0.6-0.93 atm through the 6x throttle: idle and coasting at near
+# full load.) Idle speed: the dyno's rule, a quarter of redline in 600-900 rpm.
+IDLE_MANIFOLD_PRESSURE_ATM = 0.35
+IDLE_RPM_PER_REDLINE_RPM = 0.25
+IDLE_RPM_RANGE = (600.0, 900.0)
 PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
 # A diesel's fuel is injected in the cylinder; Engine Simulator premixes it in
 # the intake, so a small premix volume keeps the pedal response immediate
@@ -333,6 +340,25 @@ def throttle_cfm(engine, displacement_ci):
     return min(wide_open, CARBURETTOR_FLOW_SCALE * carburettor) if carburettor else wide_open
 
 
+def choked_to_carb_rating_flow_ratio(heat_capacity_ratio=1.4):
+    """Flow through one Engine Simulator orifice when choked (idle vacuum)
+    over its k_carb rating flow (1.5 inHg drop from 1 atm)."""
+    g = heat_capacity_ratio
+    choked = math.sqrt(g) * (2 / (g + 1)) ** ((g + 1) / (2 * (g - 1)))
+    ratio = 1 - 1.5 / 29.921
+    rated = math.sqrt(2 * g / (g - 1) * (1 - ratio ** ((g - 1) / g))) * ratio ** (1 / g)
+    return choked / rated
+
+
+def closed_throttle_plate_position(engine, displacement_ci, wide_open_cfm):
+    """Engine Simulator plate position (flow scales with cos(position * pi/2))
+    whose leak holds IDLE_MANIFOLD_PRESSURE_ATM at idle speed."""
+    idle_rpm = min(max(IDLE_RPM_PER_REDLINE_RPM * engine["redline_rpm"], IDLE_RPM_RANGE[0]), IDLE_RPM_RANGE[1])
+    idle_scfm = displacement_ci / 1728.0 * idle_rpm / (engine["cycle"] // 2) * IDLE_MANIFOLD_PRESSURE_ATM
+    leak_rating_cfm = idle_scfm / choked_to_carb_rating_flow_ratio()
+    return 2 / math.pi * math.acos(min(1.0, leak_rating_cfm / wide_open_cfm))
+
+
 def derive(engine, car):
     """Every number the script needs, real where known, else by rule."""
     count = engine["cylinders"]
@@ -408,6 +434,8 @@ def derive(engine, car):
         "flywheel_radius": FLYWHEEL_RADIUS_M_AT_1_LITRE * displacement_litres ** FLYWHEEL_RADIUS_EXPONENT,
         "friction_torque": CRANK_FRICTION_MEAN_PRESSURE_PA * displacement_litres / 1000.0 / (4.0 * math.pi),
         "throttle_cfm": throttle_cfm(engine, displacement_ci),
+        "closed_throttle_plate_position": closed_throttle_plate_position(
+            engine, displacement_ci, throttle_cfm(engine, displacement_ci)),
         "plenum_volume": (DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT if engine["fuel"] in ("diesel", "multifuel")
                           else PLENUM_VOLUME_TO_DISPLACEMENT) * displacement_litres / 1000.0,
         "exhaust_pipe": pipe, "exhaust_outlet_cfm": pipe_flow_cfm(pipe),
@@ -531,7 +559,7 @@ def engine_script(engine, car):
             f"        molecular_afr: {intake_molecular_afr(engine):.4f},",
             f"        runner_length: {INTAKE_RUNNER_LENGTH_M} * units.m,",
             f"        idle_flow_rate: k_carb(0.0),",
-            f"        idle_throttle_plate_position: 0.995,",
+            f"        idle_throttle_plate_position: {d['closed_throttle_plate_position']:.5f},",
             f"        velocity_decay: 0.5)",
             f"    exhaust_system_parameters exhaust_params(",
             f"        collector_cross_section_area: {math.pi * d['exhaust_pipe'] ** 2 / 4 * 1e4:.3f} * units.cm2,",
