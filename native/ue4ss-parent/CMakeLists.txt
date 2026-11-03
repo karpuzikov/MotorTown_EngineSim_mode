@@ -117,3 +117,22 @@ add_custom_target(mtes-stage-dev ALL
     DEPENDS MotorTownEngineSim
     COMMENT "Stage development-only UE4SS module; do not install as an audio replacement"
     VERBATIM)
+
+# The exact UE4SS this mod links against (proxy dwmapi.dll, UE4SS.dll and its
+# default settings), for games where UE4SS is missing; install-dev-test.ps1
+# installs it only then.
+set(mtes_ue4ss_settings "${MTES_UE4SS_SOURCE}/assets/UE4SS-settings.ini")
+if(TARGET proxy AND EXISTS "${mtes_ue4ss_settings}")
+    set(mtes_stage_ue4ss_runtime "${CMAKE_BINARY_DIR}/dev-stage/ue4ss-runtime")
+    add_custom_target(mtes-stage-ue4ss-runtime ALL
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_ue4ss_runtime}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:proxy>" "${mtes_stage_ue4ss_runtime}/$<TARGET_FILE_NAME:proxy>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:UE4SS>" "${mtes_stage_ue4ss_runtime}/UE4SS.dll"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${mtes_ue4ss_settings}" "${mtes_stage_ue4ss_runtime}/UE4SS-settings.ini"
+        DEPENDS proxy UE4SS
+        COMMENT "Stage the matching UE4SS runtime"
+        VERBATIM)
+endif()

@@ -267,7 +267,7 @@ try {
     Assert-VcpkgConfiguration $buildDir $vcpkgRoot
     Invoke-Checked 'Compile and stage native UE4SS DLL' 'cmake' @(
         '--build', $buildDir, '--config', 'Game__Shipping__Win64',
-        '--target', 'mtes-stage-dev', '--parallel', '4')
+        '--target', 'mtes-stage-dev', 'mtes-stage-ue4ss-runtime', '--parallel', '4')
 
     if (-not (Test-Path $devDll -PathType Leaf) -or (Get-Item $devDll).Length -le 0) {
         throw "Build reported success but did not produce main.dll: $devDll"

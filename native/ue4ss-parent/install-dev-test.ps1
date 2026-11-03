@@ -23,7 +23,23 @@ $BackupRoot = [IO.Path]::GetFullPath($BackupRoot)
 $mods = Join-Path $GameWin64 'ue4ss\Mods'
 $target = Join-Path $mods 'MotorTownEngineSim'
 if (-not (Test-Path -LiteralPath $mods -PathType Container)) {
-    throw "Existing UE4SS Mods directory not found: $mods"
+    # A game update can remove UE4SS. Install the exact build this mod links
+    # against (staged next to the mod by the local build), never another one.
+    $runtime = Join-Path $StageRoot '..\..\..\ue4ss-runtime'
+    $runtimeFiles = @('dwmapi.dll', 'UE4SS.dll', 'UE4SS-settings.ini')
+    foreach ($file in $runtimeFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $runtime $file) -PathType Leaf)) {
+            throw "UE4SS is not installed in $GameWin64 and the matching UE4SS build is missing: $(Join-Path $runtime $file). Rerun the local build."
+        }
+    }
+    if (Test-Path -LiteralPath (Join-Path $GameWin64 'dwmapi.dll')) {
+        throw "Found $GameWin64\dwmapi.dll without ue4ss\Mods; refusing to replace an unknown loader."
+    }
+    New-Item -ItemType Directory -Path $mods -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $runtime 'dwmapi.dll') -Destination (Join-Path $GameWin64 'dwmapi.dll')
+    Copy-Item -LiteralPath (Join-Path $runtime 'UE4SS.dll') -Destination (Join-Path $GameWin64 'ue4ss\UE4SS.dll')
+    Copy-Item -LiteralPath (Join-Path $runtime 'UE4SS-settings.ini') -Destination (Join-Path $GameWin64 'ue4ss\UE4SS-settings.ini')
+    Write-Host 'Installed the matching UE4SS (it was missing from the game folder).' -ForegroundColor Yellow
 }
 
 $required = @(
