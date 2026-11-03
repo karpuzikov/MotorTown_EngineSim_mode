@@ -103,8 +103,10 @@ add_custom_target(mtes-stage-dev ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${mtes_profile_source}/settings.ini" "${mtes_stage_mod}/settings.ini"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${mtes_stage_mod}/assets"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${mtes_profile_scripts}
-        "${mtes_stage_mod}/assets/"
+    # One directory copy: listing ~220 profile files overflowed the Windows
+    # 8191-character command line (exit 9020). The manifests copied along are unused there.
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${mtes_profile_source}" "${mtes_stage_mod}/assets"
     # Profiles are self-contained engines; they need only the impulse responses.
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es/sound-library" "${mtes_stage_mod}/assets/sound-library"
