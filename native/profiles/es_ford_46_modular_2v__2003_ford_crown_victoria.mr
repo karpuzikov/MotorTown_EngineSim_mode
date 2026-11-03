@@ -82,7 +82,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(763.0),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/2003_ford_crown_victoria.wav", volume: 0.02098815)
+    impulse_response car_exhaust(filename: "exhaust/2003_ford_crown_victoria.wav", volume: 0.02928342)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
 
     function intake_flow(50 * units.thou)

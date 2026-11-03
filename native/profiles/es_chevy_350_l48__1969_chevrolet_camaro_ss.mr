@@ -82,7 +82,7 @@ public node motor_town_engine {
         primary_tube_length: 0.200 * units.m,
         primary_flow_rate: k_carb(968.0),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response car_exhaust(filename: "exhaust/1969_chevrolet_camaro_ss.wav", volume: 0.07509272)
+    impulse_response car_exhaust(filename: "exhaust/1969_chevrolet_camaro_ss.wav", volume: 0.05752811)
     exhaust_system exhaust0(exhaust_params, impulse_response: car_exhaust)
     exhaust_system exhaust1(exhaust_params, impulse_response: car_exhaust)
 

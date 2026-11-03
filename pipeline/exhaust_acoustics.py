@@ -19,21 +19,27 @@ SAMPLE_RATE_HZ = 44100
 IMPULSE_RESPONSE_SAMPLES = 4096                 # 93 ms; the convolution is direct-form
 EXHAUST_GAS_SPEED_OF_SOUND = 450.0              # m/s, mean of ~700 K at the engine and cooler at the tail
 WALL_LOSS_PER_SQRT_HZ = 3.0e-5                  # Np/m * m / sqrt(Hz): viscous and thermal pipe losses
-ABSORPTIVE_LOSS_PER_KHZ = 2.0                   # Np/m per kHz in a packed (glasspack) section
+# Packed (fibre/perforated) silencers: Np/m per kHz, rising to 2 kHz. Fit so
+# packed boxes take ~15-25 dB off the 1-8 kHz band (2026-11-03: unpacked
+# chambers left the Scania's 600-800 Hz pipe resonances 25 dB over its firing
+# rumble; in game a raspy buzz).
+ABSORPTIVE_LOSS_PER_KHZ = 0.6
+ABSORPTIVE_LOSS_SATURATES_AT_HZ = 2000.0
 
 # Silencer types from real_cars.json -> chamber diameter and length in pipe
-# diameters, and whether it is packed with absorbing material.
+# diameters, and whether it is packed with absorbing material (road-vehicle
+# boxes are; a resonator is a plain chamber).
 SILENCER_GEOMETRY = {
-    "single-box": (3.0, 7.0, False),
-    "center-box": (3.0, 6.0, False),
-    "rear-box": (3.0, 7.0, False),
-    "transverse-box": (3.5, 5.0, False),
+    "single-box": (3.0, 7.0, True),
+    "center-box": (3.0, 6.0, True),
+    "rear-box": (3.0, 7.0, True),
+    "transverse-box": (3.5, 5.0, True),
     "resonator": (2.0, 4.0, False),
     "glasspack": (1.6, 6.0, True),
     "turbo-muffler": (3.0, 7.0, True),
-    "stack-muffler": (2.4, 7.0, False),
+    "stack-muffler": (2.4, 7.0, True),
     "absorptive": (2.0, 6.0, True),
-    "expansion-box": (3.0, 5.0, False),
+    "expansion-box": (3.0, 5.0, True),
     "can-muffler": (2.5, 5.0, True),
 }
 CATALYST_GEOMETRY = (2.2, 3.0, True)
@@ -47,7 +53,8 @@ def section_matrix(length_m, diameter_m, frequencies_hz, absorptive=False):
     characteristic_impedance = 1.0 / area      # rho*c cancels in the response
     attenuation = WALL_LOSS_PER_SQRT_HZ * np.sqrt(frequencies_hz) / (diameter_m / 2.0)
     if absorptive:
-        attenuation = attenuation + ABSORPTIVE_LOSS_PER_KHZ * frequencies_hz / 1000.0
+        attenuation = attenuation + ABSORPTIVE_LOSS_PER_KHZ * np.minimum(
+            frequencies_hz, ABSORPTIVE_LOSS_SATURATES_AT_HZ) / 1000.0
     wavenumber = 2 * np.pi * frequencies_hz / EXHAUST_GAS_SPEED_OF_SOUND - 1j * attenuation
     kl = wavenumber * length_m
     return (np.cos(kl), 1j * characteristic_impedance * np.sin(kl),
