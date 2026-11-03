@@ -92,8 +92,14 @@ FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed
                         f"max_burning_efficiency: {MAX_BURNING_EFFICIENCY}")
 # Boost: the pressure ratio that lifts the model's unboosted full-load mean
 # effective pressure (measured, petrol median of 14 engines 2026-11-03) to
-# the rated torque. Diesel reference is a first guess until measured.
-UNBOOSTED_MODEL_BMEP_PA = {"petrol": 11.3e5, "petrol-oil": 11.3e5, "multifuel": 11.3e5, "diesel": 6.5e5}
+# the rated torque.
+# Measured per (fuel, cycle), 2026-11-03: petrol 4-stroke median of 14 NA
+# engines; diesel 4-stroke from the Volvo D13; two-strokes from the three
+# Detroits and the Vespa run at their scavenge pressure.
+UNBOOSTED_MODEL_BMEP_PA = {
+    ("petrol", 4): 11.3e5, ("multifuel", 4): 11.3e5, ("diesel", 4): 11.8e5,
+    ("diesel", 2): 4.8e5, ("petrol-oil", 2): 3.4e5,
+}
 BOOST_PRESSURE_RATIO_LIMITS = (1.0, 3.5)
 TURBO_BOOST_STARTS_AT_TORQUE_RPM_FRACTION = 0.4   # exhaust energy too low below this
 TORQUE_RISE_WHEN_TORQUE_UNKNOWN = 1.3              # peak torque / torque at rated power
@@ -351,7 +357,7 @@ def boost(engine, derived):
     displacement = derived["displacement_litres"] / 1000.0
     radians_per_cycle = 2 * math.pi * (2 if engine["cycle"] == 4 else 1)
     rated_bmep = radians_per_cycle * rated_peak_torque_nm(engine) / displacement
-    ratio = rated_bmep / UNBOOSTED_MODEL_BMEP_PA[engine["fuel"]]
+    ratio = rated_bmep / UNBOOSTED_MODEL_BMEP_PA[(engine["fuel"], engine["cycle"])]
     minimum = TWO_STROKE_MINIMUM_SCAVENGE_PRESSURE_RATIO if engine["cycle"] == 2 else BOOST_PRESSURE_RATIO_LIMITS[0]
     ratio = min(max(ratio, minimum), BOOST_PRESSURE_RATIO_LIMITS[1])
     torque_rpm = engine.get("torque_rpm") or 0.6 * engine["power_rpm"]
