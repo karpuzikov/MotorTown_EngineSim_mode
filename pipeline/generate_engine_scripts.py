@@ -12,6 +12,7 @@ which parts are not physically modelled yet.
 """
 
 import json
+import os
 import math
 import sys
 from pathlib import Path
@@ -66,15 +67,29 @@ MINIMUM_SIMULATION_FREQUENCY_HZ = 10000
 # Engine Simulator's default combustion constants (80 % burn efficiency,
 # flame speed 1.5x turbulence). Its GM LS example's complete burn at 2x
 # turbulence gave 18 bar BMEP without boost (2026-11-03 dyno run).
+# Engine Simulator burns too slowly: best-torque spark advance hit 58 deg on
+# every engine (real: 25-40). One flame-speed factor for the whole fleet,
+# fitted once against rated figures; the calibration run may override it.
+FLAME_SPEED_SCALE = float(os.environ.get("MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE", "1.0"))
+FLAME_SPEED_ARGUMENT = "turbulence_to_flame_speed_ratio: motor_town_flame_speed()"
 FUEL_SCRIPT = {
-    "petrol": "fuel(name: \"Gasoline\")",
-    "multifuel": "fuel(name: \"Gasoline\")",
-    "petrol-oil": "fuel(name: \"Gasoline\")",
+    "petrol": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
+    "multifuel": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
+    "petrol-oil": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     # Diesel C12H23: 167 g/mol, 17.75 mol O2 per mol fuel, 45.5 kJ/g.
     "diesel": ("fuel(name: \"Diesel\", molecular_mass: 167 * units.g, "
                "energy_density: 45.5 * units.kJ / units.g, "
-               "density: 0.832 * units.kg / units.L, molecular_afr: 17.75)"),
+               "density: 0.832 * units.kg / units.L, molecular_afr: 17.75, " + FLAME_SPEED_ARGUMENT + ")"),
 }
+
+
+def flame_speed_node():
+    """Engine Simulator's default turbulence-to-flame-speed curve, scaled."""
+    samples = [(0.0, 3.0)] + [(x, 1.5 * x) for x in range(5, 50, 5)]
+    lines = ["private node motor_town_flame_speed {", "    alias output __out:", "        function(5.0)"]
+    lines += [f"            .add_sample({x:.1f}, {FLAME_SPEED_SCALE * y:.4f})" for x, y in samples]
+    lines[-1] += ";"
+    return lines + ["}", ""]
 
 
 def load_specs():
@@ -294,7 +309,7 @@ def engine_script(engine, car):
     diesel = engine["fuel"] == "diesel"
     redline = engine["redline_rpm"]
     out = ['import "engine_sim.mr"', "", "units units()", "constants constants()",
-           "impulse_response_library ir_lib()", ""]
+           "impulse_response_library ir_lib()", ""] + flame_speed_node()
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
     out += [f"    engine engine(",

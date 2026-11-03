@@ -18,6 +18,10 @@ on:
         description: 'Fixed synthesizer output gain for every engine'
         required: false
         default: '1.0'
+      flame_speed_scale:
+        description: 'Calibration only: flame-speed factor override (empty = generator default)'
+        required: false
+        default: ''
       find_mbt:
         description: 'Search the best spark advance (find-mbt) or use the script timing (empty)'
         required: false
@@ -67,6 +71,8 @@ jobs:
           $run = New-Item -ItemType Directory -Force -Path 'dyno-run'
           Copy-Item -Recurse 'build-dyno/_deps/motor_town_engine_sim_core-src/es' (Join-Path $run 'es')
           $engines = "${{ github.event.inputs.engines }}".Split(' ', [StringSplitOptions]::RemoveEmptyEntries)
+          $env:MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE = "${{ github.event.inputs.flame_speed_scale }}"
+          if (-not $env:MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE) { Remove-Item Env:MOTOR_TOWN_ENGINE_SIM_FLAME_SPEED_SCALE }
           python -I pipeline/generate_engine_scripts.py (Join-Path $run 'assets') @engines
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $step = "${{ github.event.inputs.rpm_step }}"

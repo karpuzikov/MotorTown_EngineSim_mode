@@ -64,8 +64,9 @@ struct DynoPoint {
     double rpm, sparkAdvanceDeg, torqueNm, powerHp, rmsDbfs, peakDbfs, clippedFraction;
 };
 
-constexpr double MbtSearchMinDeg = 0.0;
-constexpr double MbtSearchMaxDeg = 60.0;
+// Real engines' best-torque advance lies within this range.
+constexpr double MbtSearchMinDeg = 5.0;
+constexpr double MbtSearchMaxDeg = 45.0;
 constexpr int MbtSearchEvaluations = 7;
 constexpr double MbtSettleSeconds = 0.5;
 constexpr double MbtMeasureRevolutions = 8.0;   // four 4-stroke cycles
