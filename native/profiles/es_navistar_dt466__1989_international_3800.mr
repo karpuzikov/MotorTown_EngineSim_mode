@@ -181,7 +181,7 @@ public node motor_town_engine {
         chamber_volume: 83.188 * units.cc,
         intake_runner_volume: 153.163 * units.cc,
         intake_runner_cross_section_area: 28.0518 * units.cm2,
-        exhaust_runner_volume: 98.024 * units.cc,
+        exhaust_runner_volume: 636.619 * units.cc,
         exhaust_runner_cross_section_area: 17.9532 * units.cm2,
         intake_port_flow: intake_flow, exhaust_port_flow: exhaust_flow,
         valvetrain: standard_valvetrain(intake_camshaft: intake_cam0, exhaust_camshaft: exhaust_cam0),

@@ -189,6 +189,15 @@ def car_slug(car):
 EXHAUST_IMPULSE_RESPONSE = "ir_lib.minimal_muffling_01"
 
 
+def exhaust_runner_volume_m3(d):
+    """Engine Simulator's exhaust "runner and primary": the port plus the
+    primary pipe up to the collector. The port alone (~40 cc) was so small
+    that flow between it and the cylinder chattered from step to step; the
+    sound's derivative turned each chatter into a pop (in game: idle
+    "clipping", ~1.4 pops/s on the Dory; gone with the primary's volume)."""
+    return d["exhaust_runner_area"] * (d["port_length"] + d["primary_tube_length"])
+
+
 def exhaust_count_for(engine, car):
     banks = bank_angles_deg(engine)
     return 2 if len(banks) == 2 and car["exhaust"]["layout"] == "dual" else 1
@@ -591,7 +600,7 @@ def engine_script(engine, car):
                 f"        chamber_volume: {d['chamber_volume'] * 1e6:.3f} * units.cc,",
                 f"        intake_runner_volume: {d['intake_runner_area'] * d['port_length'] * 1e6:.3f} * units.cc,",
                 f"        intake_runner_cross_section_area: {d['intake_runner_area'] * 1e4:.4f} * units.cm2,",
-                f"        exhaust_runner_volume: {d['exhaust_runner_area'] * d['port_length'] * 1e6:.3f} * units.cc,",
+                f"        exhaust_runner_volume: {exhaust_runner_volume_m3(d) * 1e6:.3f} * units.cc,",
                 f"        exhaust_runner_cross_section_area: {d['exhaust_runner_area'] * 1e4:.4f} * units.cm2,",
                 f"        intake_port_flow: intake_flow, exhaust_port_flow: exhaust_flow,",
                 f"        valvetrain: standard_valvetrain(intake_camshaft: intake_cam{bank_index}, exhaust_camshaft: exhaust_cam{bank_index}),",

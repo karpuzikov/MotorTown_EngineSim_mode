@@ -87,3 +87,14 @@ class ClosedThrottleTest(unittest.TestCase):
         self.assertAlmostEqual(leak_cfm * generator.choked_to_carb_rating_flow_ratio(), idle_scfm, places=3)
         self.assertGreater(position, 0.995)
 
+
+
+class ExhaustRunnerTest(unittest.TestCase):
+    def test_runner_volume_includes_the_primary_pipe(self):
+        # Regression: the port alone (~40 cc) chattered and popped at idle.
+        engine = ENGINES["ford_flathead_239"]
+        car = next(c for c in CARS if c["real_car"] == "1948 Ford F-1")
+        derived = generator.derive(engine, car)
+        volume = generator.exhaust_runner_volume_m3(derived)
+        self.assertAlmostEqual(volume, derived["exhaust_runner_area"] * (derived["port_length"] + derived["primary_tube_length"]))
+        self.assertGreater(volume, 5 * derived["exhaust_runner_area"] * derived["port_length"])
