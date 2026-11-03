@@ -15,7 +15,8 @@ import scipy.signal as signal
 OCTAVE_EDGES_HZ = np.array([63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000])
 
 
-def octave_band_levels_db(spec):
+def read_samples(spec):
+    """(rate, mono samples) of "file.wav" or "file.wav:start:seconds"."""
     path, *window = spec.split(":")
     rate, samples = wavfile.read(path)
     samples = samples.astype(float)
@@ -23,9 +24,12 @@ def octave_band_levels_db(spec):
         samples = samples.mean(axis=1)
     if window:
         start, seconds = float(window[0]), float(window[1])
-        samples = samples[int(start * rate):int((start + seconds) * rate)]
-    else:
-        samples = samples[len(samples) // 4:]          # skip the start-up
+        return rate, samples[int(start * rate):int((start + seconds) * rate)]
+    return rate, samples[len(samples) // 4:]          # skip the start-up
+
+
+def octave_band_levels_db(spec):
+    rate, samples = read_samples(spec)
     frequencies, power = signal.welch(samples, rate, nperseg=8192)
     return np.array([10 * np.log10(power[(frequencies >= low) & (frequencies < high)].sum() + 1e-20)
                      for low, high in zip(OCTAVE_EDGES_HZ[:-1], OCTAVE_EDGES_HZ[1:])])

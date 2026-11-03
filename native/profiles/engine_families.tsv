@@ -45,7 +45,7 @@ vehicle	^longhornsemi	assets/es_volvo_d13__2014_volvo_vnl.mr	441-487
 vehicle	^longhornsemi	assets/es_cummins_isx15__2014_volvo_vnl.mr	488-525
 vehicle	^longhornsemi	assets/es_volvo_d16__2014_volvo_vnl.mr	526-100000
 vehicle	^dorywrecker	assets/es_ford_226_rebel__1948_ford_f_1.mr	0-98
-vehicle	^dorywrecker	assets/es_ford_flathead_239__1948_ford_f_1.mr	99-100000
+vehicle	^dorywrecker	assets/es_ford_flathead_239__1948_ford_f_1.mr#exhaust=mtes-exhaust/es_ford_flathead_239__1948_ford_f_1.wav	99-100000
 vehicle	^kiraflatbed	assets/es_fiat_8040__1977_iveco_zeta.mr	0-92
 vehicle	^kiraflatbed	assets/es_fiat_8340__1977_iveco_zeta.mr	93-114
 vehicle	^kiraflatbed	assets/es_fiat_8060__1977_iveco_zeta.mr	115-100000
@@ -176,7 +176,7 @@ vehicle	^dumpy	assets/es_scania_dc13__scania_p_series.mr	351-100000
 vehicle	^pulse	-
 vehicle	^zydro	-
 vehicle	^dory	assets/es_ford_226_rebel__1948_ford_f_1.mr	0-98
-vehicle	^dory	assets/es_ford_flathead_239__1948_ford_f_1.mr	99-100000
+vehicle	^dory	assets/es_ford_flathead_239__1948_ford_f_1.mr#exhaust=mtes-exhaust/es_ford_flathead_239__1948_ford_f_1.wav	99-100000
 vehicle	^koma	assets/es_bmc_a_998__1965_austin_mini_cooper.mr	0-64
 vehicle	^koma	assets/es_bmc_a_1275s__1965_austin_mini_cooper.mr	65-100000
 vehicle	^boxy	assets/es_chevy_250_i6__1971_chevrolet_p30_step_van.mr	0-160

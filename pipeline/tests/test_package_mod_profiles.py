@@ -28,3 +28,10 @@ class HandmadeProfileTest(unittest.TestCase):
         name = "es_ford_flathead_239__1948_ford_f_1"
         packaged = (packager.PROFILES_DIR / f"{name}.mr").read_text()
         self.assertEqual(packaged, (packager.HANDMADE_DIR / f"{name}.mr").read_text())
+
+    def test_handmade_exhaust_response_ships_and_is_played_instead_of_the_script_s(self):
+        name = "es_ford_flathead_239__1948_ford_f_1"
+        shipped = packager.EXHAUST_DIR / f"{name}.wav"
+        self.assertEqual(shipped.read_bytes(), (packager.HANDMADE_DIR / f"{name}.wav").read_bytes())
+        rule = f"assets/{name}.mr#exhaust={packager.EXHAUST_LIBRARY_PATH}/{name}.wav"
+        self.assertIn(rule, (packager.PROFILES_DIR / "engine_families.tsv").read_text())
