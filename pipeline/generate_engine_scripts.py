@@ -63,28 +63,18 @@ ENGINE_SIM_INTAKE_LAMBDA = 0.8                   # fixed in Engine Simulator's I
 SIMULATION_FREQUENCY_PER_REDLINE_RPM = 2.0
 MINIMUM_SIMULATION_FREQUENCY_HZ = 10000
 
-# Combustion model constants from Engine Simulator's own calibrated GM LS
-# example (flame speed 2x turbulence, complete burn), used for every engine.
-COMBUSTION_SCRIPT = ("max_burning_efficiency: 1.0, "
-                     "turbulence_to_flame_speed_ratio: motor_town_flame_speed()")
+# Engine Simulator's default combustion constants (80 % burn efficiency,
+# flame speed 1.5x turbulence). Its GM LS example's complete burn at 2x
+# turbulence gave 18 bar BMEP without boost (2026-11-03 dyno run).
 FUEL_SCRIPT = {
-    "petrol": "fuel(name: \"Gasoline\", " + COMBUSTION_SCRIPT + ")",
-    "multifuel": "fuel(name: \"Gasoline\", " + COMBUSTION_SCRIPT + ")",
-    "petrol-oil": "fuel(name: \"Gasoline\", " + COMBUSTION_SCRIPT + ")",
+    "petrol": "fuel(name: \"Gasoline\")",
+    "multifuel": "fuel(name: \"Gasoline\")",
+    "petrol-oil": "fuel(name: \"Gasoline\")",
     # Diesel C12H23: 167 g/mol, 17.75 mol O2 per mol fuel, 45.5 kJ/g.
     "diesel": ("fuel(name: \"Diesel\", molecular_mass: 167 * units.g, "
                "energy_density: 45.5 * units.kJ / units.g, "
-               "density: 0.832 * units.kg / units.L, molecular_afr: 17.75, " + COMBUSTION_SCRIPT + ")"),
+               "density: 0.832 * units.kg / units.L, molecular_afr: 17.75)"),
 }
-FLAME_SPEED_NODE = [
-    "private node motor_town_flame_speed {",
-    "    alias output __out:",
-    "        function(5.0)",
-    "            .add_sample(0.0, 3.0)",
-    "            .add_sample(5.0, 1.5 * 5.0)",
-    "            .add_sample(10.0, 1.75 * 10.0)",
-] + [f"            .add_sample({x}.0, 2.0 * {x}.0)" for x in range(15, 45, 5)] + [
-    "            .add_sample(45.0, 2.0 * 45.0);", "}", ""]
 
 
 def load_specs():
@@ -304,7 +294,7 @@ def engine_script(engine, car):
     diesel = engine["fuel"] == "diesel"
     redline = engine["redline_rpm"]
     out = ['import "engine_sim.mr"', "", "units units()", "constants constants()",
-           "impulse_response_library ir_lib()", ""] + FLAME_SPEED_NODE
+           "impulse_response_library ir_lib()", ""]
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
     out += [f"    engine engine(",

@@ -110,10 +110,12 @@ int main(int argc, char **argv) {
     audio.airNoise = static_cast<float>(engine->getInitialNoise());
     audio.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
     // One fixed gain for every engine instead of the automatic leveler, so
-    // loudness differences come from the simulation itself.
-    audio.levelerMinGain = outputGain;
-    audio.levelerMaxGain = outputGain;
+    // loudness differences come from the simulation itself. (The leveler's
+    // min/max gain parameters are never passed to the filter; pin it at 1.)
+    audio.volume = outputGain;
     simulator->synthesizer().setAudioParameters(audio);
+    simulator->synthesizer().m_levelingFilter.p_minLevel = 1.0f;
+    simulator->synthesizer().m_levelingFilter.p_maxLevel = 1.0f;
     for (int i = 0; i < engine->getExhaustSystemCount(); ++i) {
         const ImpulseResponse *response = engine->getExhaustSystem(i)->getImpulseResponse();
         const auto samples = mtes::load_impulse_wav(response->getFilename());
