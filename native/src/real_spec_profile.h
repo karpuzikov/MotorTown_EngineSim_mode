@@ -23,15 +23,11 @@
 namespace mtes {
 
 // Tailpipe sound pressure (Pa at 1 m) to PCM: one gain for every engine, so
-// loudness differences come from the simulation. Dyno-calibrated 2026-11-03
-// (100 with Engine Simulator's generic muffler recording); the physical
-// exhaust responses pass ~13x more at 100 Hz-1 kHz (7.5), and the pipe flow
-// losses take x3.7 off again (median 100 Hz-1 kHz). 27.8 then played a
-// loaded semi under its own tyres in game (3D mix 0.3). With the exhaust
-// manifold in the responses, 100 (+11 dB) puts the fleet's median full load
-// at 70% of redline near -15 dBFS, like stock cues; 140 pushed the loudest
-// (Detroit two-strokes, V12s, a semi at peak torque) into the soft clip.
-inline constexpr float MotorTownEngineSimRealSpecOutputGain = 100.0f;
+// loudness differences come from the simulation. Earlier gains (27.8-140)
+// were fitted while Engine Simulator's derivative mix (dF_F_mix, now off)
+// dominated the output. 1120 puts the fleet's median full load at 70% of
+// redline near -17 dBFS, like stock cues (dyno renders 2026-11-03).
+inline constexpr float MotorTownEngineSimRealSpecOutputGain = 1120.0f;
 // Full-scale peaks bend smoothly above half scale instead of clipping.
 inline constexpr float MotorTownEngineSimRealSpecSoftClipKnee = 0.5f;
 
@@ -51,6 +47,11 @@ inline void use_real_spec_sound(Simulator* simulator) {
     // noise"). On the physical tailpipe pressure that chops every exhaust pulse
     // into a noise burst: in game a semi buzzed "like a wire rubbing a fan".
     audio.airNoise = 0.0f;
+    // Engine Simulator also mixes in the time derivative of its input
+    // ("high-frequency gain" 0.01, per audio sample): above ~16 Hz it
+    // dominated, so the already radiated d/dt signal played as its second
+    // derivative, a click train (in game "knocking against a fan").
+    audio.dF_F_mix = 0.0f;
     simulator->synthesizer().setAudioParameters(audio);
     simulator->synthesizer().m_levelingFilter.p_minLevel = 1.0f;
     simulator->synthesizer().m_levelingFilter.p_maxLevel = 1.0f;

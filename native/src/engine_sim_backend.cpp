@@ -47,8 +47,8 @@ void spin_forward(Engine *engine, double speed) {
 }
 
 std::atomic<bool> g_exhaustResponseEnabled{true};
-// Without the exhaust's losses the raw source is ~20 dB louder at peaks.
-constexpr double RawSourceTestVolume = 0.1;
+// The exhaust passes ~-10 dB of the raw source's level (Scania, cruising).
+constexpr double RawSourceTestVolume = 0.3;
 
 class EngineSimBackend final : public EngineBackend {
 public:
