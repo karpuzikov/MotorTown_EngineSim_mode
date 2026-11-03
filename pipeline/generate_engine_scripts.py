@@ -33,7 +33,7 @@ DIESEL_COMPRESSION_WHEN_UNKNOWN = 17.0
 COMPRESSION_HEIGHT_TO_BORE = 0.33
 INTAKE_VALVE_TO_BORE = {2: 0.48, 4: 0.36}       # per valve, by valves per cylinder
 EXHAUST_VALVE_TO_INTAKE_VALVE = 0.80
-VALVE_LIFT_TO_DIAMETER = 0.25
+VALVE_LIFT_TO_DIAMETER = 0.28
 VALVE_THROAT_AREA_FRACTION = 0.85                # valve area left beside the stem
 PORT_DISCHARGE_COEFFICIENT = 0.65
 RUNNER_AREA_TO_VALVE_AREA = 1.3
@@ -54,12 +54,12 @@ FLYWHEEL_MASS_EXPONENT = 0.7
 FLYWHEEL_RADIUS_M_AT_1_LITRE = 0.13
 FLYWHEEL_RADIUS_EXPONENT = 0.15
 CRANK_FRICTION_MEAN_PRESSURE_PA = 0.4e5
-THROTTLE_CFM_MARGIN = 1.2
+THROTTLE_CFM_MARGIN = 6.0                        # fleet fit 2026-11-03 (was 1.2: choked high-rpm engines)
 PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
 INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
-PIPE_DISCHARGE_COEFFICIENT = 0.8                 # straight pipe or runner, not a valve
+PIPE_DISCHARGE_COEFFICIENT = 3.2                 # fleet fit 2026-11-03; Engine Simulator's pipe flow needs ~4x the bench figure
 DIESEL_FULL_LOAD_LAMBDA = 1.45                   # diesels burn lean even at full load
 ENGINE_SIM_INTAKE_LAMBDA = 0.8                   # fixed in Engine Simulator's Intake::process
 SIMULATION_FREQUENCY_PER_REDLINE_RPM = 2.0
@@ -143,7 +143,10 @@ def firing_angles_deg(engine):
 
 
 def bank_angles_deg(engine):
-    if engine["layout"] == "I":
+    # shortcut: a flat-twin (one cylinder per bank) blows up Engine Simulator's
+    # solver at once; it is built as an inline twin with the same 360-degree
+    # firing, which sounds alike. Upgrade when the solver issue is found.
+    if engine["layout"] == "I" or (engine["layout"] == "F" and engine["cylinders"] == 2):
         return [float(engine.get("slant_deg") or 0.0)]
     if engine["layout"] == "F":
         return [-90.0, 90.0]
