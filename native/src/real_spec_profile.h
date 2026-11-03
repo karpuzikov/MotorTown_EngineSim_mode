@@ -38,6 +38,10 @@ inline void use_real_spec_sound(Simulator* simulator) {
     static_cast<PistonEngineSimulator*>(simulator)->m_physicalExhaustSound = true;
     auto audio = simulator->synthesizer().getAudioParameters();
     audio.volume = MotorTownEngineSimRealSpecOutputGain;
+    // Engine Simulator multiplies its signal by low-passed white noise ("air
+    // noise"). On the physical tailpipe pressure that chops every exhaust pulse
+    // into a noise burst: in game a semi buzzed "like a wire rubbing a fan".
+    audio.airNoise = 0.0f;
     simulator->synthesizer().setAudioParameters(audio);
     simulator->synthesizer().m_levelingFilter.p_minLevel = 1.0f;
     simulator->synthesizer().m_levelingFilter.p_maxLevel = 1.0f;
