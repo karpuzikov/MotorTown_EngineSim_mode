@@ -16,6 +16,8 @@
 #include "exhaust_system.h"
 #include "impulse_response.h"
 #include "intake.h"
+#include "combustion_chamber.h"
+#include "crankshaft.h"
 #include "piston_engine_simulator.h"
 #include "simulator.h"
 #include "synthesizer.h"
@@ -142,6 +144,14 @@ double hold_torque_nm(Simulator *simulator, Engine *engine, double rpm, double a
     double torqueSum = 0.0;
     int torqueSteps = 0;
     for (double t = 0; t < measureSeconds; t += FrameSeconds) run_frame(simulator, audio, &torqueSum, &torqueSteps);
+    const double crankRpm = std::abs(engine->getCrankshaft(0)->m_body.v_theta) / units::rpm(1.0);
+    if (!std::isfinite(torqueSum) || std::abs(crankRpm - rpm) > 0.2 * rpm) {
+        // Fail fast: a blown-up or stalled simulation reads as dyno max torque.
+        std::cerr << "unstable at " << rpm << " rpm: crank " << crankRpm << " rpm, cylinder 1 "
+                  << engine->getChamber(0)->m_system.pressure() / units::pressure(1.0, units::atm) << " atm, "
+                  << engine->getChamber(0)->m_system.temperature() << " K\n";
+        std::exit(3);
+    }
     return torqueSteps ? torqueSum / torqueSteps / units::torque(1.0, units::Nm) : 0.0;
 }
 
