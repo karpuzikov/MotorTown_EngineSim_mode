@@ -66,6 +66,10 @@ FLYWHEEL_RADIUS_M_AT_1_LITRE = 0.13
 FLYWHEEL_RADIUS_EXPONENT = 0.15
 CRANK_FRICTION_MEAN_PRESSURE_PA = 0.4e5
 THROTTLE_CFM_MARGIN = 6.0                        # fleet fit 2026-11-03 (was 1.2: choked high-rpm engines)
+# Carburettors are the real restriction of carburetted engines: typical
+# ratings at 1.5 inHg, scaled like every pipe flow in this model (x4).
+CARBURETTOR_RATED_CFM = {"carb-1bbl": 200.0, "carb-2bbl": 350.0, "carb-4bbl": 650.0}
+CARBURETTOR_FLOW_SCALE = 4.0
 PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
 INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
@@ -278,6 +282,12 @@ def exhaust_outlets(car, engine):
     return outlets
 
 
+def throttle_cfm(engine, displacement_ci):
+    wide_open = THROTTLE_CFM_MARGIN * displacement_ci * engine["redline_rpm"] / 3456.0
+    carburettor = CARBURETTOR_RATED_CFM.get(engine.get("induction"))
+    return min(wide_open, CARBURETTOR_FLOW_SCALE * carburettor) if carburettor else wide_open
+
+
 def derive(engine, car):
     """Every number the script needs, real where known, else by rule."""
     count = engine["cylinders"]
@@ -349,7 +359,7 @@ def derive(engine, car):
         "flywheel_mass": FLYWHEEL_MASS_KG_AT_1_LITRE * displacement_litres ** FLYWHEEL_MASS_EXPONENT,
         "flywheel_radius": FLYWHEEL_RADIUS_M_AT_1_LITRE * displacement_litres ** FLYWHEEL_RADIUS_EXPONENT,
         "friction_torque": CRANK_FRICTION_MEAN_PRESSURE_PA * displacement_litres / 1000.0 / (4.0 * math.pi),
-        "throttle_cfm": THROTTLE_CFM_MARGIN * displacement_ci * engine["redline_rpm"] / 3456.0,
+        "throttle_cfm": throttle_cfm(engine, displacement_ci),
         "plenum_volume": PLENUM_VOLUME_TO_DISPLACEMENT * displacement_litres / 1000.0,
         "exhaust_pipe": pipe, "exhaust_outlet_cfm": pipe_flow_cfm(pipe),
         "exhaust_length": exhaust_length_m(car),

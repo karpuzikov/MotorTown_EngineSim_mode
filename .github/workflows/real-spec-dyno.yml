@@ -96,9 +96,9 @@ jobs:
           }
           Copy-Item 'assets/manifest.json' 'results/manifest.json'
           Pop-Location
-          python -I pipeline/compare_dyno_to_rated.py dyno-run/results | Tee-Object dyno-run/results/summary.txt
-          # Artifacts may be unreachable for whoever reads the run; print the essentials.
+          # Artifacts may be unreachable for whoever reads the run; print the essentials first.
           foreach ($dyno in Get-ChildItem 'dyno-run/results/*/dyno.json') { Get-Content $dyno }
+          python -I pipeline/compare_dyno_to_rated.py dyno-run/results | Tee-Object dyno-run/results/summary.txt
           foreach ($log in Get-ChildItem 'dyno-run/results/*.log') { Write-Host "----- $($log.BaseName)"; Get-Content $log -Tail 25 }
           foreach ($name in $failed | Select-Object -First 3) {
             Write-Host "===== $name"

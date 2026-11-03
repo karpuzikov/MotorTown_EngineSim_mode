@@ -47,6 +47,10 @@ def summarize(results_dir):
     return rows
 
 
+def signed(percent):
+    return "unrated" if percent is None else f"{percent:+}%"
+
+
 def main(arguments):
     results_dir = Path(arguments[0])
     rows = summarize(results_dir)
@@ -57,9 +61,9 @@ def main(arguments):
             continue
         rated = row["rated"]
         print(f"{row['engine']:28} power {row['power_hp']:5} hp @{row['power_rpm']:5.0f} "
-              f"(rated {rated['power_hp']} @{rated['power_rpm']}, {row['power_error_pct']:+}%)  "
+              f"(rated {rated['power_hp']} @{rated['power_rpm']}, {signed(row['power_error_pct'])})  "
               f"torque {row['torque_nm']:5} N*m @{row['torque_rpm']:5.0f} "
-              f"(rated {rated['torque_nm']} @{rated['torque_rpm']}, {row['torque_error_pct']:+}%)  "
+              f"(rated {rated['torque_nm']} @{rated['torque_rpm']}, {signed(row['torque_error_pct'])})  "
               f"level {row['max_rms_dbfs']} dBFS  "
               f"{'not modelled: ' + ', '.join(row['not_modelled']) if row['not_modelled'] else ''}")
     measured = [row for row in rows if row["status"] == "measured" and row["power_error_pct"] is not None]
