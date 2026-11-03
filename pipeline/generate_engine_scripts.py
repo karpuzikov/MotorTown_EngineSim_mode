@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 PIPELINE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(PIPELINE_DIR))  # sibling exhaust_acoustics under python -I
 
 # Air at 20 C, 1 atm; pressure drops used by Engine Simulator's flow units.
 AIR_DENSITY_KG_M3 = 1.204
