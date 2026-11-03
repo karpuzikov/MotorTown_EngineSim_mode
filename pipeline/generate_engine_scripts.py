@@ -446,7 +446,8 @@ def engine_script(engine, car):
     exhaust_count = 2 if len(banks) == 2 and car["exhaust"]["layout"] == "dual" else 1
     diesel = engine["fuel"] in ("diesel", "multifuel")
     redline = engine["redline_rpm"]
-    out = ["// mtes-real-spec-profile: 1", 'import "engine_sim.mr"', "", "units units()", "constants constants()",
+    out = ["// mtes-real-spec-profile: 1"] + (["// mtes-fuel-load-control: 1"] if diesel else []) + [
+           'import "engine_sim.mr"', "", "units units()", "constants constants()",
            "impulse_response_library ir_lib()", ""] + flame_speed_node(engine)
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]

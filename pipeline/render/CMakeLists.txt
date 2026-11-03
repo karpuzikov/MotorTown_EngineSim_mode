@@ -10,7 +10,7 @@ include(FetchContent)
 # two-stroke lobes and sparks per cycle.
 FetchContent_Declare(motor_town_engine_sim_core
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 140406396ebdd9e682d267869f33643fc5897800
+    GIT_TAG 4280991a4604273ae9aa72e5d3ca3d97ea688c88
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_GetProperties(motor_town_engine_sim_core)
 if(NOT motor_town_engine_sim_core_POPULATED)

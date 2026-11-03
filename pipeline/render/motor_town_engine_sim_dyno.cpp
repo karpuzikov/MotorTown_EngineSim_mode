@@ -93,14 +93,15 @@ void run_frame(Simulator *simulator, std::vector<std::int16_t> *audio, double *t
     }
 }
 
-mtes::FullLoadBoost g_boost; // shortcut: global for this one-engine tool
+mtes::FullLoadBoost g_boost; // shortcut: globals for this one-engine tool
+double g_boostThrottle = 1.0;
 
 // Holds the crankshaft at rpm with the spark advanced by advanceDeg for
 // settleSeconds, then returns the mean torque over measureSeconds.
 double hold_torque_nm(Simulator *simulator, Engine *engine, double rpm, double advanceDeg,
                       double settleSeconds, double measureSeconds, std::vector<std::int16_t> *audio) {
     const double speed = units::rpm(rpm);
-    mtes::apply_boost(engine, g_boost, rpm, 1.0);
+    mtes::apply_boost(engine, g_boost, rpm, g_boostThrottle);
     Function *timing = engine->getIgnitionModule()->getTimingCurve();
     timing->setOutputScale(1.0);
     const double scriptAdvance = timing->sampleTriangle(speed);
@@ -146,6 +147,13 @@ double interpolate(const std::vector<std::pair<double, double>> &table, double x
         }
     }
     return table.back().second;
+}
+
+double mtes_idle_advance(const std::vector<std::pair<double, double>> &mbt, Engine *engine, double rpm) {
+    if (!mbt.empty()) return interpolate(mbt, rpm);
+    Function *timing = engine->getIgnitionModule()->getTimingCurve();
+    timing->setOutputScale(1.0);
+    return timing->sampleTriangle(units::rpm(rpm)) / units::angle(1.0, units::deg);
 }
 
 } // namespace
@@ -198,7 +206,8 @@ int main(int argc, char **argv) {
     simulator->m_dyno.m_enabled = true;
     simulator->m_dyno.m_hold = true;
     engine->getIgnitionModule()->m_enabled = true;
-    engine->setSpeedControl(1.0);
+    const mtes::FuelLoadControl pedal = mtes::read_fuel_load_control(argv[1], engine);
+    mtes::apply_pedal(engine, pedal, 1.0);
     output.transmission->setClutchPressure(0.0);
 
     const double redlineRpm = engine->getRedline() / units::rpm(1.0);
@@ -238,6 +247,20 @@ int main(int argc, char **argv) {
         write_wav(outputDir / name, pcm);
         std::cout << rpm << " rpm: " << torque << " N*m, " << points.back().powerHp << " hp, "
                   << points.back().rmsDbfs << " dBFS\n";
+    }
+
+    // Idle, pedal released, as the game holds it: the sound players hear most.
+    // shortcut: idle speed by rule (a quarter of redline, 600-900 rpm); use
+    // each engine's real idle when the spec database has it.
+    const double idleRpm = std::clamp(0.25 * redlineRpm, 600.0, 900.0);
+    mtes::apply_pedal(engine, pedal, 0.0);
+    g_boostThrottle = 0.0;
+    {
+        std::vector<std::int16_t> pcm;
+        const double idleTorque = hold_torque_nm(simulator, engine, idleRpm,
+            mtes_idle_advance(mbt, engine, idleRpm), SettleSeconds, MeasureSeconds, &pcm);
+        write_wav(outputDir / "idle.wav", pcm);
+        std::cout << "idle " << idleRpm << " rpm: " << idleTorque << " N*m\n";
     }
 
     std::ofstream json(outputDir / "dyno.json");

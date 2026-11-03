@@ -22,10 +22,17 @@ on:
         description: 'Calibration only: JSON of generator rule constants to replace'
         required: false
         default: ''
+      publish_renders:
+        description: 'Push WAV renders to branch dyno-renders-<shard> (yes/empty)'
+        required: false
+        default: ''
       find_mbt:
         description: 'Search the best spark advance (find-mbt) or use the script timing (empty)'
         required: false
         default: ''
+
+permissions:
+  contents: write
 
 jobs:
   dyno:
@@ -106,6 +113,22 @@ jobs:
             if (Test-Path "dyno-run/results/$name.compile.log") { Get-Content "dyno-run/results/$name.compile.log" -Tail 40 }
           }
           if ($failed.Count) { Write-Host "Failed: $($failed -join ' ')"; exit 1 }
+
+      - name: Publish renders to a branch (artifacts are unreachable for some readers)
+        if: github.event.inputs.publish_renders == 'yes'
+        shell: pwsh
+        run: |
+          $branch = "dyno-renders-${{ matrix.shard }}"
+          $publish = New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'publish')
+          Copy-Item -Recurse 'dyno-run/results/*' $publish
+          Push-Location $publish
+          git init -q -b $branch
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@users.noreply.github.com'
+          git add -A
+          git commit -q -m "Dyno renders from run ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "HEAD:$branch"
+          Pop-Location
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -106,6 +106,7 @@ public:
             // boost from the generator; no per-profile level or tone fixes.
             m_realSpec = is_real_spec_profile(script);
             m_boost = m_realSpec ? read_full_load_boost(script) : FullLoadBoost{};
+            m_fuelLoadControl = m_realSpec ? read_fuel_load_control(script, m_engine) : FuelLoadControl{};
             if (m_realSpec) use_real_spec_sound(m_simulator);
             m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
             m_loudnessGain = -1.0; // first read() jumps to the target
@@ -175,7 +176,7 @@ public:
         const double idleness = std::clamp(1.0 - rpm / (0.5 * redlineRpm), 0.6, 1.0);
         m_speedWander = 0.97 * m_speedWander + m_cycleVariation(m_random) * 0.0035 * idleness;
         const double variedThrottle = std::clamp(throttle + m_cycleVariation(m_random) * 0.03, 0.0, 1.0);
-        m_engine->setSpeedControl(variedThrottle);
+        apply_pedal(m_engine, m_fuelLoadControl, variedThrottle);
         if (m_realSpec) apply_boost(m_engine, m_boost, rpm, throttle);
         if (m_fullThrottleLoudnessDba) {
             m_targetLoudnessGain.store(std::pow(10.0, engine_loudness_gain_db(
@@ -272,6 +273,7 @@ private:
     double m_rpmScale = 1.0;
     bool m_realSpec = false;
     FullLoadBoost m_boost;
+    FuelLoadControl m_fuelLoadControl;
     std::optional<FiringHarmonicCut> m_harmonicCut; // read() thread after load()
     std::atomic<double> m_firingHz{0.0};            // advance() thread -> read() thread
     std::optional<double> m_fullThrottleLoudnessDba;
