@@ -12,6 +12,7 @@
 #include "engine.h"
 #include "exhaust_system.h"
 #include "impulse_response.h"
+#include "piston_engine_simulator.h"
 #include "simulator.h"
 #include "synthesizer.h"
 #include "transmission.h"
@@ -104,6 +105,8 @@ int main(int argc, char **argv) {
     Engine *engine = output.engine;
     engine->calculateDisplacement();
     Simulator *simulator = engine->createSimulator(output.vehicle, output.transmission);
+    // Tailpipe sound pressure in pascals at 1 m; the output gain maps it to PCM.
+    static_cast<PistonEngineSimulator *>(simulator)->m_physicalExhaustSound = true;
     simulator->setSimulationFrequency(static_cast<int>(engine->getSimulationFrequency()));
     auto audio = simulator->synthesizer().getAudioParameters();
     audio.inputSampleNoise = static_cast<float>(engine->getInitialJitter());

@@ -5,10 +5,11 @@ cmake_minimum_required(VERSION 3.18)
 project(MotorTownEngineSimDyno LANGUAGES CXX)
 
 include(FetchContent)
-# The fork's synthesizer ties its anti-alias cut to the simulation rate.
+# Fork branch feat/physical-exhaust-sound: anti-alias cut tied to the
+# simulation rate, intake supply pressure, physically based exhaust sound.
 FetchContent_Declare(motor_town_engine_sim_core
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 551312b
+    GIT_TAG 37f2e3d7761e1812677a0c078128f6b42d4bc172
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_GetProperties(motor_town_engine_sim_core)
 if(NOT motor_town_engine_sim_core_POPULATED)
