@@ -11,7 +11,7 @@ include(FetchContent)
 # the lifetime fixes this build used to patch in, plus physically based
 # exhaust sound, intake boost and two-stroke support used by the real-spec
 # profiles. FetchContent keeps the checkout inside the build directory.
-set(motor_town_engine_sim_core_commit d88514f1328132f97cce789f1ee227ac0681d95d)
+set(motor_town_engine_sim_core_commit dfc0a895efea1283e8dc7d9ac956113cb1a91197)
 # One checkout per pinned commit: the Piranha fix below edits the checkout,
 # so moving an existing one to another commit makes Git refuse (local changes).
 string(SUBSTRING "${motor_town_engine_sim_core_commit}" 0 7 motor_town_engine_sim_core_short)

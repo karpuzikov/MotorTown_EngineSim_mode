@@ -190,6 +190,7 @@ int main(int argc, char **argv) {
     audio.airNoise = static_cast<float>(engine->getInitialNoise());
     audio.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
     simulator->synthesizer().setAudioParameters(audio);
+    mtes::use_real_spec_sound(simulator);
     for (int i = 0; i < engine->getExhaustSystemCount(); ++i) {
         const ImpulseResponse *response = engine->getExhaustSystem(i)->getImpulseResponse();
         const auto samples = mtes::load_impulse_wav(response->getFilename());

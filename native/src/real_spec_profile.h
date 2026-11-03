@@ -9,6 +9,8 @@
 
 #include "engine.h"
 #include "intake.h"
+#include "piston_engine_simulator.h"
+#include "synthesizer.h"
 #include "units.h"
 
 #include <algorithm>
@@ -23,6 +25,31 @@ namespace mtes {
 inline bool is_real_spec_profile(const std::string& scriptPath) {
     std::ifstream script(scriptPath);
     return script && parse_profile_directive(script, "// mtes-real-spec-profile:", 1).has_value();
+}
+
+// Engine Simulator's own sound with its leveler replaced by a slow compressor.
+// The leveler holds every engine at one peak level and works inside each
+// firing cycle: in game idle was as loud as full throttle, too loud, and its
+// gain jumping between idle pulses clipped. Its raw signal spans ~50 dB from
+// idle to full load (2026-11-03 dyno, 14 engines; real engines ~20 dB), so
+// a 2.5:1 compressor over 0.3 s keeps the simulation's order and puts the
+// median at 70% of redline full load near -14 dBFS RMS, idle near -34.
+inline constexpr float MotorTownEngineSimCompressorRatio = 2.5f;
+inline constexpr float MotorTownEngineSimCompressorSeconds = 0.3f;
+inline constexpr float MotorTownEngineSimFullLoadReferenceRms = 2.8e6f;   // Engine Simulator units
+inline constexpr float MotorTownEngineSimFullLoadOutputRms = 6530.0f;     // -14 dBFS
+inline constexpr float MotorTownEngineSimSoftClipKnee = 0.5f;
+
+inline void use_real_spec_sound(Simulator* simulator) {
+    auto audio = simulator->synthesizer().getAudioParameters();
+    audio.compressorRatio = MotorTownEngineSimCompressorRatio;
+    audio.compressorSeconds = MotorTownEngineSimCompressorSeconds;
+    audio.compressorReferenceRms = MotorTownEngineSimFullLoadReferenceRms;
+    audio.volume = MotorTownEngineSimFullLoadOutputRms / MotorTownEngineSimFullLoadReferenceRms;
+    audio.softClipKnee = MotorTownEngineSimSoftClipKnee;
+    simulator->synthesizer().setAudioParameters(audio);
+    simulator->synthesizer().m_levelingFilter.p_minLevel = 1.0f;
+    simulator->synthesizer().m_levelingFilter.p_maxLevel = 1.0f;
 }
 
 // Diesels have no throttle plate: they meter fuel. Profiles marked

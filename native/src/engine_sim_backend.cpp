@@ -102,13 +102,14 @@ public:
             // target and clipped ~4% of samples.
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
-            // Real-spec profiles: Engine Simulator's own sound and leveler, as
-            // in its app (in game a physical tailpipe model and a pinned
-            // leveler made a synthetic hum); boost and fuel metering from the
-            // generator; no per-profile level or tone fixes.
+            // Real-spec profiles: Engine Simulator's own sound (in game a
+            // physical tailpipe model made a synthetic hum) through one slow
+            // compressor; boost and fuel metering from the generator; no
+            // per-profile level or tone fixes.
             m_realSpec = is_real_spec_profile(script);
             m_boost = m_realSpec ? read_full_load_boost(script) : FullLoadBoost{};
             m_fuelLoadControl = m_realSpec ? read_fuel_load_control(script, m_engine) : FuelLoadControl{};
+            if (m_realSpec) use_real_spec_sound(m_simulator);
             m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
             m_loudnessGain = -1.0; // first read() jumps to the target
             m_rpmScale = profile_rpm_scale(script);
