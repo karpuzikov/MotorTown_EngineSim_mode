@@ -1,0 +1,366 @@
+[
+ {
+  "engine": "scania_dsc11",
+  "car": "1987 Scania 113H",
+  "not_modelled": [
+   "compression ignition (spark at injection timing)",
+   "turbo: boost from rated torque, no lag or wastegate"
+  ],
+  "rated": {
+   "power_hp": 360,
+   "power_rpm": 2000,
+   "torque_nm": null,
+   "torque_rpm": null,
+   "redline_rpm": 2200
+  },
+  "script": "scania_dsc11.mr",
+  "boost": {
+   "kind": "turbo",
+   "full_load_pressure_ratio": 1.57,
+   "boost_start_rpm": 480,
+   "full_boost_rpm": 1200,
+   "charge_temperature_k": 320.0,
+   "follows_throttle": 1
+  },
+  "derived": {
+   "bore": 0.127,
+   "stroke": 0.145,
+   "rod": 0.23925,
+   "compression_height": 0.04191,
+   "chamber_volume": 0.000122,
+   "displacement_litres": 11.020888,
+   "intake_event": {
+    "diameter": 0.06096,
+    "count": 1,
+    "lift": 0.017068800000000002,
+    "duration": 201.9,
+    "centre": 472.0,
+    "side_valve": false
+   },
+   "exhaust_event": {
+    "diameter": 0.048768000000000006,
+    "count": 1,
+    "lift": 0.017068800000000002,
+    "duration": 201.9,
+    "centre": 248.0,
+    "side_valve": false
+   },
+   "intake_runner_area": 0.003794,
+   "exhaust_runner_area": 0.002428,
+   "port_length": 0.0635,
+   "intake_port_peak_cfm": 367.757186,
+   "exhaust_port_peak_cfm": 235.364599,
+   "piston_mass": 0.921772,
+   "rod_mass": 0.599152,
+   "crank_mass": 44.083551,
+   "flywheel_mass": 26.823881,
+   "flywheel_radius": 0.186327,
+   "friction_torque": 35.080575,
+   "throttle_cfm": 2568.711379,
+   "plenum_volume": 0.001102,
+   "exhaust_pipe": 0.127,
+   "exhaust_outlet_cfm": 7890.186592,
+   "exhaust_length": 2.6,
+   "primary_tube_length": 0.3,
+   "simulation_frequency": 10000
+  }
+ },
+ {
+  "engine": "chevy_350_l48",
+  "car": "1969 Chevrolet Camaro SS",
+  "not_modelled": [],
+  "rated": {
+   "power_hp": 300,
+   "power_rpm": 4800,
+   "torque_nm": 515,
+   "torque_rpm": 3200,
+   "redline_rpm": 5600
+  },
+  "script": "chevy_350_l48.mr",
+  "boost": null,
+  "derived": {
+   "bore": 0.1016,
+   "stroke": 0.0884,
+   "rod": 0.1448,
+   "compression_height": 0.033528,
+   "chamber_volume": 7.7e-05,
+   "displacement_litres": 5.733496,
+   "intake_event": {
+    "diameter": 0.048768,
+    "count": 1,
+    "lift": 0.01365504,
+    "duration": 216.67520000000002,
+    "centre": 472.0,
+    "side_valve": false
+   },
+   "exhaust_event": {
+    "diameter": 0.039014400000000005,
+    "count": 1,
+    "lift": 0.01365504,
+    "duration": 216.67520000000002,
+    "centre": 248.0,
+    "side_valve": false
+   },
+   "intake_runner_area": 0.002428,
+   "exhaust_runner_area": 0.001554,
+   "port_length": 0.0508,
+   "intake_port_peak_cfm": 235.364599,
+   "exhaust_port_peak_cfm": 150.633344,
+   "piston_mass": 0.471947,
+   "rod_mass": 0.306766,
+   "crank_mass": 22.933986,
+   "flywheel_mass": 16.977107,
+   "flywheel_radius": 0.16893,
+   "friction_torque": 18.250286,
+   "throttle_cfm": 2600.0,
+   "plenum_volume": 0.005733,
+   "exhaust_pipe": 0.057,
+   "exhaust_outlet_cfm": 1589.386586,
+   "exhaust_length": 3.7,
+   "primary_tube_length": 0.2,
+   "simulation_frequency": 11000.0
+  }
+ },
+ {
+  "engine": "bmc_a_1275s",
+  "car": "1965 Austin Mini Cooper",
+  "not_modelled": [],
+  "rated": {
+   "power_hp": 75,
+   "power_rpm": 5800,
+   "torque_nm": 107,
+   "torque_rpm": 3000,
+   "redline_rpm": 6500
+  },
+  "script": "bmc_a_1275s.mr",
+  "boost": null,
+  "derived": {
+   "bore": 0.0706,
+   "stroke": 0.08128,
+   "rod": 0.134112,
+   "compression_height": 0.023298,
+   "chamber_volume": 4.1e-05,
+   "displacement_litres": 1.27275,
+   "intake_event": {
+    "diameter": 0.033887999999999995,
+    "count": 1,
+    "lift": 0.00948864,
+    "duration": 221.85664,
+    "centre": 472.0,
+    "side_valve": false
+   },
+   "exhaust_event": {
+    "diameter": 0.027110399999999996,
+    "count": 1,
+    "lift": 0.00948864,
+    "duration": 221.85664,
+    "centre": 248.0,
+    "side_valve": false
+   },
+   "intake_runner_area": 0.001173,
+   "exhaust_runner_area": 0.00075,
+   "port_length": 0.0353,
+   "intake_port_peak_cfm": 113.648348,
+   "exhaust_port_peak_cfm": 72.734943,
+   "piston_mass": 0.158353,
+   "rod_mass": 0.10293,
+   "crank_mass": 5.090998,
+   "flywheel_mass": 5.919569,
+   "flywheel_radius": 0.134789,
+   "friction_torque": 4.051288,
+   "throttle_cfm": 876.460563,
+   "plenum_volume": 0.001273,
+   "exhaust_pipe": 0.038,
+   "exhaust_outlet_cfm": 706.394038,
+   "exhaust_length": 2.05,
+   "primary_tube_length": 0.3,
+   "simulation_frequency": 13000.0
+  }
+ },
+ {
+  "engine": "detroit_6v92ta",
+  "car": "1980 MCI MC-9",
+  "not_modelled": [
+   "two-stroke: no crankcase model, scavenge pressure fixed by rule",
+   "compression ignition (spark at injection timing)",
+   "turbo: boost from rated torque, no lag or wastegate"
+  ],
+  "rated": {
+   "power_hp": 335,
+   "power_rpm": 2100,
+   "torque_nm": 1298,
+   "torque_rpm": 1300,
+   "redline_rpm": 2100
+  },
+  "script": "detroit_6v92ta.mr",
+  "boost": {
+   "kind": "turbo",
+   "full_load_pressure_ratio": 2.434,
+   "boost_start_rpm": 0,
+   "full_boost_rpm": 1300,
+   "charge_temperature_k": 320.0,
+   "follows_throttle": 0
+  },
+  "derived": {
+   "bore": 0.123,
+   "stroke": 0.127,
+   "rod": 0.20955,
+   "compression_height": 0.04059,
+   "chamber_volume": 9.4e-05,
+   "displacement_litres": 9.054304,
+   "intake_event": {
+    "diameter": 0.09433669362822655,
+    "count": 1,
+    "lift": 0.02358417340705664,
+    "duration": 96.0,
+    "centre": 180.0
+   },
+   "exhaust_event": {
+    "diameter": 0.04428,
+    "count": 4,
+    "lift": 0.0123984,
+    "duration": 146.0,
+    "centre": 165.0
+   },
+   "intake_runner_area": 0.009086,
+   "exhaust_runner_area": 0.008008,
+   "port_length": 0.0615,
+   "intake_port_peak_cfm": 880.70924,
+   "exhaust_port_peak_cfm": 776.151439,
+   "piston_mass": 0.83739,
+   "rod_mass": 0.544304,
+   "crank_mass": 36.217216,
+   "flywheel_mass": 23.375912,
+   "flywheel_radius": 0.180914,
+   "friction_torque": 28.820745,
+   "throttle_cfm": 2014.421849,
+   "plenum_volume": 0.000905,
+   "exhaust_pipe": 0.127,
+   "exhaust_outlet_cfm": 7890.186592,
+   "exhaust_length": 1.0,
+   "primary_tube_length": 0.3,
+   "simulation_frequency": 10000
+  }
+ },
+ {
+  "engine": "lambo_l539_65",
+  "car": "2011 Lamborghini Aventador LP 700-4",
+  "not_modelled": [],
+  "rated": {
+   "power_hp": 690,
+   "power_rpm": 8250,
+   "torque_nm": 690,
+   "torque_rpm": 5500,
+   "redline_rpm": 8500
+  },
+  "script": "lambo_l539_65.mr",
+  "boost": null,
+  "derived": {
+   "bore": 0.095,
+   "stroke": 0.0764,
+   "rod": 0.12606,
+   "compression_height": 0.03135,
+   "chamber_volume": 5e-05,
+   "displacement_litres": 6.498479,
+   "intake_event": {
+    "diameter": 0.0342,
+    "count": 2,
+    "lift": 0.009576000000000001,
+    "duration": 239.333,
+    "centre": 472.0,
+    "side_valve": false
+   },
+   "exhaust_event": {
+    "diameter": 0.027360000000000002,
+    "count": 2,
+    "lift": 0.009576000000000001,
+    "duration": 239.333,
+    "centre": 248.0,
+    "side_valve": false
+   },
+   "intake_runner_area": 0.002388,
+   "exhaust_runner_area": 0.001529,
+   "port_length": 0.0475,
+   "intake_port_peak_cfm": 231.501313,
+   "exhaust_port_peak_cfm": 148.160841,
+   "piston_mass": 0.385819,
+   "rod_mass": 0.250782,
+   "crank_mass": 25.993915,
+   "flywheel_mass": 18.532679,
+   "flywheel_radius": 0.172133,
+   "friction_torque": 20.6853,
+   "throttle_cfm": 5852.03177,
+   "plenum_volume": 0.006498,
+   "exhaust_pipe": 0.07,
+   "exhaust_outlet_cfm": 2397.043481,
+   "exhaust_length": 1.0,
+   "primary_tube_length": 0.75,
+   "simulation_frequency": 17000.0
+  }
+ },
+ {
+  "engine": "gm_lt4_62",
+  "car": "2014 Chevrolet Corvette (C7)",
+  "not_modelled": [
+   "supercharged: boost from rated torque, no lag or wastegate"
+  ],
+  "rated": {
+   "power_hp": 650,
+   "power_rpm": 6400,
+   "torque_nm": 881,
+   "torque_rpm": 3600,
+   "redline_rpm": 6600
+  },
+  "script": "gm_lt4_62.mr",
+  "boost": {
+   "kind": "supercharged",
+   "full_load_pressure_ratio": 1.833,
+   "boost_start_rpm": 0,
+   "full_boost_rpm": 3600,
+   "charge_temperature_k": 320.0,
+   "follows_throttle": 1
+  },
+  "derived": {
+   "bore": 0.10325,
+   "stroke": 0.092,
+   "rod": 0.154,
+   "compression_height": 0.034072,
+   "chamber_volume": 8.6e-05,
+   "displacement_litres": 6.162371,
+   "intake_event": {
+    "diameter": 0.04955999999999999,
+    "count": 1,
+    "lift": 0.0138768,
+    "duration": 234.76799999999997,
+    "centre": 472.0,
+    "side_valve": false
+   },
+   "exhaust_event": {
+    "diameter": 0.039647999999999996,
+    "count": 1,
+    "lift": 0.0138768,
+    "duration": 234.76799999999997,
+    "centre": 248.0,
+    "side_valve": false
+   },
+   "intake_runner_area": 0.002508,
+   "exhaust_runner_area": 0.001605,
+   "port_length": 0.051625,
+   "intake_port_peak_cfm": 243.071391,
+   "exhaust_port_peak_cfm": 155.56569,
+   "piston_mass": 0.495316,
+   "rod_mass": 0.321956,
+   "crank_mass": 24.649483,
+   "flywheel_mass": 17.856382,
+   "flywheel_radius": 0.170768,
+   "friction_torque": 19.615435,
+   "throttle_cfm": 4308.913787,
+   "plenum_volume": 0.006162,
+   "exhaust_pipe": 0.07,
+   "exhaust_outlet_cfm": 2397.043481,
+   "exhaust_length": 3.495,
+   "primary_tube_length": 0.3,
+   "simulation_frequency": 13000.0
+  }
+ }
+]

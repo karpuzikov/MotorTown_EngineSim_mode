@@ -1,0 +1,3 @@
+gm_lt4_62                    power   576 hp @ 5000 (rated 650 @6400, -11.3%)  torque   919 N*m @ 4000 (rated 881 @3600, +4.3%)  level -15.9 dBFS  not modelled: supercharged: boost from rated torque, no lag or wastegate
+
+1 measured, mean |power error| 11.3%

@@ -1,0 +1,24 @@
+[
+ {
+  "engine": "gm_lt4_62",
+  "not_modelled": [
+   "supercharged: boost from rated torque, no lag or wastegate"
+  ],
+  "status": "measured",
+  "torque_nm": 919,
+  "torque_rpm": 4000,
+  "power_hp": 576,
+  "power_rpm": 5000,
+  "torque_error_pct": 4.3,
+  "power_error_pct": -11.3,
+  "rated": {
+   "power_hp": 650,
+   "power_rpm": 6400,
+   "torque_nm": 881,
+   "torque_rpm": 3600,
+   "redline_rpm": 6600
+  },
+  "max_rms_dbfs": -15.9,
+  "max_clipped_fraction": 0
+ }
+]
