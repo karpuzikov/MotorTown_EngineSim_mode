@@ -393,7 +393,7 @@ def engine_script(engine, car):
             "        cross_sectional_area: 2.0 * units.m * units.m, diff_ratio: 3.42,",
             "        tire_radius: 0.33 * units.m, rolling_resistance: 200 * units.N))",
             "    set_transmission(transmission(max_clutch_torque: 1000 * units.lb_ft).add_gear(1.0))",
-            "}", ""]
+            "}", "", "main()", ""]
     return "\n".join(out), d
 
 
