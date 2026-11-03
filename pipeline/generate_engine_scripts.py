@@ -13,6 +13,7 @@ which parts are not physically modelled yet.
 
 import json
 import os
+import unicodedata
 import math
 import sys
 from pathlib import Path
@@ -99,6 +100,11 @@ def flame_speed_node():
     lines += [f"            .add_sample({x:.1f}, {FLAME_SPEED_SCALE * y:.4f})" for x, y in samples]
     lines[-1] += ";"
     return lines + ["}", ""]
+
+
+def ascii_script_text(text):
+    """Piranha strings must be ASCII; "Citroën" broke the 2CV's whole script."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
 
 def load_specs():
@@ -322,7 +328,7 @@ def engine_script(engine, car):
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
     out += [f"    engine engine(",
-            f"        name: \"{engine['name']}\",",
+            f"        name: \"{ascii_script_text(engine['name'])}\",",
             f"        starter_torque: 200 * units.lb_ft,",
             f"        starter_speed: 200 * units.rpm,",
             f"        redline: {redline} * units.rpm,",

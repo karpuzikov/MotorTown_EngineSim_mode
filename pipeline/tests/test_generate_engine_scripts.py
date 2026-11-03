@@ -49,6 +49,7 @@ class ScriptGenerationTest(unittest.TestCase):
                 continue
             script, derived = generator.engine_script(engine, generator.first_car_using(engine["id"], CARS))
             self.assertIn("set_engine(motor_town_engine())", script)
+            self.assertTrue(script.isascii(), engine["id"])
             self.assertTrue(script.rstrip().endswith("main()"), "the compiler only runs top-level statements")
             self.assertGreater(derived["chamber_volume"], 0.0)
 
