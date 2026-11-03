@@ -29,7 +29,7 @@ public node motor_town_engine {
         starter_speed: 200 * units.rpm,
         redline: 3800 * units.rpm,
         throttle_gamma: 2.0,
-        fuel: fuel(name: "Gasoline", turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.51),
+        fuel: fuel(name: "Gasoline", turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
         simulation_frequency: 10000
     )
 
@@ -69,7 +69,7 @@ public node motor_town_engine {
     intake intake(
         plenum_volume: 3.9227 * units.L,
         plenum_cross_section_area: 123.352 * units.cm2,
-        intake_flow_rate: k_carb(1579.2),
+        intake_flow_rate: k_carb(1400.0),
         runner_flow_rate: k_carb(960.4),
         molecular_afr: 12.5000,
         runner_length: 0.25 * units.m,
@@ -87,32 +87,32 @@ public node motor_town_engine {
 
     function intake_flow(50 * units.thou)
     intake_flow.add_sample(0 * units.thou, k_28inH2O(0.00))
-    intake_flow.add_sample(50 * units.thou, k_28inH2O(22.98))
-    intake_flow.add_sample(100 * units.thou, k_28inH2O(45.97))
-    intake_flow.add_sample(150 * units.thou, k_28inH2O(68.95))
-    intake_flow.add_sample(200 * units.thou, k_28inH2O(91.94))
-    intake_flow.add_sample(250 * units.thou, k_28inH2O(114.92))
-    intake_flow.add_sample(300 * units.thou, k_28inH2O(137.90))
-    intake_flow.add_sample(350 * units.thou, k_28inH2O(149.45))
-    intake_flow.add_sample(400 * units.thou, k_28inH2O(149.45))
-    intake_flow.add_sample(450 * units.thou, k_28inH2O(149.45))
-    intake_flow.add_sample(500 * units.thou, k_28inH2O(149.45))
-    intake_flow.add_sample(550 * units.thou, k_28inH2O(149.45))
+    intake_flow.add_sample(50 * units.thou, k_28inH2O(12.64))
+    intake_flow.add_sample(100 * units.thou, k_28inH2O(25.28))
+    intake_flow.add_sample(150 * units.thou, k_28inH2O(37.92))
+    intake_flow.add_sample(200 * units.thou, k_28inH2O(50.57))
+    intake_flow.add_sample(250 * units.thou, k_28inH2O(63.21))
+    intake_flow.add_sample(300 * units.thou, k_28inH2O(75.85))
+    intake_flow.add_sample(350 * units.thou, k_28inH2O(82.20))
+    intake_flow.add_sample(400 * units.thou, k_28inH2O(82.20))
+    intake_flow.add_sample(450 * units.thou, k_28inH2O(82.20))
+    intake_flow.add_sample(500 * units.thou, k_28inH2O(82.20))
+    intake_flow.add_sample(550 * units.thou, k_28inH2O(82.20))
     harmonic_cam_lobe intake_lobe(duration_at_50_thou: 209.81 * units.deg,
         gamma: 1.1, lift: 0.010881 * units.m, steps: 256)
     function exhaust_flow(50 * units.thou)
     exhaust_flow.add_sample(0 * units.thou, k_28inH2O(0.00))
-    exhaust_flow.add_sample(50 * units.thou, k_28inH2O(18.39))
-    exhaust_flow.add_sample(100 * units.thou, k_28inH2O(36.77))
-    exhaust_flow.add_sample(150 * units.thou, k_28inH2O(55.16))
-    exhaust_flow.add_sample(200 * units.thou, k_28inH2O(73.55))
-    exhaust_flow.add_sample(250 * units.thou, k_28inH2O(91.94))
-    exhaust_flow.add_sample(300 * units.thou, k_28inH2O(95.65))
-    exhaust_flow.add_sample(350 * units.thou, k_28inH2O(95.65))
-    exhaust_flow.add_sample(400 * units.thou, k_28inH2O(95.65))
-    exhaust_flow.add_sample(450 * units.thou, k_28inH2O(95.65))
-    exhaust_flow.add_sample(500 * units.thou, k_28inH2O(95.65))
-    exhaust_flow.add_sample(550 * units.thou, k_28inH2O(95.65))
+    exhaust_flow.add_sample(50 * units.thou, k_28inH2O(10.11))
+    exhaust_flow.add_sample(100 * units.thou, k_28inH2O(20.23))
+    exhaust_flow.add_sample(150 * units.thou, k_28inH2O(30.34))
+    exhaust_flow.add_sample(200 * units.thou, k_28inH2O(40.45))
+    exhaust_flow.add_sample(250 * units.thou, k_28inH2O(50.57))
+    exhaust_flow.add_sample(300 * units.thou, k_28inH2O(52.61))
+    exhaust_flow.add_sample(350 * units.thou, k_28inH2O(52.61))
+    exhaust_flow.add_sample(400 * units.thou, k_28inH2O(52.61))
+    exhaust_flow.add_sample(450 * units.thou, k_28inH2O(52.61))
+    exhaust_flow.add_sample(500 * units.thou, k_28inH2O(52.61))
+    exhaust_flow.add_sample(550 * units.thou, k_28inH2O(52.61))
     harmonic_cam_lobe exhaust_lobe(duration_at_50_thou: 209.81 * units.deg,
         gamma: 1.1, lift: 0.010881 * units.m, steps: 256)
 
@@ -219,18 +219,18 @@ public node motor_town_engine {
     engine.add_cylinder_bank(b1)
 
     function timing_curve(1000 * units.rpm)
-    timing_curve.add_sample(0 * units.rpm, 12.00 * units.deg)
-    timing_curve.add_sample(500 * units.rpm, 12.00 * units.deg)
-    timing_curve.add_sample(1000 * units.rpm, 12.00 * units.deg)
-    timing_curve.add_sample(1500 * units.rpm, 22.09 * units.deg)
-    timing_curve.add_sample(2000 * units.rpm, 32.18 * units.deg)
-    timing_curve.add_sample(2500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(3000 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(3500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(4000 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(4500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(5000 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(5500 * units.rpm, 34.00 * units.deg)
+    timing_curve.add_sample(0 * units.rpm, 23.89 * units.deg)
+    timing_curve.add_sample(500 * units.rpm, 23.89 * units.deg)
+    timing_curve.add_sample(1000 * units.rpm, 23.89 * units.deg)
+    timing_curve.add_sample(1500 * units.rpm, 22.77 * units.deg)
+    timing_curve.add_sample(2000 * units.rpm, 21.66 * units.deg)
+    timing_curve.add_sample(2500 * units.rpm, 20.28 * units.deg)
+    timing_curve.add_sample(3000 * units.rpm, 18.90 * units.deg)
+    timing_curve.add_sample(3500 * units.rpm, 18.37 * units.deg)
+    timing_curve.add_sample(4000 * units.rpm, 18.05 * units.deg)
+    timing_curve.add_sample(4500 * units.rpm, 18.05 * units.deg)
+    timing_curve.add_sample(5000 * units.rpm, 18.05 * units.deg)
+    timing_curve.add_sample(5500 * units.rpm, 18.05 * units.deg)
     ignition_module ignition_module(timing_curve: timing_curve, rev_limit: 4100 * units.rpm, limiter_duration: 0.1, sparks_per_cycle: 1)
     ignition_module.connect_wire(wire1, 0.0000 * units.deg)
     ignition_module.connect_wire(wire5, 90.0000 * units.deg)

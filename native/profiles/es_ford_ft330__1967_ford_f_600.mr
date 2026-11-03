@@ -29,7 +29,7 @@ public node motor_town_engine {
         starter_speed: 200 * units.rpm,
         redline: 4000 * units.rpm,
         throttle_gamma: 2.0,
-        fuel: fuel(name: "Gasoline", turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.51),
+        fuel: fuel(name: "Gasoline", turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
         simulation_frequency: 10000
     )
 
@@ -69,7 +69,7 @@ public node motor_town_engine {
     intake intake(
         plenum_volume: 5.4084 * units.L,
         plenum_cross_section_area: 182.220 * units.cm2,
-        intake_flow_rate: k_carb(2292.0),
+        intake_flow_rate: k_carb(1400.0),
         runner_flow_rate: k_carb(1418.7),
         molecular_afr: 12.5000,
         runner_length: 0.25 * units.m,
@@ -223,19 +223,19 @@ public node motor_town_engine {
     engine.add_cylinder_bank(b1)
 
     function timing_curve(1000 * units.rpm)
-    timing_curve.add_sample(0 * units.rpm, 12.00 * units.deg)
-    timing_curve.add_sample(500 * units.rpm, 12.00 * units.deg)
-    timing_curve.add_sample(1000 * units.rpm, 12.00 * units.deg)
-    timing_curve.add_sample(1500 * units.rpm, 21.17 * units.deg)
-    timing_curve.add_sample(2000 * units.rpm, 30.33 * units.deg)
-    timing_curve.add_sample(2500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(3000 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(3500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(4000 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(4500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(5000 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(5500 * units.rpm, 34.00 * units.deg)
-    timing_curve.add_sample(6000 * units.rpm, 34.00 * units.deg)
+    timing_curve.add_sample(0 * units.rpm, 23.89 * units.deg)
+    timing_curve.add_sample(500 * units.rpm, 23.89 * units.deg)
+    timing_curve.add_sample(1000 * units.rpm, 23.89 * units.deg)
+    timing_curve.add_sample(1500 * units.rpm, 25.69 * units.deg)
+    timing_curve.add_sample(2000 * units.rpm, 27.49 * units.deg)
+    timing_curve.add_sample(2500 * units.rpm, 26.80 * units.deg)
+    timing_curve.add_sample(3000 * units.rpm, 26.11 * units.deg)
+    timing_curve.add_sample(3500 * units.rpm, 29.03 * units.deg)
+    timing_curve.add_sample(4000 * units.rpm, 31.95 * units.deg)
+    timing_curve.add_sample(4500 * units.rpm, 31.95 * units.deg)
+    timing_curve.add_sample(5000 * units.rpm, 31.95 * units.deg)
+    timing_curve.add_sample(5500 * units.rpm, 31.95 * units.deg)
+    timing_curve.add_sample(6000 * units.rpm, 31.95 * units.deg)
     ignition_module ignition_module(timing_curve: timing_curve, rev_limit: 4300 * units.rpm, limiter_duration: 0.1, sparks_per_cycle: 1)
     ignition_module.connect_wire(wire1, 0.0000 * units.deg)
     ignition_module.connect_wire(wire5, 90.0000 * units.deg)

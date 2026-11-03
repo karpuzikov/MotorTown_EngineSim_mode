@@ -1,1 +1,1 @@
-{"kind": "turbo", "full_load_pressure_ratio": 1.431, "boost_start_rpm": 1200, "full_boost_rpm": 3000, "charge_temperature_k": 320.0, "follows_throttle": 1}
+{"kind": "turbo", "full_load_pressure_ratio": 1.65, "boost_start_rpm": 1200, "full_boost_rpm": 3000, "charge_temperature_k": 320.0, "follows_throttle": 1}

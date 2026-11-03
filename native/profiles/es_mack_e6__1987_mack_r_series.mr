@@ -8,16 +8,16 @@ impulse_response_library ir_lib()
 private node motor_town_flame_speed {
     alias output __out:
         function(5.0)
-            .add_sample(0.0, 9.0000)
-            .add_sample(5.0, 22.5000)
-            .add_sample(10.0, 45.0000)
-            .add_sample(15.0, 67.5000)
-            .add_sample(20.0, 90.0000)
-            .add_sample(25.0, 112.5000)
-            .add_sample(30.0, 135.0000)
-            .add_sample(35.0, 157.5000)
-            .add_sample(40.0, 180.0000)
-            .add_sample(45.0, 202.5000);
+            .add_sample(0.0, 27.0000)
+            .add_sample(5.0, 67.5000)
+            .add_sample(10.0, 135.0000)
+            .add_sample(15.0, 202.5000)
+            .add_sample(20.0, 270.0000)
+            .add_sample(25.0, 337.5000)
+            .add_sample(30.0, 405.0000)
+            .add_sample(35.0, 472.5000)
+            .add_sample(40.0, 540.0000)
+            .add_sample(45.0, 607.5000);
 }
 
 public node motor_town_engine {
@@ -29,7 +29,7 @@ public node motor_town_engine {
         starter_speed: 200 * units.rpm,
         redline: 2100 * units.rpm,
         throttle_gamma: 2.0,
-        fuel: fuel(name: "Diesel", molecular_mass: 167 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 17.75, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.51),
+        fuel: fuel(name: "Diesel", molecular_mass: 167 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 17.75, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
         simulation_frequency: 10000
     )
 
@@ -192,15 +192,15 @@ public node motor_town_engine {
     engine.add_cylinder_bank(b0)
 
     function timing_curve(1000 * units.rpm)
-    timing_curve.add_sample(0 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(500 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(1000 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(1500 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(2000 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(2500 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(3000 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(3500 * units.rpm, 8.00 * units.deg)
-    timing_curve.add_sample(4000 * units.rpm, 8.00 * units.deg)
+    timing_curve.add_sample(0 * units.rpm, 7.23 * units.deg)
+    timing_curve.add_sample(500 * units.rpm, 7.23 * units.deg)
+    timing_curve.add_sample(1000 * units.rpm, 7.23 * units.deg)
+    timing_curve.add_sample(1500 * units.rpm, 7.23 * units.deg)
+    timing_curve.add_sample(2000 * units.rpm, 7.23 * units.deg)
+    timing_curve.add_sample(2500 * units.rpm, 10.84 * units.deg)
+    timing_curve.add_sample(3000 * units.rpm, 10.84 * units.deg)
+    timing_curve.add_sample(3500 * units.rpm, 10.84 * units.deg)
+    timing_curve.add_sample(4000 * units.rpm, 10.84 * units.deg)
     ignition_module ignition_module(timing_curve: timing_curve, rev_limit: 2400 * units.rpm, limiter_duration: 0.1, sparks_per_cycle: 1)
     ignition_module.connect_wire(wire1, 0.0000 * units.deg)
     ignition_module.connect_wire(wire5, 120.0000 * units.deg)
