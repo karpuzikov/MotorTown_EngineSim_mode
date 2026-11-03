@@ -80,7 +80,8 @@ if(MTES_VCPKG_RUNTIME_BIN)
 elseif(WIN32)
     message(FATAL_ERROR "Set MTES_VCPKG_RUNTIME_BIN to the active vcpkg triplet's bin directory")
 endif()
-file(GLOB mtes_profile_scripts CONFIGURE_DEPENDS "${mtes_profile_source}/es_*.mr")
+file(GLOB mtes_profile_scripts CONFIGURE_DEPENDS
+    "${mtes_profile_source}/es_*.mr" "${mtes_profile_source}/es_*.boost.json")
 if(NOT mtes_profile_scripts)
     message(FATAL_ERROR "No Engine Simulator profiles in ${mtes_profile_source}")
 endif()
@@ -107,9 +108,6 @@ add_custom_target(mtes-stage-dev ALL
     # Profiles are self-contained engines; they need only the impulse responses.
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es/sound-library" "${mtes_stage_mod}/assets/sound-library"
-    # Each vehicle's own exhaust (profiles/generator/make_exhausts.py).
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory
-        "${mtes_profile_source}/exhaust" "${mtes_stage_mod}/assets/sound-library/mtes-exhaust"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${mtes_engine_sim_stage}/es" "${mtes_stage_mod}/es"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different

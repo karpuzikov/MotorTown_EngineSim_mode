@@ -64,13 +64,6 @@ jobs:
             -DMTES_HEADLESS_SMOKE=ON `
             -DCMAKE_TOOLCHAIN_FILE='C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
 
-      - name: Verify pinned synth packet limit and previous build patch upgrade
-        shell: pwsh
-        run: |
-          $env:MTES_ENGINE_SIM_SOURCE = (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-src').Path
-          python -m unittest native.tests.test_core_patch -v
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Build genuine Engine Simulator PCM source
         shell: pwsh
         run: cmake --build native/build-windows --config Release --target mtes-headless-smoke --parallel 4
@@ -96,8 +89,8 @@ jobs:
             $profiles += $path
           }
           # Exercise the generated real-engine profile shipped for the Dory.
-          $dory = Join-Path $assets 'es_ford_flathead_239.mr'
-          Copy-Item 'native/profiles/es_ford_flathead_239.mr' $dory
+          $dory = Join-Path $assets 'es_ford_flathead_239__1948_ford_f_1.mr'
+          Copy-Item 'native/profiles/es_ford_flathead_239__1948_ford_f_1.mr' $dory
           $profiles += $dory
           & 'native/build-windows/Release/mtes-headless-smoke.exe' @profiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -109,12 +102,12 @@ jobs:
           $trial = Join-Path (Resolve-Path 'native/build-windows').Path 'packaged-trial'
           $assets = Join-Path $trial 'assets'
           New-Item -ItemType Directory -Force -Path $assets | Out-Null
-          Copy-Item 'native/profiles/es_*.mr' $assets
+          Copy-Item 'native/profiles/es_*' $assets
           Copy-Item (Join-Path $source 'es/sound-library') (Join-Path $assets 'sound-library') -Recurse
           Copy-Item (Join-Path $source 'es') (Join-Path $trial 'es') -Recurse
-          # Generated real engines: flathead V8, I6, flat-6, V12, diesel I6, 2-stroke.
+          # Real-spec engines: V8, twin-turbo I6, V12, turbo diesel I6, two-strokes.
           & 'native/build-windows/Release/mtes-headless-smoke.exe' @(
-            'es_ford_flathead_239.mr', 'es_toyota_2jz_gte.mr', 'es_porsche_32_flat6.mr',
-            'es_lambo_l539.mr', 'es_volvo_d13.mr', 'es_vespa_150_2t.mr' |
+            'es_chevy_350_l48.mr', 'es_toyota_2jz_gte.mr', 'es_lambo_l539_65.mr',
+            'es_volvo_d13.mr', 'es_vespa_150_2t.mr', 'es_detroit_8v71__1980_mci_mc_9.mr' |
               ForEach-Object { Join-Path $assets $_ })
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

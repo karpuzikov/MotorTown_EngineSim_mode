@@ -3,6 +3,7 @@
 #include "firing_harmonic_cut.h"
 #include "overrun_fuel_cut.h"
 #include "profile_level.h"
+#include "real_spec_profile.h"
 
 #include "compiler.h"
 #include "crankshaft.h"
@@ -101,10 +102,16 @@ public:
             // target and clipped ~4% of samples.
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
+            // Real-spec profiles: physical loudness at one fixed gain, and
+            // boost from the generator; no per-profile level or tone fixes.
+            m_realSpec = is_real_spec_profile(script);
+            m_boost = m_realSpec ? read_full_load_boost(script) : FullLoadBoost{};
+            if (m_realSpec) use_real_spec_sound(m_simulator);
             m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
             m_loudnessGain = -1.0; // first read() jumps to the target
             m_rpmScale = profile_rpm_scale(script);
-            m_harmonicCut.emplace(profile_harmonic_cut_db(script));
+            m_harmonicCut.reset();
+            if (!m_realSpec) m_harmonicCut.emplace(profile_harmonic_cut_db(script));
 
             const int exhausts = m_engine->getExhaustSystemCount();
             if (exhausts <= 0) {
@@ -169,6 +176,7 @@ public:
         m_speedWander = 0.97 * m_speedWander + m_cycleVariation(m_random) * 0.0035 * idleness;
         const double variedThrottle = std::clamp(throttle + m_cycleVariation(m_random) * 0.03, 0.0, 1.0);
         m_engine->setSpeedControl(variedThrottle);
+        if (m_realSpec) apply_boost(m_engine, m_boost, rpm, throttle);
         if (m_fullThrottleLoudnessDba) {
             m_targetLoudnessGain.store(std::pow(10.0, engine_loudness_gain_db(
                 *m_fullThrottleLoudnessDba, rpm, redlineRpm, throttle) / 20.0));
@@ -262,6 +270,8 @@ private:
     double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
     OverrunFuelCut m_fuelCut;
     double m_rpmScale = 1.0;
+    bool m_realSpec = false;
+    FullLoadBoost m_boost;
     std::optional<FiringHarmonicCut> m_harmonicCut; // read() thread after load()
     std::atomic<double> m_firingHz{0.0};            // advance() thread -> read() thread
     std::optional<double> m_fullThrottleLoudnessDba;

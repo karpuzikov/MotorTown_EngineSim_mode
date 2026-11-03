@@ -14,10 +14,6 @@ on:
         description: 'Dyno speed step, rpm'
         required: false
         default: '500'
-      output_gain:
-        description: 'Fixed synthesizer output gain for every engine'
-        required: false
-        default: '1.0'
       flame_speed_scale:
         description: 'Calibration only: flame-speed factor override (empty = generator default)'
         required: false
@@ -82,10 +78,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $step = "${{ github.event.inputs.rpm_step }}"
           if (-not $step) { $step = '500' }
-          $gain = "${{ github.event.inputs.output_gain }}"
-          if (-not $gain) { $gain = '1.0' }
           $mbt = "${{ github.event.inputs.find_mbt }}"
           $exe = (Resolve-Path 'build-dyno/Release/motor_town_engine_sim_dyno.exe').Path
+          $env:MTES_SCRIPT_LOG_PATH = (Join-Path (Resolve-Path $run) 'error_log.log')
           Push-Location $run
           New-Item -ItemType Directory -Force -Path 'results' | Out-Null
           $failed = @()
@@ -93,7 +88,7 @@ jobs:
           for ($index = ${{ matrix.shard }}; $index -lt $scripts.Count; $index += 4) {
             $script = $scripts[$index]
             $out = Join-Path 'results' $script.BaseName
-            & $exe $script.FullName $out $step $gain $mbt *> "$out.log"
+            & $exe $script.FullName $out $step $mbt *> "$out.log"
             if ($LASTEXITCODE -ne 0) {
               $failed += $script.BaseName
               if (Test-Path 'error_log.log') { Copy-Item 'error_log.log' "$out.compile.log" }

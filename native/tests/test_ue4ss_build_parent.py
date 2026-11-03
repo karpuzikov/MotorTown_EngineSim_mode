@@ -98,10 +98,11 @@ class UE4SSParentBuildTests(unittest.TestCase):
             package = staged.parent.parent
             self.assertTrue((package / 'Scripts/main.lua').is_file())
             self.assertTrue((package / 'engine_profiles.tsv').is_file())
-            self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239.mr',
+            self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239__1948_ford_f_1.mr\t99-100000',
                           (package / 'engine_families.tsv').read_text())
-            self.assertTrue((package / 'assets/es_ford_flathead_239.mr').is_file())
-            self.assertTrue((package / 'assets/es_lambo_l539.mr').is_file())
+            self.assertTrue((package / 'assets/es_ford_flathead_239__1948_ford_f_1.mr').is_file())
+            self.assertTrue((package / 'assets/es_lambo_l539_65.mr').is_file())
+            self.assertTrue((package / 'assets/es_volvo_d13.boost.json').is_file())  # turbo boost travels with it
             self.assertTrue((package / 'engine_families.tsv').is_file())
             self.assertIn('volume', (package / 'settings.ini').read_text())
             self.assertFalse((package / 'assets/engines').exists())  # profiles are self-contained

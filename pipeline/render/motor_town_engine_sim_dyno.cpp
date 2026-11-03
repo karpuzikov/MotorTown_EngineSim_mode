@@ -1,6 +1,6 @@
 // Offline dynamometer for generated Engine Simulator scripts.
 //
-//   motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [OUTPUT_GAIN] [find-mbt]
+//   motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [find-mbt]
 //
 // Compiles the script with Engine Simulator's own compiler, holds the
 // crankshaft at each speed from 1000 rpm to redline at full throttle, and
@@ -10,6 +10,7 @@
 // find-mbt first searches, every 1000 rpm, the spark advance that gives the
 // most torque (MBT, as an engine calibrator would) and runs the sweep with it.
 #include "impulse_wav.h"
+#include "real_spec_profile.h"
 
 #include "compiler.h"
 #include "engine.h"
@@ -92,48 +93,14 @@ void run_frame(Simulator *simulator, std::vector<std::int16_t> *audio, double *t
     }
 }
 
-// Full-load boost from SCRIPT.boost.json (written by the generator), if any.
-struct FullLoadBoost {
-    double pressureRatio = 1.0, startRpm = 0.0, fullRpm = 1.0, chargeTemperatureK = 298.15;
-};
-
-double json_number(const std::string &text, const std::string &key) {
-    const auto at = text.find("\"" + key + "\"");
-    if (at == std::string::npos) throw std::runtime_error("boost file lacks " + key);
-    return std::stod(text.substr(text.find(':', at) + 1));
-}
-
-FullLoadBoost read_boost(const std::filesystem::path &script) {
-    std::filesystem::path path = script;
-    path.replace_extension(".boost.json");
-    FullLoadBoost boost;
-    std::ifstream file(path);
-    if (!file) return boost;
-    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    boost.pressureRatio = json_number(text, "full_load_pressure_ratio");
-    boost.startRpm = json_number(text, "boost_start_rpm");
-    boost.fullRpm = json_number(text, "full_boost_rpm");
-    boost.chargeTemperatureK = json_number(text, "charge_temperature_k");
-    return boost;
-}
-
-FullLoadBoost g_boost; // shortcut: global for this one-engine tool
-
-void apply_boost(Engine *engine, const FullLoadBoost &boost, double rpm) {
-    const double build = std::clamp((rpm - boost.startRpm) / std::max(1.0, boost.fullRpm - boost.startRpm), 0.0, 1.0);
-    const double ratio = 1.0 + (boost.pressureRatio - 1.0) * build;
-    for (int i = 0; i < engine->getIntakeCount(); ++i) {
-        engine->getIntake(i)->setSupplyPressure(units::pressure(ratio, units::atm));
-        engine->getIntake(i)->setSupplyTemperature(298.15 + (boost.chargeTemperatureK - 298.15) * build);
-    }
-}
+mtes::FullLoadBoost g_boost; // shortcut: global for this one-engine tool
 
 // Holds the crankshaft at rpm with the spark advanced by advanceDeg for
 // settleSeconds, then returns the mean torque over measureSeconds.
 double hold_torque_nm(Simulator *simulator, Engine *engine, double rpm, double advanceDeg,
                       double settleSeconds, double measureSeconds, std::vector<std::int16_t> *audio) {
     const double speed = units::rpm(rpm);
-    apply_boost(engine, g_boost, rpm);
+    mtes::apply_boost(engine, g_boost, rpm, 1.0);
     Function *timing = engine->getIgnitionModule()->getTimingCurve();
     timing->setOutputScale(1.0);
     const double scriptAdvance = timing->sampleTriangle(speed);
@@ -185,15 +152,13 @@ double interpolate(const std::vector<std::pair<double, double>> &table, double x
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::cerr << "usage: motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [OUTPUT_GAIN]\n";
+        std::cerr << "usage: motor_town_engine_sim_dyno SCRIPT.mr OUTPUT_DIR [RPM_STEP] [find-mbt]\n";
         return 2;
     }
     const std::filesystem::path outputDir = argv[2];
     const double rpmStep = argc > 3 ? std::stod(argv[3]) : 500.0;
-    // Being calibrated: one gain for every engine, chosen so the loudest stays below full scale.
-    const float outputGain = argc > 4 ? std::stof(argv[4]) : 1.0f;
-    const bool findMbt = argc > 5 && std::string(argv[5]) == "find-mbt";
-    g_boost = read_boost(argv[1]);
+    const bool findMbt = argc > 4 && std::string(argv[4]) == "find-mbt";
+    g_boost = mtes::read_full_load_boost(argv[1]);
     std::filesystem::create_directories(outputDir);
 
     es_script::Compiler compiler;
@@ -211,20 +176,13 @@ int main(int argc, char **argv) {
     Engine *engine = output.engine;
     engine->calculateDisplacement();
     Simulator *simulator = engine->createSimulator(output.vehicle, output.transmission);
-    // Tailpipe sound pressure in pascals at 1 m; the output gain maps it to PCM.
-    static_cast<PistonEngineSimulator *>(simulator)->m_physicalExhaustSound = true;
     simulator->setSimulationFrequency(static_cast<int>(engine->getSimulationFrequency()));
     auto audio = simulator->synthesizer().getAudioParameters();
     audio.inputSampleNoise = static_cast<float>(engine->getInitialJitter());
     audio.airNoise = static_cast<float>(engine->getInitialNoise());
     audio.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
-    // One fixed gain for every engine instead of the automatic leveler, so
-    // loudness differences come from the simulation itself. (The leveler's
-    // min/max gain parameters are never passed to the filter; pin it at 1.)
-    audio.volume = outputGain;
     simulator->synthesizer().setAudioParameters(audio);
-    simulator->synthesizer().m_levelingFilter.p_minLevel = 1.0f;
-    simulator->synthesizer().m_levelingFilter.p_maxLevel = 1.0f;
+    mtes::use_real_spec_sound(simulator);
     for (int i = 0; i < engine->getExhaustSystemCount(); ++i) {
         const ImpulseResponse *response = engine->getExhaustSystem(i)->getImpulseResponse();
         const auto samples = mtes::load_impulse_wav(response->getFilename());

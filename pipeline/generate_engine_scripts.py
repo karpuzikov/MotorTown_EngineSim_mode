@@ -107,6 +107,13 @@ COMPRESSOR_EFFICIENCY = 0.70
 INTERCOOLER_OUTLET_K = 320.0
 AMBIENT_K = 298.15
 
+# Best-torque (MBT) spark advance per engine, measured by the dyno's
+# find-mbt search (pipeline/collect_dyno_calibration.py). Engines not in the
+# file use the rule curve above.
+SPARK_ADVANCE_CALIBRATION_PATH = PIPELINE_DIR / "calibration" / "spark_advance_mbt.json"
+SPARK_ADVANCE_CALIBRATION = (json.loads(SPARK_ADVANCE_CALIBRATION_PATH.read_text())
+                             if SPARK_ADVANCE_CALIBRATION_PATH.exists() else {})
+
 # Calibration runs only: {"RULE_NAME": value} replaces any rule constant above.
 globals().update(json.loads(os.environ.get("MOTOR_TOWN_ENGINE_SIM_RULE_OVERRIDES") or "{}"))
 
@@ -133,6 +140,15 @@ def flame_speed_node():
 def ascii_script_text(text):
     """Piranha strings must be ASCII; "Citroën" broke the 2CV's whole script."""
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+
+def interpolate(table, x):
+    if x <= table[0][0]:
+        return table[0][1]
+    for (x0, y0), (x1, y1) in zip(table, table[1:]):
+        if x <= x1:
+            return y0 + (x - x0) / (x1 - x0) * (y1 - y0)
+    return table[-1][1]
 
 
 def load_specs():
@@ -370,6 +386,8 @@ def boost(engine, derived):
         "boost_start_rpm": round(TURBO_BOOST_STARTS_AT_TORQUE_RPM_FRACTION * torque_rpm) if exhaust_driven else 0,
         "full_boost_rpm": round(torque_rpm),
         "charge_temperature_k": round(min(compressed_k, INTERCOOLER_OUTLET_K) if engine.get("intercooled") else compressed_k, 1),
+        # A two-stroke's crankcase or Roots blower pumps at any throttle.
+        "follows_throttle": 0 if engine["cycle"] == 2 else 1,
     }
 
 
@@ -404,7 +422,7 @@ def engine_script(engine, car):
     exhaust_count = 2 if len(banks) == 2 and car["exhaust"]["layout"] == "dual" else 1
     diesel = engine["fuel"] == "diesel"
     redline = engine["redline_rpm"]
-    out = ['import "engine_sim.mr"', "", "units units()", "constants constants()",
+    out = ["// mtes-real-spec-profile: 1", 'import "engine_sim.mr"', "", "units units()", "constants constants()",
            "impulse_response_library ir_lib()", ""] + flame_speed_node()
 
     out += ["public node motor_town_engine {", "    alias output __out: engine;", ""]
@@ -506,8 +524,11 @@ def engine_script(engine, car):
 
     out.append("    function timing_curve(1000 * units.rpm)")
     full_rpm = SPARK_FULL_ADVANCE_AT_REDLINE_FRACTION * redline
+    measured_best_advance = SPARK_ADVANCE_CALIBRATION.get(engine["id"])
     for rpm in range(0, int(redline) + 2001, 500):
-        if diesel:
+        if measured_best_advance:
+            advance = interpolate(measured_best_advance, rpm)
+        elif diesel:
             advance = DIESEL_INJECTION_ADVANCE_DEG
         else:
             advance = SPARK_ADVANCE_IDLE_DEG + (SPARK_ADVANCE_FULL_DEG - SPARK_ADVANCE_IDLE_DEG) \

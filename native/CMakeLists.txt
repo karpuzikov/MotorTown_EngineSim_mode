@@ -7,19 +7,13 @@ project(MotorTownEngineSim LANGUAGES CXX)
 option(MTES_HEADLESS_SMOKE "Build only a Windows headless Engine Simulator PCM smoke test" OFF)
 
 include(FetchContent)
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-# Re-run the vetted build-only core patch whenever its implementation changes.
-# On an existing UE4SS build, CMake reconfigures and recompiles the updated
-# synthesizer automatically without requiring a fresh SDK or build directory.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/patch_engine_sim_core.py")
-
-# Pin the known Engine Simulator fork. FetchContent places the checkout inside
-# the build directory, so the compatibility patch never modifies a developer's
-# source checkout or any installed Motor Town files.
+# The karpuzikov/engine-sim fork (branch feat/physical-exhaust-sound) carries
+# the lifetime fixes this build used to patch in, plus physically based
+# exhaust sound, intake boost and two-stroke support used by the real-spec
+# profiles. FetchContent keeps the checkout inside the build directory.
 FetchContent_Declare(mtes_engine_sim
     GIT_REPOSITORY https://github.com/karpuzikov/engine-sim.git
-    GIT_TAG 85f7c3b959a908ed5232ede4f1a4ac7eafe6b630
+    GIT_TAG 140406396ebdd9e682d267869f33643fc5897800
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_GetProperties(mtes_engine_sim)
 if(NOT mtes_engine_sim_POPULATED)
@@ -29,15 +23,12 @@ endif()
 # from add_subdirectory(); ordinary child-scope variables do not propagate.
 set_property(GLOBAL PROPERTY MTES_ENGINE_SIM_SOURCE_DIR "${mtes_engine_sim_SOURCE_DIR}")
 
-execute_process(
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/patch_engine_sim_core.py"
-            "${mtes_engine_sim_SOURCE_DIR}"
-    RESULT_VARIABLE mtes_patch_result
-    OUTPUT_VARIABLE mtes_patch_output
-    ERROR_VARIABLE mtes_patch_error)
-if(NOT mtes_patch_result EQUAL 0)
-    message(FATAL_ERROR "Engine Simulator build source is unsupported:\n${mtes_patch_error}")
-endif()
+# Boost 1.80+ removed path::is_complete(), which the Piranha submodule calls.
+set(motor_town_engine_sim_piranha_path "${mtes_engine_sim_SOURCE_DIR}/dependencies/submodules/piranha/src/path.cpp")
+file(READ "${motor_town_engine_sim_piranha_path}" motor_town_engine_sim_piranha_source)
+string(REPLACE "m_path->is_complete()" "m_path->is_absolute()"
+    motor_town_engine_sim_piranha_source "${motor_town_engine_sim_piranha_source}")
+file(WRITE "${motor_town_engine_sim_piranha_path}" "${motor_town_engine_sim_piranha_source}")
 
 # Build simulation and script libraries only. The graphical desktop executable
 # and DirectSound device are not part of this DLL.

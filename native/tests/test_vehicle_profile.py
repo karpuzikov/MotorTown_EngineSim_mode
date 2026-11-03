@@ -78,30 +78,31 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         return 'STOCK'
 
     def test_every_rule_points_to_a_packaged_profile(self):
+        import re
         for field, _, profile, _ in self.rules():
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
-                import re
-                spec = re.fullmatch(r'(assets/es_\w+\.mr)#exhaust=mtes-exhaust/(\w+\.wav)#loudness=(\d+)', profile)
-                # Every vehicle and fallback carries its own exhaust and loudness.
-                self.assertTrue(spec, profile)
-                self.assertTrue((ROOT / 'profiles' / Path(spec.group(1)).name).is_file(), profile)
-                self.assertTrue((ROOT / 'profiles/exhaust' / spec.group(2)).is_file(), profile)
+                # Real-spec profiles (pipeline/package_mod_profiles.py): no
+                # per-vehicle exhaust recording or loudness override.
+                self.assertRegex(profile, r'^assets/es_\w+\.mr$')
+                script = ROOT / 'profiles' / Path(profile).name
+                self.assertTrue(script.is_file(), profile)
+                self.assertTrue(script.read_text().startswith('// mtes-real-spec-profile: 1'), profile)
 
     def test_each_car_gets_its_real_counterparts_engine(self):
         cases = {
-            # In-game blueprint class (seen in UE4SS.log) -> real engine
-            'DoryWrecker_C /Game/Maps/Jeju': 'assets/es_ford_flathead_239.mr',  # 1948 Ford F-1
-            'Tuscan_C /Game/Maps/Jeju': 'assets/es_chevy_350.mr',               # 1969 Nova SS
-            'Micky_C /Game/Maps/Jeju': 'assets/es_nissan_cg13.mr',              # Nissan Micra
-            'Scooty_C /Game/Maps/Jeju': 'assets/es_vespa_150_2t.mr',            # Vespa
-            'Elisa2_C /Game/Maps/Jeju': 'assets/es_ford_46_modular.mr',         # Crown Victoria
-            'Trophy_Taxi_C /Game/Maps/Jeju': 'assets/es_vaz_2103.mr',           # Lada 2107
-            'PoliceInterceptor_C /x': 'assets/es_chrysler_440.mr',
-            'Police_C /x': 'assets/es_chrysler_hemi_57.mr',
-            'ElisaPolice_C /x': 'assets/es_ford_46_modular.mr',
-            'Fortem_C /x': 'assets/es_porsche_32_flat6.mr',
-            'Raton_C /x': 'assets/es_lambo_l539.mr',
+            # In-game blueprint class (seen in UE4SS.log) -> real car's engine
+            'DoryWrecker_C /Game/Maps/Jeju': 'assets/es_ford_flathead_239__1948_ford_f_1.mr',
+            'Tuscan_C /Game/Maps/Jeju': 'assets/es_chevy_230_i6__1969_chevrolet_nova.mr',  # 140 hp option
+            'Micky_C /Game/Maps/Jeju': 'assets/es_nissan_ma10__1983_nissan_micra_k10.mr',
+            'Scooty_C /Game/Maps/Jeju': 'assets/es_vespa_150_2t__piaggio_vespa.mr',
+            'Elisa2_C /Game/Maps/Jeju': 'assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr',
+            'Trophy_Taxi_C /Game/Maps/Jeju': 'assets/es_vaz_2106__1982_lada_2107.mr',
+            'PoliceInterceptor_C /x': 'assets/es_chrysler_360_la__1975_dodge_coronet.mr',
+            'Police_C /x': 'assets/es_chrysler_pentastar_36__2012_dodge_charger.mr',
+            'ElisaPolice_C /x': 'assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr',
+            'Fortem_C /x': 'assets/es_porsche_930_32__1984_porsche_911.mr',
+            'Raton_C /x': 'assets/es_lambo_l539_65__2011_lamborghini_aventador_lp_700_4.mr',
             'Pulse_C /x': None,                                                # Honda e
         }
         stock = {  # each car's stock EngineData (engine catalog)
@@ -121,18 +122,18 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         unknown = 'NewCar_C /x'
         cases = {
             'FordSmalBlock302_V8_5L_140HP': 'assets/es_ford_302_windsor.mr',
-            'V6Sport_DOHC_200HP': 'assets/es_buick_38_turbo.mr',
-            'I4_90HP': 'assets/es_nissan_cg13.mr',
-            'I4Sport_150HP': 'assets/es_mazda_b6.mr',
-            'Bike_i4_160HP': 'assets/es_bike_i4_1000.mr',
-            'Bike_50HP': 'assets/es_triumph_650_twin.mr',
+            'V6Sport_DOHC_200HP': 'assets/es_buick_38_lc2.mr',
+            'I4_90HP': 'assets/es_ford_14_sigma.mr',
+            'I4Sport_150HP': 'assets/es_mazda_b6ze.mr',
+            'Bike_i4_160HP': 'assets/es_yamaha_cp4_998.mr',
+            'Bike_50HP': 'assets/es_honda_cb250_twin.mr',
             'Kart_20HP': 'assets/es_kart_100_2t.mr',
             'Scooter_15HP': 'assets/es_vespa_150_2t.mr',
             'HeavyDuty_440HP': 'assets/es_cummins_isx15.mr',
             'MediumDuty_190HP': 'assets/es_navistar_dt466.mr',
-            'MediumDuty_250HP': 'assets/es_cummins_isb67.mr',
-            'Bus_300HP': 'assets/es_cummins_isl9.mr',
-            'Ferrari_275_V12_400HP': 'assets/es_lambo_l539.mr',
+            'MediumDuty_250HP': 'assets/es_man_d0836_loh.mr',
+            'Bus_300HP': 'assets/es_iveco_cursor8.mr',
+            'Ferrari_275_V12_400HP': 'assets/es_lambo_l539_65.mr',
             'Electric_300HP': None,
         }
         for name, expected in cases.items():
@@ -147,18 +148,16 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             return prefix + name + '.' + name
         # In game both had MediumDuty_330HP and sounded the same.
         self.assertEqual(self.resolve('Kira_Van_C /x', engine('MediumDuty_330HP')),
-                         'assets/es_deutz_f10l413f.mr')
+                         'assets/es_fiat_8060__1977_iveco_zeta.mr')
         self.assertEqual(self.resolve('Brutus_Wrecker_C /x', engine('MediumDuty_330HP')),
-                         'assets/es_mercedes_om936.mr')
-        self.assertEqual(self.resolve('Kira_Van_C /x', engine('MediumDuty_190HP')),
-                         'assets/es_deutz_f6l912.mr')
+                         'assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr')
         self.assertEqual(self.resolve('Stinger_C /x', engine('FordSmalBlock302_V8_5L_140HP')),
-                         'assets/es_chevy_350.mr')
+                         'assets/es_chevy_350_l48__1969_chevrolet_camaro_ss.mr')
         self.assertEqual(self.resolve('Stinger_C /x', engine('FordSmalBlock302_V8_5L_320HP')),
-                         'assets/es_chevy_396.mr')
+                         'assets/es_chevy_396_l35__1969_chevrolet_camaro_ss.mr')
         # Liliput has a combustion engine in game (silent while it kept stock).
         self.assertEqual(self.resolve('Liliput_C /x', engine('Bus_140HP')),
-                         'assets/es_iveco_f1c.mr')
+                         'assets/es_iveco_f1c_30__2009_tecnobus_gulliver.mr')
         # An electric motor keeps its stock sound in any vehicle.
         self.assertIsNone(self.resolve('Kira_Van_C /x', engine('Electric_300HP')))
         self.assertIsNone(self.resolve('EVan_C /x', engine('Electric_130HP')))
@@ -166,12 +165,8 @@ class PackagedFamilyRuleTests(unittest.TestCase):
     def test_vehicles_get_their_own_exhaust(self):
         import re
         lines = (ROOT / 'profiles/engine_families.tsv').read_text().splitlines()
-        def exhaust(pattern):
-            line = next(l for l in lines if l.startswith(f'vehicle\t{pattern}\t'))
-            return re.search(r'#exhaust=mtes-exhaust/(\w+)\.wav', line).group(1)
-        self.assertEqual(exhaust('^golima'), 'truck_stack')
-        self.assertEqual(exhaust('^kuda'), 'truck_euro')
-        self.assertEqual(exhaust('^scooty'), 'scooter_2t')
-        self.assertEqual(exhaust('^dory'), 'vintage_single')
-        loudness = lambda p: int(next(l for l in lines if l.startswith(f'vehicle\t{p}\t')).split('#loudness=')[1].split('\t')[0])
-        self.assertGreater(loudness('^golima'), loudness('^elisa') + 10)  # a semi vs a sedan
+        def collector_cm2(key):
+            script = next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2]
+            text = (ROOT / 'profiles' / Path(script).name).read_text()
+            return float(re.search(r'collector_cross_section_area: ([0-9.]+)', text).group(1))
+        self.assertGreater(collector_cm2('golimasemi'), 4 * collector_cm2('elisa'))  # a semi vs a sedan
