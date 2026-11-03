@@ -68,7 +68,14 @@ jobs:
           Copy-Item 'assets/manifest.json' 'results/manifest.json'
           Pop-Location
           python -I pipeline/compare_dyno_to_rated.py dyno-run/results | Tee-Object dyno-run/results/summary.txt
-          if ($failed.Count) { Write-Host "Failed: $($failed -join ' ')" }
+          # Artifacts may be unreachable for whoever reads the run; print the essentials.
+          foreach ($dyno in Get-ChildItem 'dyno-run/results/*/dyno.json') { Get-Content $dyno }
+          foreach ($name in $failed | Select-Object -First 3) {
+            Write-Host "===== $name"
+            Get-Content "dyno-run/results/$name.log" -Tail 40
+            if (Test-Path "dyno-run/results/$name.compile.log") { Get-Content "dyno-run/results/$name.compile.log" -Tail 40 }
+          }
+          if ($failed.Count) { Write-Host "Failed: $($failed -join ' ')"; exit 1 }
 
       - uses: actions/upload-artifact@v4
         if: always()
