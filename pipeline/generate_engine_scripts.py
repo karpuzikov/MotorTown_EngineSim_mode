@@ -36,6 +36,8 @@ EXHAUST_VALVE_TO_INTAKE_VALVE = 0.80
 VALVE_LIFT_TO_DIAMETER = 0.28
 VALVE_THROAT_AREA_FRACTION = 0.85                # valve area left beside the stem
 PORT_DISCHARGE_COEFFICIENT = 0.65
+# A side-valve (flathead) charge turns twice through the L-shaped chamber.
+SIDE_VALVE_FLOW_FACTOR = 0.55
 RUNNER_AREA_TO_VALVE_AREA = 1.3
 HEAD_PORT_LENGTH_TO_BORE = 0.5
 CAM_DURATION_BASE_DEG = 170.0                    # duration at 0.050" lift
@@ -101,7 +103,7 @@ FLAME_SPEED_ARGUMENT = ("turbulence_to_flame_speed_ratio: motor_town_flame_speed
 # engines; diesel 4-stroke from the Volvo D13; two-strokes from the three
 # Detroits and the Vespa run at their scavenge pressure.
 UNBOOSTED_MODEL_BMEP_PA = {
-    ("petrol", 4): 11.3e5, ("multifuel", 4): 11.3e5, ("diesel", 4): 11.8e5,
+    ("petrol", 4): 11.3e5, ("multifuel", 4): 11.8e5, ("diesel", 4): 11.8e5,
     ("diesel", 2): 4.8e5, ("petrol-oil", 2): 3.4e5,
 }
 BOOST_PRESSURE_RATIO_LIMITS = (1.0, 3.5)
@@ -123,13 +125,14 @@ globals().update(json.loads(os.environ.get("MOTOR_TOWN_ENGINE_SIM_RULE_OVERRIDES
 
 FUEL_SCRIPT = {
     "petrol": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
-    "multifuel": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     "petrol-oil": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     # Diesel C12H23: 167 g/mol, 17.75 mol O2 per mol fuel, 45.5 kJ/g.
     "diesel": ("fuel(name: \"Diesel\", molecular_mass: 167 * units.g, "
                "energy_density: 45.5 * units.kJ / units.g, "
                "density: 0.832 * units.kg / units.L, molecular_afr: 17.75, " + FLAME_SPEED_ARGUMENT + ")"),
 }
+# A multifuel engine (M35's LDT-465) is a compression-ignition diesel cycle.
+FUEL_SCRIPT["multifuel"] = FUEL_SCRIPT["diesel"]
 
 
 def flame_speed_node():
@@ -234,12 +237,12 @@ def cylinders_by_bank(engine, fire_deg, banks_deg):
     return max(schemes, key=lambda banks: (shared_pins(banks), bank_alternations(banks)))
 
 
-def valve_flow_cfm(diameter_m, lift_m, valve_count):
+def valve_flow_cfm(diameter_m, lift_m, valve_count, side_valve=False):
     """Flow bench figure at 28 inH2O: curtain area until the throat chokes."""
     curtain = math.pi * diameter_m * lift_m
     throat = VALVE_THROAT_AREA_FRACTION * math.pi * diameter_m ** 2 / 4.0
     velocity = math.sqrt(2.0 * PRESSURE_28_INCH_H2O_PA / AIR_DENSITY_KG_M3)
-    return (valve_count * PORT_DISCHARGE_COEFFICIENT * min(curtain, throat)
+    return ((SIDE_VALVE_FLOW_FACTOR if side_valve else 1.0) * valve_count * PORT_DISCHARGE_COEFFICIENT * min(curtain, throat)
             * velocity * CUBIC_METRES_PER_SECOND_TO_CFM)
 
 
@@ -259,7 +262,7 @@ def intake_molecular_afr(engine):
     Engine Simulator's intake always mixes 0.8 x this ratio (lambda 0.8, a
     petrol full-power mixture), so a lean diesel charge divides that back out.
     """
-    if engine["fuel"] == "diesel":
+    if engine["fuel"] in ("diesel", "multifuel"):
         return 17.75 * DIESEL_FULL_LOAD_LAMBDA / ENGINE_SIM_INTAKE_LAMBDA
     return 25.0 / 2.0
 
@@ -330,6 +333,7 @@ def derive(engine, car):
                         "duration": duration, "centre": 360.0 + CAM_LOBE_SEPARATION_DEG}
         exhaust_event = {"diameter": exhaust_valve, "count": exhaust_valves, "lift": lift,
                          "duration": duration, "centre": 360.0 - CAM_LOBE_SEPARATION_DEG}
+        intake_event["side_valve"] = exhaust_event["side_valve"] = engine["valvetrain"] == "side-valve"
     elif engine["valvetrain"] in ("piston-port", "rotary-valve"):
         intake_event = port(INTAKE_PORT_AREA_TO_BORE_AREA, PORTED_TRANSFER_PORT_DURATION_DEG, 180.0)
         exhaust_event = port(EXHAUST_PORT_AREA_TO_BORE_AREA, PORTED_EXHAUST_PORT_DURATION_DEG, 180.0)
@@ -352,8 +356,10 @@ def derive(engine, car):
         "intake_runner_area": RUNNER_AREA_TO_VALVE_AREA * intake_valve_area,
         "exhaust_runner_area": RUNNER_AREA_TO_VALVE_AREA * exhaust_valve_area,
         "port_length": HEAD_PORT_LENGTH_TO_BORE * bore,
-        "intake_port_peak_cfm": valve_flow_cfm(intake_event["diameter"], intake_event["lift"], intake_event["count"]),
-        "exhaust_port_peak_cfm": valve_flow_cfm(exhaust_event["diameter"], exhaust_event["lift"], exhaust_event["count"]),
+        "intake_port_peak_cfm": valve_flow_cfm(intake_event["diameter"], intake_event["lift"],
+                                               intake_event["count"], intake_event.get("side_valve", False)),
+        "exhaust_port_peak_cfm": valve_flow_cfm(exhaust_event["diameter"], exhaust_event["lift"],
+                                                exhaust_event["count"], exhaust_event.get("side_valve", False)),
         "piston_mass": piston_mass, "rod_mass": ROD_MASS_TO_PISTON_MASS * piston_mass,
         "crank_mass": CRANK_MASS_KG_PER_LITRE * displacement_litres,
         "flywheel_mass": FLYWHEEL_MASS_KG_AT_1_LITRE * displacement_litres ** FLYWHEEL_MASS_EXPONENT,
@@ -412,12 +418,13 @@ def not_modelled(engine):
     return gaps
 
 
-def flow_function(name, peak_cfm, diameter_m, valve_count, lift_m):
+def flow_function(name, event):
+    diameter_m, valve_count, lift_m = event["diameter"], event["count"], event["lift"]
     lines = [f"    function {name}(50 * units.thou)"]
     steps = math.ceil(lift_m / 0.00127) + 2
     for i in range(steps + 1):
         lift = i * 0.00127
-        cfm = valve_flow_cfm(diameter_m, lift, valve_count)
+        cfm = valve_flow_cfm(diameter_m, lift, valve_count, event.get("side_valve", False))
         lines.append(f"    {name}.add_sample({i * 50} * units.thou, k_28inH2O({cfm:.2f}))")
     return lines
 
@@ -430,7 +437,7 @@ def engine_script(engine, car):
     reference = banks_deg[0]
     # A "dual" layout keeps one pipe per bank until the silencer or outlet.
     exhaust_count = 2 if len(banks) == 2 and car["exhaust"]["layout"] == "dual" else 1
-    diesel = engine["fuel"] == "diesel"
+    diesel = engine["fuel"] in ("diesel", "multifuel")
     redline = engine["redline_rpm"]
     out = ["// mtes-real-spec-profile: 1", 'import "engine_sim.mr"', "", "units units()", "constants constants()",
            "impulse_response_library ir_lib()", ""] + flame_speed_node()
@@ -495,7 +502,7 @@ def engine_script(engine, car):
 
     for side in ("intake", "exhaust"):
         event = d[f"{side}_event"]
-        out += flow_function(f"{side}_flow", None, event["diameter"], event["count"], event["lift"])
+        out += flow_function(f"{side}_flow", event)
         out += [f"    harmonic_cam_lobe {side}_lobe(duration_at_50_thou: {event['duration']:.2f} * units.deg,",
                 f"        gamma: 1.1, lift: {event['lift']:.6f} * units.m, steps: 256)"]
     lobes_per_cycle = 1 if engine["cycle"] == 4 else 2
