@@ -1219,19 +1219,24 @@ local function is_moving(vehicle)
     return x ~= nil and x * x + y * y + z * z > 100 * 100 -- faster than 1 m/s
 end
 
--- Only engines the game itself is sounding: a running engine's stock
--- AudioComponent carries its 3D position. In game, parked buses without a
--- playing one sounded centred at the bus station. Unreal stops a sound that
--- has been silenced (the stock assets are), so a driving car's component
--- can report "not playing" and was never heard: a moving vehicle counts
--- either way. nil plus the reason when the vehicle is not listed.
+-- A parked engine counts only while the game itself is sounding it: in game,
+-- parked buses without a playing stock AudioComponent sounded centred at the
+-- bus station. A moving vehicle counts without one: Unreal stops a sound that
+-- has been silenced (the stock assets are) and the game keeps no component on
+-- traffic cars at all (UE4SS.log: nearly every running car within 150 m was
+-- "no engine sound"), so a passing car was never heard. stock_mix takes the
+-- position from the vehicle when there is no component.
+-- nil plus the reason when the vehicle is not listed.
 local function traffic_mix(pc, vehicle)
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
-    if not valid(channel) then return nil, "no engine sound" end
-    local okPlaying, playing = pcall(function() return channel:IsPlaying() end)
-    if okPlaying and playing == false and not is_moving(vehicle) then
-        return nil, "parked, sound not playing"
+    local hasStockSound = valid(channel)
+    if hasStockSound then
+        local okPlaying, playing = pcall(function() return channel:IsPlaying() end)
+        hasStockSound = not (okPlaying and playing == false)
+    end
+    if not hasStockSound and not is_moving(vehicle) then
+        return nil, valid(channel) and "parked, sound not playing" or "parked, no engine sound"
     end
     if path_value(vehicle, "EngineComponent.IsIgnitionOn()") == false then
         return nil, "ignition off"

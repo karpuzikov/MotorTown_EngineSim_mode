@@ -398,10 +398,10 @@ assert(math.abs(inside / at15 - 5) < 1e-6, "Capped at 3 m: " .. tostring(inside)
 -- and was never heard; a parked one without a playing sound stays out and
 -- does not take a voice from the cars that can sound.
 local function trafficCar(name, address, x, state)
-    local audio = object("AudioComponent " .. name, {
+    local audio = not state.noAudioComponent and object("AudioComponent " .. name, {
         IsPlaying = function() return state.playing end,
         K2_GetComponentLocation = function() return { X = x, Y = 0, Z = 0 } end,
-    })
+    }) or nil
     local engineComponent = object("EngineComponent", {
         AudioComponent = audio,
         GetRPM = function() return state.rpm end,
@@ -429,3 +429,18 @@ local chosen = __test_traffic_scan(pc, vehicle)
 assert(#chosen == 2, "Two voices: " .. #chosen)
 assert(chosen[1] == idlingCar, "A parked bus without a playing sound or an engine off is not listed")
 assert(chosen[2] == drivingCar, "A driving car is listed although Unreal reports its silenced sound as stopped")
+
+-- The game keeps no AudioComponent on traffic cars (UE4SS.log): a passing car
+-- is listed all the same, a parked one without a component is not, and the
+-- parked one nearer than the passing car takes no voice from it.
+local parkedWithoutComponent = trafficCar("ParkedWithoutComponent", 0xB006, 400,
+    { rpm = 700, noAudioComponent = true })
+local passingWithoutComponent = trafficCar("PassingWithoutComponent", 0xB007, 2000,
+    { rpm = 2000, noAudioComponent = true, speed = 1500 })
+FindAllOf = function(class)
+    if class == "MTVehicle" then return { parkedWithoutComponent, passingWithoutComponent } end
+    return nil
+end
+local chosenWithoutComponents = __test_traffic_scan(pc, vehicle)
+assert(#chosenWithoutComponents == 1 and chosenWithoutComponents[1] == passingWithoutComponent,
+    "A passing car without a stock AudioComponent is listed, a parked one is not: " .. #chosenWithoutComponents)
