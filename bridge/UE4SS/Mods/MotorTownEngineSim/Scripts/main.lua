@@ -1126,7 +1126,9 @@ end
 -- it (gain, pan, low-pass Hz); gain -1 means unknown.
 -- One MTES5 line: identity, engine state, engine data and stock 3D mix.
 -- mixField nil: the vehicle's stock mix relative to the camera.
-local function native_telemetry_packet(vehicle, rpm, throttle, running, gear, pc, sequence, mixField)
+-- What identifies a vehicle and its engine in a line: name, engine data and the
+-- stock cue. Fixed for a vehicle, ~30 game-thread property reads to find.
+local function vehicle_identity(vehicle)
     local name = ""
     if valid(vehicle) then
         local ok, value = pcall(function() return vehicle:GetFullName() end)
@@ -1154,6 +1156,18 @@ local function native_telemetry_packet(vehicle, rpm, throttle, running, gear, pc
         return string.format("%02X", c:byte())
     end)
     if encodedAsset == "" then encodedAsset = "-" end
+    local cueHex = "-"
+    if valid(vehicle) then
+        local engine = member(vehicle, "EngineComponent")
+        cueHex = hex_name(sound_name(valid(engine) and member(engine, "AudioComponent") or nil)) or "-"
+    end
+    return { name = name, encoded = encoded, engineType = engineType, maxRpm = maxRpm,
+        encodedAsset = encodedAsset, cueHex = cueHex }
+end
+
+-- One MTES5 line. identity: vehicle_identity(vehicle) when the caller keeps it.
+local function native_telemetry_packet(vehicle, rpm, throttle, running, gear, pc, sequence, mixField, identity)
+    identity = identity or vehicle_identity(vehicle)
     local volume = engine_volume()
     local volumeField = volume and string.format("%.4f", volume) or "-1"
     -- Lua considers 0 truthy, preserving an intentional engine mute.
@@ -1161,21 +1175,16 @@ local function native_telemetry_packet(vehicle, rpm, throttle, running, gear, pc
         log("Engine Volume: " .. volumeField)
         lastReportedVolume = volumeField
     end
-    local cueHex = "-"
-    if valid(vehicle) then
-        local engine = member(vehicle, "EngineComponent")
-        cueHex = hex_name(sound_name(valid(engine) and member(engine, "AudioComponent") or nil)) or "-"
-        if pc and not mixField then
-            local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
-            if ok and gain then
-                mixField = string.format("%.4f %.4f %.0f", gain, pan, lowpass)
-            end
+    if pc and not mixField and valid(vehicle) then
+        local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
+        if ok and gain then
+            mixField = string.format("%.4f %.4f %.0f", gain, pan, lowpass)
         end
     end
     return string.format("MTES5 %s %d %.3f %.4f %d %d %s %d %.3f %s %s %s %s\n",
         nativeSession, sequence, rpm, throttle, running and 1 or 0, gear or -99,
-        encoded, engineType, maxRpm, encodedAsset, volumeField, cueHex,
-        mixField or "-1 0.0000 0")
+        identity.encoded, identity.engineType, identity.maxRpm, identity.encodedAsset,
+        volumeField, identity.cueHex, mixField or "-1 0.0000 0")
 end
 
 local function write_native_telemetry(vehicle, rpm, throttle, running, gear, pc)
@@ -1191,9 +1200,9 @@ local function engine_rpm(vehicle)
     return nil
 end
 
--- Running engines of other vehicles near the camera (traffic, parked cars
--- left idling): the native side synthesizes the nearest few.
-local TRAFFIC_VOICE_LIMIT = 2 -- native TrafficEngineVoices::MaxVoices
+-- Running engines of other vehicles near the camera (traffic, cars standing at
+-- a light, parked cars left idling): the native side synthesizes the nearest few.
+local TRAFFIC_VOICE_LIMIT = 4 -- native TrafficEngineVoices::MaxVoices
 local TRAFFIC_AUDIBLE_RADIUS = 15000 -- Unreal units (150 m)
 local trafficVehicles, nextTrafficScan, trafficSequence = {}, 0, 0
 local function camera_location(pc)
@@ -1212,32 +1221,12 @@ local function distance_to(vehicle, lx, ly, lz)
     return math.sqrt((x - lx) ^ 2 + (y - ly) ^ 2 + (z - lz) ^ 2)
 end
 
-local function is_moving(vehicle)
-    local ok, velocity = pcall(function() return vehicle:GetVelocity() end)
-    if not ok then return false end
-    local x, y, z = vector_of(velocity)
-    return x ~= nil and x * x + y * y + z * z > 100 * 100 -- faster than 1 m/s
-end
-
--- A parked engine counts only while the game itself is sounding it: in game,
--- parked buses without a playing stock AudioComponent sounded centred at the
--- bus station. A moving vehicle counts without one: Unreal stops a sound that
--- has been silenced (the stock assets are) and the game keeps no component on
--- traffic cars at all (UE4SS.log: nearly every running car within 150 m was
--- "no engine sound"), so a passing car was never heard. stock_mix takes the
--- position from the vehicle when there is no component.
+-- Every running engine near the camera sounds, standing at a light or driving.
+-- The game keeps no stock sound on traffic cars (UE4SS.log: nearly every running
+-- car within 150 m had "no engine sound") and the stock assets are silenced, so
+-- nothing about a stock sound says whether a car should be heard.
 -- nil plus the reason when the vehicle is not listed.
 local function traffic_mix(pc, vehicle)
-    local engine = member(vehicle, "EngineComponent")
-    local channel = valid(engine) and member(engine, "AudioComponent") or nil
-    local hasStockSound = valid(channel)
-    if hasStockSound then
-        local okPlaying, playing = pcall(function() return channel:IsPlaying() end)
-        hasStockSound = not (okPlaying and playing == false)
-    end
-    if not hasStockSound and not is_moving(vehicle) then
-        return nil, valid(channel) and "parked, sound not playing" or "parked, no engine sound"
-    end
     if path_value(vehicle, "EngineComponent.IsIgnitionOn()") == false then
         return nil, "ignition off"
     end
@@ -1247,14 +1236,19 @@ local function traffic_mix(pc, vehicle)
 end
 
 -- The nearest vehicles that traffic_mix lists: one that never would be must
--- not take a voice from a car that can sound. Logs what the scan saw when it
--- changes, so a missing traffic engine can be explained from UE4SS.log.
+-- not take a voice from a car that can sound. A car that already has a voice
+-- keeps it unless another is clearly nearer (a new voice costs a script compile
+-- and a second of silence). Logs what the scan saw when it changes, so a
+-- missing traffic engine can be explained from UE4SS.log.
+local TRAFFIC_VOICE_KEPT_DISTANCE_FACTOR = 0.6
 local lastTrafficScanSummary, lastTrafficIdentitySummary = nil, nil
 local function scan_running_traffic(pc, playerVehicle)
     local lx, ly, lz = camera_location(pc)
     local ok, all = pcall(FindAllOf, "MTVehicle")
     if not lx or not ok or type(all) ~= "table" then return {} end
     local playerAddress = address_of(playerVehicle)
+    local voiced = {}
+    for _, vehicle in ipairs(trafficVehicles) do voiced[address_of(vehicle) or 0] = true end
     local nearby, running, skippedFor = {}, 0, {}
     for _, vehicle in ipairs(all) do
         local address = address_of(vehicle)
@@ -1265,14 +1259,15 @@ local function scan_running_traffic(pc, playerVehicle)
                 running = running + 1
                 local mix, reason = traffic_mix(pc, vehicle)
                 if mix then
-                    nearby[#nearby + 1] = { vehicle = vehicle, distance = distance }
+                    nearby[#nearby + 1] = { vehicle = vehicle, distance = distance,
+                        rank = voiced[address] and distance * TRAFFIC_VOICE_KEPT_DISTANCE_FACTOR or distance }
                 else
                     skippedFor[reason] = (skippedFor[reason] or 0) + 1
                 end
             end
         end
     end
-    table.sort(nearby, function(a, b) return a.distance < b.distance end)
+    table.sort(nearby, function(a, b) return a.rank < b.rank end)
     local chosen = {}
     for i = 1, math.min(TRAFFIC_VOICE_LIMIT, #nearby) do chosen[i] = nearby[i].vehicle end
     local reasons = {}
@@ -1302,25 +1297,40 @@ local function scan_running_traffic(pc, playerVehicle)
     return chosen
 end
 
+local trafficIdentities = {} -- address -> vehicle_identity, for the listed vehicles only
 local function write_traffic_telemetry(pc, playerVehicle)
     if os.time() >= nextTrafficScan then
         nextTrafficScan = os.time() + 2 -- FindAllOf over every vehicle is a game-thread cost
         trafficVehicles = scan_running_traffic(pc, playerVehicle)
+        local kept = {}
+        for _, vehicle in ipairs(trafficVehicles) do
+            local address = address_of(vehicle)
+            kept[address] = trafficIdentities[address]
+        end
+        trafficIdentities = kept
     end
     trafficSequence = trafficSequence + 1
     local lines = {}
     local playerAddress = address_of(playerVehicle)
     for _, vehicle in ipairs(trafficVehicles) do
-        local rpm = valid(vehicle) and address_of(vehicle) ~= playerAddress and engine_rpm(vehicle)
+        local address = valid(vehicle) and address_of(vehicle)
+        local rpm = address and address ~= playerAddress and engine_rpm(vehicle)
         local mixField = rpm and traffic_mix(pc, vehicle)
         if rpm and mixField then
             local throttle = tonumber(path_value(vehicle, "EngineComponent.GetThrottle()")) or 0
             if throttle ~= throttle then throttle = 0 end
             if throttle > 1 then throttle = throttle / 100 end
-            local running = true -- traffic_mix: ignition on, a sounding engine
+            local running = true -- traffic_mix: ignition on
+            -- Found once per vehicle: ~30 property reads, every 50 ms for each
+            -- listed vehicle lagged the game thread. The name guards a reused address.
+            local identity = trafficIdentities[address]
+            if not identity or identity.name ~= full_name(vehicle) then
+                identity = vehicle_identity(vehicle)
+                trafficIdentities[address] = identity
+            end
             -- Gear does not reach the synthesizer; 0 (neutral) satisfies the format.
             lines[#lines + 1] = native_telemetry_packet(vehicle, rpm,
-                math.max(0, math.min(1, throttle)), running, 0, pc, trafficSequence, mixField)
+                math.max(0, math.min(1, throttle)), running, 0, pc, trafficSequence, mixField, identity)
         end
     end
     local file = io.open(TRAFFIC_TELEMETRY, "w")

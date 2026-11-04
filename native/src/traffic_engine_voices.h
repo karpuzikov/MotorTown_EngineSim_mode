@@ -70,7 +70,7 @@ inline bool traffic_vehicle_gone(std::chrono::steady_clock::time_point lastListe
 // %TEMP%/MotorTownEngineSim_traffic_telemetry.txt (MTES5 lines).
 class TrafficEngineVoices final {
 public:
-    static constexpr std::size_t MaxVoices = 2; // Lua TRAFFIC_VOICE_LIMIT; 3 lagged the game
+    static constexpr std::size_t MaxVoices = 4; // Lua TRAFFIC_VOICE_LIMIT
     using Clock = std::chrono::steady_clock;
 
     TrafficEngineVoices(std::filesystem::path telemetryFile, VehicleProfileLookup& profiles,

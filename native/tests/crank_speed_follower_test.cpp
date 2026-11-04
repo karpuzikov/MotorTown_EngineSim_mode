@@ -103,6 +103,27 @@ int main() {
         assert(pedal < 0.01);
     }
 
+    // A run that starts at the game's rpm begins with a guessed pedal (the toy
+    // engine needs 3% of the travel, the follower starts at 5%): with the
+    // integral scaled up it finds the right pedal sooner, and still settles.
+    {
+        const auto secondsOutsideBand = [](double integralScale) {
+            ToyEngine engine{2500.0, 30000.0, 0.2, 400.0};
+            CrankSpeedFollower follower;
+            double lastOutside = 0.0;
+            for (double t = 0.0; t < 6.0; t += Step) {
+                engine.step(follower.update(Step, 2500.0, engine.rpm, RedlineRpm, integralScale), Step);
+                if (std::fabs(engine.rpm - 2500.0) > 0.005 * RedlineRpm) lastOutside = t;
+            }
+            return lastOutside;
+        };
+        const double normal = secondsOutsideBand(1.0);
+        const double faster = secondsOutsideBand(4.0);
+        assert(normal > 1.0);            // the guess is far enough off to matter
+        assert(faster < 0.6 * normal);   // and the scaled integral finds it sooner
+        assert(faster < 6.0);            // settled within the run
+    }
+
     // Garbage in, closed pedal out.
     CrankSpeedFollower follower;
     assert(follower.update(0.0, 900.0, 900.0, RedlineRpm) == 0.0);

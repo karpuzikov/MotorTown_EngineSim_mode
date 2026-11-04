@@ -37,6 +37,21 @@ int main() {
             "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
         assert(truck && truck->script == "C:/mod/assets/es_volvo_d13.mr");
         assert(truck->exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
+        assert(!plain->distant && !truck->distant);
+
+        // Traffic runs the same engine and exhaust as a cheaper, distant voice.
+        const auto distantPlain = distant_engine_sound_spec("C:/mod/assets/es_volvo_d13.mr");
+        assert(distantPlain == "C:/mod/assets/es_volvo_d13.mr#distant");
+        const auto distantTruck = distant_engine_sound_spec(
+            "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
+        const auto distantPlainSpec = parse_engine_sound_spec(distantPlain);
+        const auto distantTruckSpec = parse_engine_sound_spec(distantTruck);
+        assert(distantPlainSpec && distantPlainSpec->distant &&
+               distantPlainSpec->script == "C:/mod/assets/es_volvo_d13.mr" &&
+               distantPlainSpec->exhaustImpulse.empty());
+        assert(distantTruckSpec && distantTruckSpec->distant &&
+               distantTruckSpec->script == "C:/mod/assets/es_volvo_d13.mr" &&
+               distantTruckSpec->exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
     }
 
     // Engine Simulator's leveler makes idle as loud as flat out; the level

@@ -393,24 +393,29 @@ local inside = __test_mix(pc, vehicle)
 assert(at15 and math.abs(at15 / at30 - 2) < 1e-6, "Spherical spreading: " .. tostring(at15) .. " " .. tostring(at30))
 assert(math.abs(inside / at15 - 5) < 1e-6, "Capped at 3 m: " .. tostring(inside))
 
--- Traffic: the nearest vehicles that can sound get the voices. Unreal stops
--- a silenced stock sound, so a DRIVING car's component reports "not playing"
--- and was never heard; a parked one without a playing sound stays out and
--- does not take a voice from the cars that can sound.
-local function trafficCar(name, address, x, state)
+-- The chunk shares main.lua's 200-local limit: each part is scoped.
+local trafficCar -- helper below
+do
+-- Traffic: the nearest running vehicles get the voices, standing ones too. The
+-- game keeps no stock AudioComponent on traffic cars and its silenced sounds
+-- say nothing about a car, so a car at a traffic light sounds like a passing
+-- one; only an engine that is off, or too far away, stays out.
+function trafficCar(name, address, x, state)
+    local engineData = state.engineDataName and object(state.engineDataName) or nil
     local audio = not state.noAudioComponent and object("AudioComponent " .. name, {
         IsPlaying = function() return state.playing end,
         K2_GetComponentLocation = function() return { X = x, Y = 0, Z = 0 } end,
     }) or nil
     local engineComponent = object("EngineComponent", {
         AudioComponent = audio,
+        EngineData = engineData,
         GetRPM = function() return state.rpm end,
         GetThrottle = function() return 0 end,
         IsIgnitionOn = function() return state.ignition ~= false end,
     })
     local car = object("MTVehicle " .. name, {
         EngineComponent = engineComponent,
-        K2_GetActorLocation = function() return { X = x, Y = 0, Z = 0 } end,
+        K2_GetActorLocation = function() return { X = state.x or x, Y = 0, Z = 0 } end,
         GetVelocity = function() return { X = state.speed or 0, Y = 0, Z = 0 } end,
     })
     car.GetAddress = function() return address end
@@ -419,20 +424,22 @@ end
 local parkedBus = trafficCar("ParkedBus", 0xB001, 500, { rpm = 700, playing = false })
 local idlingCar = trafficCar("IdlingCar", 0xB002, 800, { rpm = 700, playing = true })
 local drivingCar = trafficCar("DrivingCar", 0xB003, 3000, { rpm = 2000, playing = false, speed = 1500 })
-local farCar = trafficCar("FarCar", 0xB004, 9000, { rpm = 1500, playing = true, speed = 1000 })
+local fifthCar = trafficCar("FifthCar", 0xB008, 6000, { rpm = 900, playing = false })
+local farCar = trafficCar("FarCar", 0xB004, 20000, { rpm = 1500, playing = true, speed = 1000 })
 local stoppedCar = trafficCar("StoppedCar", 0xB005, 1000, { rpm = 800, playing = true, ignition = false })
 FindAllOf = function(class)
-    if class == "MTVehicle" then return { parkedBus, idlingCar, drivingCar, farCar, stoppedCar } end
+    if class == "MTVehicle" then return { fifthCar, parkedBus, idlingCar, drivingCar, farCar, stoppedCar } end
     return nil
 end
 local chosen = __test_traffic_scan(pc, vehicle)
-assert(#chosen == 2, "Two voices: " .. #chosen)
-assert(chosen[1] == idlingCar, "A parked bus without a playing sound or an engine off is not listed")
-assert(chosen[2] == drivingCar, "A driving car is listed although Unreal reports its silenced sound as stopped")
+assert(#chosen == 4, "Four voices: " .. #chosen)
+assert(chosen[1] == parkedBus and chosen[2] == idlingCar and chosen[3] == drivingCar and chosen[4] == fifthCar,
+    "Standing cars, with or without a playing stock sound, and driving ones are listed nearest first")
 
--- The game keeps no AudioComponent on traffic cars (UE4SS.log): a passing car
--- is listed all the same, a parked one without a component is not, and the
--- parked one nearer than the passing car takes no voice from it.
+end
+do
+-- Cars with no AudioComponent at all (the game has none on traffic) are
+-- listed whether they stand or drive.
 local parkedWithoutComponent = trafficCar("ParkedWithoutComponent", 0xB006, 400,
     { rpm = 700, noAudioComponent = true })
 local passingWithoutComponent = trafficCar("PassingWithoutComponent", 0xB007, 2000,
@@ -442,5 +449,56 @@ FindAllOf = function(class)
     return nil
 end
 local chosenWithoutComponents = __test_traffic_scan(pc, vehicle)
-assert(#chosenWithoutComponents == 1 and chosenWithoutComponents[1] == passingWithoutComponent,
-    "A passing car without a stock AudioComponent is listed, a parked one is not: " .. #chosenWithoutComponents)
+assert(#chosenWithoutComponents == 2 and chosenWithoutComponents[1] == parkedWithoutComponent and
+    chosenWithoutComponents[2] == passingWithoutComponent,
+    "Cars without a stock AudioComponent are listed, standing or passing: " .. #chosenWithoutComponents)
+
+end
+do
+-- A car that has a voice keeps it unless another is clearly nearer: a new
+-- voice costs a script compile and a second of silence. Five cars, four
+-- voices; the fifth is a little nearer than the farthest voiced car.
+local voicedFar = trafficCar("VoicedFar", 0xB101, 5000, { rpm = 900 })
+local voicedA = trafficCar("VoicedA", 0xB102, 1000, { rpm = 900 })
+local voicedB = trafficCar("VoicedB", 0xB103, 2000, { rpm = 900 })
+local voicedC = trafficCar("VoicedC", 0xB104, 3000, { rpm = 900 })
+local newcomer = trafficCar("Newcomer", 0xB105, 4500, { rpm = 900 })
+local cars = { voicedFar, voicedA, voicedB, voicedC }
+FindAllOf = function(class)
+    if class == "MTVehicle" then return cars end
+    return nil
+end
+__test_traffic_write(pc, vehicle) -- lists the four, so they hold voices
+cars = { voicedFar, voicedA, voicedB, voicedC, newcomer }
+local keptScan = __test_traffic_scan(pc, vehicle)
+assert(#keptScan == 4 and keptScan[4] == voicedFar,
+    "A slightly nearer newcomer does not take the voice of a car that has one")
+local movedOn = trafficCar("MovedOn", 0xB105, 1200, { rpm = 900 })
+cars = { voicedFar, voicedA, voicedB, voicedC, movedOn }
+local replacedScan = __test_traffic_scan(pc, vehicle)
+assert(#replacedScan == 4 and replacedScan[1] == voicedA and replacedScan[2] == movedOn and
+    replacedScan[4] == voicedC, "A much nearer newcomer does take a voice from the farthest one")
+
+end
+do
+-- What identifies a vehicle is found once, not by ~30 property reads on every
+-- 50-ms tick of the game thread (it lagged the game with a few voices).
+local identityReads = 0
+local counted = trafficCar("Counted", 0xB201, 700, { rpm = 800 })
+local data = object("MHEngineDataAsset /Game/Cars/Parts/Engine/I4_90HP.I4_90HP")
+local dataName = data.GetFullName
+data.GetFullName = function(self) identityReads = identityReads + 1; return dataName(self) end
+counted.EngineComponent.EngineData = data
+FindAllOf = function(class)
+    if class == "MTVehicle" then return { counted } end
+    return nil
+end
+local realNow = os.time
+os.time = function() return realNow() + 100 end -- past the 2-s scan interval
+__test_traffic_write(pc, vehicle)
+local afterFirst = identityReads
+for _ = 1, 20 do __test_traffic_write(pc, vehicle) end
+os.time = realNow
+assert(afterFirst >= 1 and identityReads == afterFirst,
+    "Identity read once: " .. afterFirst .. " then " .. identityReads)
+end

@@ -29,13 +29,16 @@ inline std::optional<double> parse_profile_directive(std::istream& script,
 
 // A vehicle's engine sound: an engine script, optionally with the vehicle's
 // own exhaust impulse response in place of the script's:
-//     "<engine.mr>[#exhaust=<exhaust.wav>]"   (engine_families.tsv)
+//     "<engine.mr>[#distant][#exhaust=<exhaust.wav>]"   (engine_families.tsv has
+// the script and exhaust; #distant is added for traffic)
 struct EngineSoundSpec {
     std::string script;
     std::string exhaustImpulse; // empty: the script's own impulse responses
+    bool distant = false;       // traffic: a shortened exhaust tail, a cheaper voice
 };
 
 inline constexpr const char* ExhaustSpecMarker = "#exhaust=";
+inline constexpr const char* DistantSpecMarker = "#distant";
 
 inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) {
     EngineSoundSpec parsed;
@@ -45,8 +48,21 @@ inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) 
             exhaustAt + std::char_traits<char>::length(ExhaustSpecMarker));
         spec.resize(exhaustAt);
     }
+    const std::string distant = DistantSpecMarker;
+    if (spec.size() >= distant.size() &&
+        spec.compare(spec.size() - distant.size(), distant.size(), distant) == 0) {
+        parsed.distant = true;
+        spec.resize(spec.size() - distant.size());
+    }
     parsed.script = std::move(spec);
     return parsed;
+}
+
+// A traffic voice's spec: the same engine and exhaust, cheaper to run.
+inline std::string distant_engine_sound_spec(std::string spec) {
+    const auto exhaustAt = spec.find(ExhaustSpecMarker);
+    spec.insert(exhaustAt == std::string::npos ? spec.size() : exhaustAt, DistantSpecMarker);
+    return spec;
 }
 
 // Engine Simulator's leveler flattens every engine to one level, idle as loud

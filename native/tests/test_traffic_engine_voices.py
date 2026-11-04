@@ -32,8 +32,8 @@ class TrafficEngineVoicesTests(unittest.TestCase):
         lua = (ROOT.parent / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua').read_text()
         self.assertIn('MotorTownEngineSim_traffic_telemetry.txt', lua)
         header = (ROOT / 'src/traffic_engine_voices.h').read_text()
-        self.assertIn('MaxVoices = 2', header)
-        self.assertIn('TRAFFIC_VOICE_LIMIT = 2', lua)
+        self.assertIn('MaxVoices = 4', header)
+        self.assertIn('TRAFFIC_VOICE_LIMIT = 4', lua)
 
 
 if __name__ == '__main__':

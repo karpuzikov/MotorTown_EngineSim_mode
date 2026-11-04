@@ -36,8 +36,10 @@ public:
     // before the first update.
     double smoothedRpm() const noexcept { return m_smoothedRpm; }
 
-    // Returns the pedal, 0..1. Call every simulation step.
-    double update(double seconds, double targetRpm, double measuredRpm, double redlineRpm) noexcept {
+    // Returns the pedal, 0..1. Call every simulation step. integralScale > 1
+    // finds the needed pedal faster (a run that has just started).
+    double update(double seconds, double targetRpm, double measuredRpm, double redlineRpm,
+        double integralScale = 1.0) noexcept {
         if (!(seconds > 0.0) || !(redlineRpm > 0.0) || !std::isfinite(targetRpm) ||
             !std::isfinite(measuredRpm)) return 0.0;
         if (m_smoothedRpm < 0.0) m_smoothedRpm = measuredRpm;
@@ -53,7 +55,7 @@ public:
             (m_logNeededPedal <= std::log(LowestNeededPedal) && error < 0.0);
         if (!pinnedFurther) {
             m_logNeededPedal = std::clamp(
-                m_logNeededPedal + IntegralPerRedlineSecond * error * seconds,
+                m_logNeededPedal + IntegralPerRedlineSecond * integralScale * error * seconds,
                 std::log(LowestNeededPedal), 0.0);
         }
         return pedal;

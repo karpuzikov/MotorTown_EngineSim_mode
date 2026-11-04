@@ -17,9 +17,11 @@
 #include "vehicle.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <optional>
+#include <vector>
 #include <filesystem>
 #include <limits>
 
@@ -57,6 +59,38 @@ constexpr double DrivetrainMotoringBelowGameRpm = 0.15;
 constexpr double DrivetrainMotoringReleasedBelowGameRpm = 0.05;
 constexpr double DrivetrainMotoringDwellSeconds = 0.3;
 constexpr double LoudnessGlideSeconds = 0.08;
+
+// A car that already runs when it gets this simulator (traffic that came into
+// earshot) must not be heard starting: the starter, a wide-open pedal and an
+// rpm overshoot lasted ~1.2 s and sounded like every passing car flooring the
+// pedal (in game, 2026-11-04). It starts where the game says it is: the crank
+// at the game's rpm, no starter, and the first seconds of the run, while the
+// pedal settles, are not played.
+constexpr double WarmStartUnheardSeconds = 1.0;
+// The dynamometer holds that speed while the first cylinders fire: unfired,
+// the crank lost half its speed in 0.1 s and then overshot.
+constexpr double WarmStartHeldSeconds = 0.25;
+// The pedal a warm start begins with is a guess (the engines need 0.004-0.08):
+// the follower finds the right one this many times faster for this long, or the
+// pitch would glide by up to 9% over two seconds.
+constexpr double WarmStartFasterFollowingSeconds = 1.5;
+constexpr double WarmStartFasterFollowingScale = 4.0;
+constexpr double OutputSampleRate = 44100.0;
+
+// A distant (traffic) voice convolves with only the start of its exhaust's
+// response: the long tail cost 0.24 of a core per voice (measured offline) and
+// left the tone as it was (output spectrum within 0.1 dB in every octave band).
+constexpr std::size_t DistantImpulseFrames = 4096;
+
+void shorten_impulse(std::vector<std::int16_t> &samples) {
+    if (samples.size() <= DistantImpulseFrames) return;
+    samples.resize(DistantImpulseFrames);
+    const std::size_t fade = DistantImpulseFrames / 2;
+    for (std::size_t i = 0; i < fade; ++i) {
+        auto &sample = samples[DistantImpulseFrames - fade + i];
+        sample = static_cast<std::int16_t>(std::lround(sample * (1.0 - double(i + 1) / double(fade))));
+    }
+}
 
 // Engine Simulator's starter turns the crank to -starter_speed: negative
 // v_theta for most models, positive for those scripted with a negative
@@ -135,6 +169,9 @@ public:
             m_secondsFarBelowGameRpm = 0.0;
             m_loudnessGain = -1.0; // first read() jumps to the target
             m_lastTargetRpm = -1.0;
+            m_framesToDiscard.store(0);
+            m_secondsHeldAtGameRpm = 0.0;
+            m_secondsFollowingFaster = 0.0;
 
             const int exhausts = m_engine->getExhaustSystemCount();
             if (exhausts <= 0) {
@@ -152,7 +189,8 @@ public:
                 const auto impulse = spec.exhaustImpulse.empty()
                     ? impulse_wav_path(script, response->getFilename())
                     : std::filesystem::path(spec.exhaustImpulse);
-                const auto samples = load_impulse_wav(impulse.string());
+                auto samples = load_impulse_wav(impulse.string());
+                if (spec.distant) shorten_impulse(samples);
                 if (!usable_impulse_for_engine_sim(samples) ||
                     samples.size() > std::numeric_limits<unsigned int>::max()) {
                     stop();
@@ -202,8 +240,18 @@ public:
 
         // Motor Town RPM arrives every 50-150 ms: aim at a target that moves
         // smoothly across the frame instead of stepping.
-        const double fromRpm = m_lastTargetRpm >= 0.0 ? m_lastTargetRpm : targetRpm;
+        const bool firstFrame = m_lastTargetRpm < 0.0;
+        const double fromRpm = firstFrame ? targetRpm : m_lastTargetRpm;
         m_lastTargetRpm = targetRpm;
+        if (firstFrame && combustion && targetRpm >= starterReleaseRpm) {
+            // Already running at the game's speed: nothing to crank or hear.
+            start_turning_forward(m_engine, units::rpm(targetRpm));
+            m_starterEngaged = false;
+            m_secondsHeldAtGameRpm = WarmStartHeldSeconds;
+            m_secondsFollowingFaster = WarmStartFasterFollowingSeconds;
+            m_framesToDiscard.store(static_cast<std::size_t>(
+                WarmStartUnheardSeconds * OutputSampleRate));
+        }
 
         // Engine Simulator's standalone GUI varies its physics step count by
         // +/-10% to chase a preferred input-audio latency. Motor Town supplies
@@ -224,8 +272,10 @@ public:
             const double engineRpm = std::abs(m_engine->getRpm());
             const double followedRpm = fromRpm + (targetRpm - fromRpm) * progress;
             const double pedal = combustion
-                ? m_follower.update(m_simulator->getTimestep(), followedRpm, engineRpm, redlineRpm)
+                ? m_follower.update(m_simulator->getTimestep(), followedRpm, engineRpm, redlineRpm,
+                    m_secondsFollowingFaster > 0.0 ? WarmStartFasterFollowingScale : 1.0)
                 : 0.0;
+            m_secondsFollowingFaster = std::max(0.0, m_secondsFollowingFaster - m_simulator->getTimestep());
             m_engine->setSpeedControl(pedal);
             apply_boost(m_engine, m_boost, targetRpm, throttle);
             const double smoothedRpm = m_follower.smoothedRpm();
@@ -246,10 +296,12 @@ public:
                     ? m_secondsFarBelowGameRpm + m_simulator->getTimestep() : 0.0;
                 m_motoring = m_secondsFarBelowGameRpm >= DrivetrainMotoringDwellSeconds;
             }
+            const bool held = m_motoring || m_secondsHeldAtGameRpm > 0.0;
             if (m_motoring) start_turning_forward(m_engine, units::rpm(followedRpm));
-            m_simulator->m_dyno.m_hold = m_motoring;
+            m_secondsHeldAtGameRpm = std::max(0.0, m_secondsHeldAtGameRpm - m_simulator->getTimestep());
+            m_simulator->m_dyno.m_hold = held;
             m_simulator->m_dyno.m_rotationSpeed = units::rpm(
-                m_motoring ? followedRpm : followedRpm * (1.0 + DrivetrainBrakeMarginAboveGameRpm));
+                held ? followedRpm : followedRpm * (1.0 + DrivetrainBrakeMarginAboveGameRpm));
         } while (m_simulator->simulateStep());
         m_simulator->endFrame();
         return true;
@@ -257,6 +309,15 @@ public:
 
     std::size_t read(std::int16_t *dst, std::size_t frames) override {
         if (!m_simulator || !dst || frames == 0) return 0;
+        // A warm start's run-up passes unheard.
+        while (m_framesToDiscard.load() > 0) {
+            std::array<std::int16_t, 1024> unheard;
+            const auto asked = std::min(m_framesToDiscard.load(), unheard.size());
+            const auto passed = static_cast<std::size_t>(std::max(0,
+                m_simulator->readAudioOutput(static_cast<int>(asked), unheard.data())));
+            if (passed == 0) return 0; // not produced yet
+            m_framesToDiscard.store(m_framesToDiscard.load() - std::min(passed, asked));
+        }
         const auto count = static_cast<int>(std::min<std::size_t>(
             frames, std::numeric_limits<int>::max()));
         const auto read = static_cast<std::size_t>(
@@ -299,10 +360,13 @@ private:
     bool m_starterEngaged = true;
     bool m_motoring = false;
     double m_secondsFarBelowGameRpm = 0.0;
+    double m_secondsHeldAtGameRpm = 0.0;     // warm start
+    double m_secondsFollowingFaster = 0.0;   // warm start
     std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
     double m_gameMaxRpm = 0.0;                     // advance() thread; 0 = unknown
     double m_loudnessGain = -1.0;                  // read() thread only; negative until the first read
     double m_lastTargetRpm = -1.0; // negative until the first frame
+    std::atomic<std::size_t> m_framesToDiscard{0}; // advance() thread -> read() thread
     double m_rpmScale = 1.0;
     FullLoadBoost m_boost;
 };

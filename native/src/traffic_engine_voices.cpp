@@ -1,6 +1,7 @@
 #include "traffic_engine_voices.h"
 #include "engine_sim_backend.h"
 #include "pcm_block_pool.h"
+#include "profile_level.h"
 
 #include <algorithm>
 #include <cmath>
@@ -168,10 +169,11 @@ void TrafficEngineVoices::play(Voice& voice, const GameTelemetrySample& sample,
         silence(voice);
         return;
     }
-    if (voice.vehicle != sample.vehicle || voice.script != *script) silence(voice);
+    const auto spec = distant_engine_sound_spec(*script);
+    if (voice.vehicle != sample.vehicle || voice.script != spec) silence(voice);
     voice.vehicle = sample.vehicle;
-    voice.script = *script;
-    if (!voice.engine.update(sample.vehicle, *script, sample.state, now)) {
+    voice.script = spec;
+    if (!voice.engine.update(sample.vehicle, spec, sample.state, now)) {
         silence(voice);
         return;
     }
