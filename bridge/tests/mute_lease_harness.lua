@@ -322,6 +322,58 @@ assert(electric.VolumeMultiplier == 1.0, "Electric motors keep their sound")
 assert(backfire.VolumeMultiplier == 1.0 and jake.VolumeMultiplier == 1.0, "Pops and jake brake stay")
 assert(hornCue.VolumeMultiplier == 1.0 and cdo.VolumeMultiplier == 1.0)
 
+-- An electric vehicle's own sounds stay stock whatever they are called: the
+-- sounds its audio components play are learned from the vehicle, together
+-- with their folder. Here the assets have no "electric" in their path, and
+-- were already muted before the first electric vehicle appeared.
+local realTime = os.time
+local clock = realTime() + 1000 -- past the scans the checks above started
+os.time = function() return clock end
+local truckCue = asset("SoundCue /Game/Cars/Parts/Engine/Sound/Truck/SC_Truck_05.SC_Truck_05", "VolumeMultiplier", 1.0)
+local motorCue = asset("SoundCue /Game/Cars/Parts/Engine/Sound/Motor/SC_Whine.SC_Whine", "VolumeMultiplier", 1.0)
+local motorWave = asset("SoundWave /Game/Cars/Parts/Engine/Sound/Motor/Whine_Loop.Whine_Loop", "Volume", 0.9)
+local sharedRootCue = asset("SoundCue /Game/Sounds/Vehicle/Intake/SC_SharedWhine.SC_SharedWhine", "VolumeMultiplier", 0.6)
+local electricVehicles = {}
+FindAllOf = function(class)
+    if class == "SoundCue" then return { truckCue, motorCue, sharedRootCue } end
+    if class == "SoundWave" then return { motorWave } end
+    if class == "MTVehicle" then return electricVehicles end
+    return nil
+end
+__test_silence()
+assert(motorCue.VolumeMultiplier == 0 and motorWave.Volume == 0 and truckCue.VolumeMultiplier == 0,
+    "Before any electric vehicle is seen the shared engine assets are muted")
+local electricComponent = object("AudioComponent Motor", { Sound = motorCue })
+electricComponent.GetAddress = function() return 0xA001 end
+local sharedRootComponent = object("AudioComponent Shared", { Sound = sharedRootCue })
+sharedRootComponent.GetAddress = function() return 0xA002 end
+local electricVehicle = object("MTVehicle EVan_C_1", {
+    EngineComponent = object("EngineComponent", {
+        EngineData = object("MHEngineDataAsset /Game/Cars/Parts/Engine/Electric_130HP.Electric_130HP") }),
+})
+electricVehicle.GetAddress = function() return 0xA000 end
+electricVehicle.K2_GetComponentsByClass = function() return { electricComponent, sharedRootComponent } end
+electricVehicles[1] = electricVehicle
+clock = clock + 6
+__test_silence()
+assert(motorCue.VolumeMultiplier == 1.0, "The electric motor's cue gets its volume back")
+assert(truckCue.VolumeMultiplier == 0, "A combustion cue stays silent")
+clock = clock + 21
+__test_silence()
+assert(motorWave.Volume == 0.9, "Waves in the electric motor's folder get their volume back")
+assert(sharedRootCue.VolumeMultiplier == 0.6, "A sound in the shared folder is kept by name")
+assert(truckCue.VolumeMultiplier == 0 and v8.VolumeMultiplier == 0, "Combustion assets stay silent")
+local laterMotorWave = asset("SoundWave /Game/Cars/Parts/Engine/Sound/Motor/Whine_Peak.Whine_Peak", "Volume", 1.0)
+FindAllOf = function(class)
+    if class == "SoundWave" then return { laterMotorWave } end
+    if class == "MTVehicle" then return electricVehicles end
+    return {}
+end
+clock = clock + 21
+__test_silence()
+assert(laterMotorWave.Volume == 1.0, "A wave found later in the electric motor's folder is never muted")
+os.time = realTime
+
 -- Distance makes engines quieter like in real life: -6 dB per doubling past
 -- the 7.5 m their loudness is rated at, at most +8 dB at 3 m (in game the
 -- stock attenuation kept a car 30 m away as loud as sitting in it).
@@ -340,3 +392,40 @@ engineAt = 100
 local inside = __test_mix(pc, vehicle)
 assert(at15 and math.abs(at15 / at30 - 2) < 1e-6, "Spherical spreading: " .. tostring(at15) .. " " .. tostring(at30))
 assert(math.abs(inside / at15 - 5) < 1e-6, "Capped at 3 m: " .. tostring(inside))
+
+-- Traffic: the nearest vehicles that can sound get the voices. Unreal stops
+-- a silenced stock sound, so a DRIVING car's component reports "not playing"
+-- and was never heard; a parked one without a playing sound stays out and
+-- does not take a voice from the cars that can sound.
+local function trafficCar(name, address, x, state)
+    local audio = object("AudioComponent " .. name, {
+        IsPlaying = function() return state.playing end,
+        K2_GetComponentLocation = function() return { X = x, Y = 0, Z = 0 } end,
+    })
+    local engineComponent = object("EngineComponent", {
+        AudioComponent = audio,
+        GetRPM = function() return state.rpm end,
+        GetThrottle = function() return 0 end,
+        IsIgnitionOn = function() return state.ignition ~= false end,
+    })
+    local car = object("MTVehicle " .. name, {
+        EngineComponent = engineComponent,
+        K2_GetActorLocation = function() return { X = x, Y = 0, Z = 0 } end,
+        GetVelocity = function() return { X = state.speed or 0, Y = 0, Z = 0 } end,
+    })
+    car.GetAddress = function() return address end
+    return car
+end
+local parkedBus = trafficCar("ParkedBus", 0xB001, 500, { rpm = 700, playing = false })
+local idlingCar = trafficCar("IdlingCar", 0xB002, 800, { rpm = 700, playing = true })
+local drivingCar = trafficCar("DrivingCar", 0xB003, 3000, { rpm = 2000, playing = false, speed = 1500 })
+local farCar = trafficCar("FarCar", 0xB004, 9000, { rpm = 1500, playing = true, speed = 1000 })
+local stoppedCar = trafficCar("StoppedCar", 0xB005, 1000, { rpm = 800, playing = true, ignition = false })
+FindAllOf = function(class)
+    if class == "MTVehicle" then return { parkedBus, idlingCar, drivingCar, farCar, stoppedCar } end
+    return nil
+end
+local chosen = __test_traffic_scan(pc, vehicle)
+assert(#chosen == 2, "Two voices: " .. #chosen)
+assert(chosen[1] == idlingCar, "A parked bus without a playing sound or an engine off is not listed")
+assert(chosen[2] == drivingCar, "A driving car is listed although Unreal reports its silenced sound as stopped")

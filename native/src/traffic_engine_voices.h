@@ -51,6 +51,17 @@ inline std::vector<int> assign_traffic_voices(const std::vector<std::string>& vo
     return assignment;
 }
 
+// A vehicle missing from Lua's list keeps its voice, engine and all, for
+// this long. One list can miss it (a scan that skipped it, a half-written or
+// stale file after a slow game frame); dropping it destroyed the simulator,
+// so the next list paid a full script compile and the car blipped for a
+// fraction of a second at most (in game 2026-11-04).
+constexpr std::chrono::milliseconds TrafficAbsenceGrace{1500};
+inline bool traffic_vehicle_gone(std::chrono::steady_clock::time_point lastListed,
+    std::chrono::steady_clock::time_point now) {
+    return now - lastListed > TrafficAbsenceGrace;
+}
+
 // Engine Simulator sound for the running engines of OTHER vehicles near the
 // camera (traffic, a car left idling), each on its own thread, Engine
 // Simulator and XAudio2 voice at its stock 3D mix (one shared thread glitched
@@ -86,13 +97,14 @@ private:
         std::mutex targetMutex;
         std::optional<GameTelemetrySample> target; // set by the coordinator
         std::string assignedVehicle;               // coordinator only
+        Clock::time_point lastListed{};            // coordinator only
         std::atomic<bool> playing{false};
         std::jthread thread;
         Voice();
     };
 
     std::vector<GameTelemetrySample> read_fresh_traffic() const;
-    void assign(std::vector<GameTelemetrySample> traffic) noexcept;
+    void assign(std::vector<GameTelemetrySample> traffic, Clock::time_point now) noexcept;
     void run_voice(Voice& voice, std::stop_token token) noexcept;
     void play(Voice& voice, const GameTelemetrySample& sample, Clock::time_point now);
     static void silence(Voice& voice) noexcept;

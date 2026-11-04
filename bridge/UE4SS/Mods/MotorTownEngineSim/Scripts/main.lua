@@ -112,7 +112,7 @@ end
 local audioComponentClass = nil
 -- Kept stock: electric motors (no combustion to simulate), backfire/
 -- afterfire pops and jake brakes.
-local KEEP_STOCK = { "/electric/", "backfire", "afterfire", "jakebrake", "jake_brake" }
+local KEEP_STOCK = { "electric", "backfire", "afterfire", "jakebrake", "jake_brake" }
 local function is_kept_stock_sound(lowerName)
     for _, keep in ipairs(KEEP_STOCK) do
         if lowerName:find(keep, 1, true) then return true end
@@ -1212,41 +1212,75 @@ local function distance_to(vehicle, lx, ly, lz)
     return math.sqrt((x - lx) ^ 2 + (y - ly) ^ 2 + (z - lz) ^ 2)
 end
 
+local function is_moving(vehicle)
+    local ok, velocity = pcall(function() return vehicle:GetVelocity() end)
+    if not ok then return false end
+    local x, y, z = vector_of(velocity)
+    return x ~= nil and x * x + y * y + z * z > 100 * 100 -- faster than 1 m/s
+end
+
+-- Only engines the game itself is sounding: a running engine's stock
+-- AudioComponent carries its 3D position. In game, parked buses without a
+-- playing one sounded centred at the bus station. Unreal stops a sound that
+-- has been silenced (the stock assets are), so a driving car's component
+-- can report "not playing" and was never heard: a moving vehicle counts
+-- either way. nil plus the reason when the vehicle is not listed.
+local function traffic_mix(pc, vehicle)
+    local engine = member(vehicle, "EngineComponent")
+    local channel = valid(engine) and member(engine, "AudioComponent") or nil
+    if not valid(channel) then return nil, "no engine sound" end
+    local okPlaying, playing = pcall(function() return channel:IsPlaying() end)
+    if okPlaying and playing == false and not is_moving(vehicle) then
+        return nil, "parked, sound not playing"
+    end
+    if path_value(vehicle, "EngineComponent.IsIgnitionOn()") == false then
+        return nil, "ignition off"
+    end
+    local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
+    if not ok or not gain then return nil, "position unknown" end
+    return string.format("%.4f %.4f %.0f", gain, pan, lowpass)
+end
+
+-- The nearest vehicles that traffic_mix lists: one that never would be must
+-- not take a voice from a car that can sound. Logs what the scan saw when it
+-- changes, so a missing traffic engine can be explained from UE4SS.log.
+local lastTrafficScanSummary = nil
 local function scan_running_traffic(pc, playerVehicle)
     local lx, ly, lz = camera_location(pc)
     local ok, all = pcall(FindAllOf, "MTVehicle")
     if not lx or not ok or type(all) ~= "table" then return {} end
     local playerAddress = address_of(playerVehicle)
-    local nearby = {}
+    local nearby, running, skippedFor = {}, 0, {}
     for _, vehicle in ipairs(all) do
         local address = address_of(vehicle)
         local rpm = address and address ~= playerAddress and engine_rpm(vehicle)
         if rpm and rpm >= 50 then
             local distance = distance_to(vehicle, lx, ly, lz)
             if distance and distance <= TRAFFIC_AUDIBLE_RADIUS then
-                nearby[#nearby + 1] = { vehicle = vehicle, distance = distance }
+                running = running + 1
+                local mix, reason = traffic_mix(pc, vehicle)
+                if mix then
+                    nearby[#nearby + 1] = { vehicle = vehicle, distance = distance }
+                else
+                    skippedFor[reason] = (skippedFor[reason] or 0) + 1
+                end
             end
         end
     end
     table.sort(nearby, function(a, b) return a.distance < b.distance end)
     local chosen = {}
     for i = 1, math.min(TRAFFIC_VOICE_LIMIT, #nearby) do chosen[i] = nearby[i].vehicle end
+    local reasons = {}
+    for reason, count in pairs(skippedFor) do reasons[#reasons + 1] = reason .. " " .. count end
+    table.sort(reasons)
+    local summary = string.format("Traffic scan: %d running within %d m, %d can sound, %d voices%s",
+        running, TRAFFIC_AUDIBLE_RADIUS / 100, #nearby, #chosen,
+        #reasons > 0 and (" (not sounding: " .. table.concat(reasons, ", ") .. ")") or "")
+    if summary ~= lastTrafficScanSummary then
+        lastTrafficScanSummary = summary
+        log(summary)
+    end
     return chosen
-end
-
--- Only engines the game itself is sounding: a running engine's stock
--- AudioComponent plays (at silenced volume) and carries its 3D position.
--- In game, parked buses without one played centred at the bus station.
-local function traffic_mix(pc, vehicle)
-    local engine = member(vehicle, "EngineComponent")
-    local channel = valid(engine) and member(engine, "AudioComponent") or nil
-    if not valid(channel) then return nil end
-    local okPlaying, playing = pcall(function() return channel:IsPlaying() end)
-    if okPlaying and playing == false then return nil end
-    if path_value(vehicle, "EngineComponent.IsIgnitionOn()") == false then return nil end
-    local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
-    if not ok or not gain then return nil end
-    return string.format("%.4f %.4f %.0f", gain, pan, lowpass)
 end
 
 local function write_traffic_telemetry(pc, playerVehicle)
@@ -1264,7 +1298,7 @@ local function write_traffic_telemetry(pc, playerVehicle)
             local throttle = tonumber(path_value(vehicle, "EngineComponent.GetThrottle()")) or 0
             if throttle ~= throttle then throttle = 0 end
             if throttle > 1 then throttle = throttle / 100 end
-            local running = true -- traffic_mix: ignition on, stock engine sound playing
+            local running = true -- traffic_mix: ignition on, a sounding engine
             -- Gear does not reach the synthesizer; 0 (neutral) satisfies the format.
             lines[#lines + 1] = native_telemetry_packet(vehicle, rpm,
                 math.max(0, math.min(1, throttle)), running, 0, pc, trafficSequence, mixField)
@@ -1281,6 +1315,35 @@ local STOCK_ENGINE_DIRS = { "/game/cars/parts/engine/sound/", "/game/sounds/vehi
 local checkedStockSounds = {}
 local mutedStockSounds = 0
 local nextStockCueScan, nextStockWaveScan = 0, 0
+-- Electric motors keep their stock sound, whatever their assets are called:
+-- the sounds an electric vehicle's own audio components play are learned
+-- from the vehicle, and so is the folder they live in (the waves of a cue
+-- sit next to it). Assets muted before the first electric vehicle was seen
+-- are given back their original volume.
+local mutedStockOriginals = {}   -- address -> { sound, property, value, lowerName }
+local electricStockNames = {}    -- lowercase full name -> true
+local electricStockFolders = {}  -- lowercase folder with trailing "/" -> true
+local checkedElectricVehicles = {}
+
+local function is_electric_engine_name(name)
+    if type(name) ~= "string" then return false end
+    local lower = name:lower()
+    return lower:find("electric", 1, true) ~= nil or lower:find("battery", 1, true) ~= nil or
+        lower:find("e-motor", 1, true) ~= nil or lower:find("emotor", 1, true) ~= nil or
+        lower:find("%f[%a]ev%f[%A]") ~= nil
+end
+
+local function stock_folder_of(lowerName)
+    local path = lowerName:match("(/[^%s]*)$")
+    return path and path:match("^(.*/)") or ""
+end
+
+local function is_learned_electric_sound(lowerName)
+    if electricStockNames[lowerName] then return true end
+    local folder = stock_folder_of(lowerName)
+    return folder ~= "" and electricStockFolders[folder] == true
+end
+
 local function is_stock_engine_asset(name)
     if type(name) ~= "string" or name:find("Default__", 1, true) then return false end
     local lower = name:lower()
@@ -1288,7 +1351,7 @@ local function is_stock_engine_asset(name)
     for _, dir in ipairs(STOCK_ENGINE_DIRS) do
         if lower:find(dir, 1, true) then inside = true end
     end
-    return inside and not is_kept_stock_sound(lower)
+    return inside and not is_kept_stock_sound(lower) and not is_learned_electric_sound(lower)
 end
 
 local function silence_class(className, property)
@@ -1298,10 +1361,16 @@ local function silence_class(className, property)
         local address = address_of(sound)
         if address and not checkedStockSounds[address] then
             checkedStockSounds[address] = true
-            if is_stock_engine_asset(full_name(sound)) then
+            local name = full_name(sound)
+            if is_stock_engine_asset(name) then
+                local original = tonumber(member(sound, property))
                 local set = pcall(function() sound[property] = 0.0 end)
                 if set and tonumber(member(sound, property)) == 0 then
                     mutedStockSounds = mutedStockSounds + 1
+                    if original then
+                        mutedStockOriginals[address] = { sound = sound, property = property,
+                            value = original, lowerName = name:lower() }
+                    end
                 else
                     checkedStockSounds[address] = nil -- retry next scan
                 end
@@ -1310,9 +1379,63 @@ local function silence_class(className, property)
     end
 end
 
+-- Give back what was muted before this sound was known to be an electric
+-- motor's: the sound itself and, for a folder of its own, everything in it.
+local function give_back_electric_sounds()
+    for address, muted in pairs(mutedStockOriginals) do
+        if is_learned_electric_sound(muted.lowerName) then
+            local restored = pcall(function() muted.sound[muted.property] = muted.value end)
+            if restored then
+                mutedStockOriginals[address] = nil
+                mutedStockSounds = mutedStockSounds - 1
+                log("Electric motor sound kept stock: " .. muted.lowerName)
+            end
+        end
+    end
+end
+
+local function learn_electric_sound(sound)
+    local name = full_name(sound)
+    if type(name) ~= "string" then return end
+    local lower = name:lower()
+    local folder = stock_folder_of(lower)
+    -- A sound in the shared engine/intake folder itself can only be kept by
+    -- name; a folder below it belongs to the electric motor.
+    local sharedFolder = true
+    for _, dir in ipairs(STOCK_ENGINE_DIRS) do
+        if lower:find(dir, 1, true) then sharedFolder = (folder == dir) end
+    end
+    electricStockNames[lower] = true
+    if not sharedFolder then electricStockFolders[folder] = true end
+end
+
+-- Every vehicle whose engine data is electric (traffic too) teaches the
+-- sounds its audio components play.
+local function learn_electric_vehicle_sounds()
+    local ok, vehicles = pcall(FindAllOf, "MTVehicle")
+    if not ok or type(vehicles) ~= "table" then return end
+    for index, vehicle in ipairs(vehicles) do
+        if index > 500 then break end
+        local address = address_of(vehicle)
+        if address and not checkedElectricVehicles[address] then
+            checkedElectricVehicles[address] = true
+            local engine = member(vehicle, "EngineComponent")
+            local engineData = valid(engine) and member(engine, "EngineData") or nil
+            if is_electric_engine_name(full_name(engineData)) then
+                for _, component in ipairs(vehicle_audio_components(vehicle)) do
+                    local sound = member(component, "Sound")
+                    if valid(sound) then learn_electric_sound(sound) end
+                end
+            end
+        end
+    end
+    give_back_electric_sounds()
+end
+
 local function silence_stock_engine_sounds()
     local before = mutedStockSounds
     if os.time() >= nextStockCueScan then
+        pcall(learn_electric_vehicle_sounds)
         nextStockCueScan = os.time() + 5
         silence_class("SoundCue", "VolumeMultiplier")
     end

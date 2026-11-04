@@ -21,6 +21,10 @@ class TrafficEngineVoicesTests(unittest.TestCase):
             run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
+    def test_a_vehicle_missing_from_one_list_keeps_its_voice(self):
+        voices = (ROOT / 'src/traffic_engine_voices.cpp').read_text()
+        self.assertIn('traffic_vehicle_gone(m_voices[v].lastListed, now)', voices)
+
     def test_dll_and_lua_share_the_traffic_file_and_voice_count(self):
         dllmain = (ROOT / 'src/dllmain.cpp').read_text()
         self.assertIn('MotorTownEngineSim_traffic_telemetry.txt', dllmain)

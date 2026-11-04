@@ -43,7 +43,7 @@ bool TrafficEngineVoices::start() noexcept {
                     if (m_inForeground()) traffic = read_fresh_traffic();
                 }
                 catch (...) {}
-                assign(std::move(traffic));
+                assign(std::move(traffic), now);
                 std::size_t playing = 0;
                 for (const auto& voice : m_voices) playing += voice.playing.load() ? 1 : 0;
                 m_playingVoices.store(playing);
@@ -88,7 +88,8 @@ std::vector<GameTelemetrySample> TrafficEngineVoices::read_fresh_traffic() const
     return traffic;
 }
 
-void TrafficEngineVoices::assign(std::vector<GameTelemetrySample> traffic) noexcept {
+void TrafficEngineVoices::assign(std::vector<GameTelemetrySample> traffic,
+    Clock::time_point now) noexcept {
     try {
         std::vector<std::string> voiceVehicles, trafficVehicles;
         for (const auto& voice : m_voices) voiceVehicles.push_back(voice.assignedVehicle);
@@ -100,11 +101,16 @@ void TrafficEngineVoices::assign(std::vector<GameTelemetrySample> traffic) noexc
             auto& voice = m_voices[static_cast<std::size_t>(assignment[i])];
             assigned[static_cast<std::size_t>(assignment[i])] = true;
             voice.assignedVehicle = traffic[i].vehicle;
+            voice.lastListed = now;
             std::lock_guard<std::mutex> lock(voice.targetMutex);
             voice.target = std::move(traffic[i]);
         }
         for (std::size_t v = 0; v < MaxVoices; ++v) {
             if (assigned[v]) continue;
+            // Not listed this time: the voice keeps playing its last state
+            // until the vehicle has been gone for the grace period.
+            if (!m_voices[v].assignedVehicle.empty() &&
+                !traffic_vehicle_gone(m_voices[v].lastListed, now)) continue;
             m_voices[v].assignedVehicle.clear();
             std::lock_guard<std::mutex> lock(m_voices[v].targetMutex);
             m_voices[v].target.reset();
