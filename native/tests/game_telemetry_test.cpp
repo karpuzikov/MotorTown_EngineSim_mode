@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
     assert(sample->state.throttle == 0.8);
     assert(sample->state.ignition && sample->state.gear == 3);
     assert(sample->engine_type == 2 && sample->max_rpm == 2900.0);
+    assert(sample->state.maxRpm == 2900.0); // the engine fit needs the game's top rpm
     assert(sample->engine_asset.empty()); // Original MTES2 packets stay valid.
     assert(!sample->engine_volume);
 

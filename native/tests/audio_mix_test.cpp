@@ -55,6 +55,25 @@ int main() {
         assert(engine_loudness_gain_db(NAN, 5500, 1.0) == LoudnessFloorDb);
     }
 
+    // The game's rev range is fitted into the engine's, so the game's top rpm
+    // is the redline and the limiter (redline + 300) is never reached.
+    {
+        assert(engine_rpm_for_game_rpm(9000, 9000, 6500) == 6500.0);            // scooter at its top
+        assert(engine_rpm_for_game_rpm(2900, 2900, 2100) == 2100.0);            // truck at its top
+        assert(engine_rpm_for_game_rpm(1000, 9000, 6500) == 1000.0);            // idle untouched
+        assert(engine_rpm_for_game_rpm(3250, 9000, 6500) == 3250.0);            // up to half the redline
+        double previous = 0;
+        for (double rpm = 0; rpm <= 9000; rpm += 250) {                         // monotone, continuous
+            const double fitted = engine_rpm_for_game_rpm(rpm, 9000, 6500);
+            assert(fitted >= previous && fitted <= rpm);
+            previous = fitted;
+        }
+        assert(engine_rpm_for_game_rpm(5000, 6500, 6500) == 5000.0);            // game range = engine's
+        assert(engine_rpm_for_game_rpm(2000, 2850, 3800) == 2000.0);            // game range inside the engine's
+        assert(engine_rpm_for_game_rpm(5000, 0, 6500) == 5000.0);               // unknown game max
+        assert(engine_rpm_for_game_rpm(5000, 9000, 0) == 5000.0);               // unknown redline
+    }
+
     // Unreal's equal-power pan; gain and settings volume multiply.
     {
         const auto centre = equal_power_gains(SpatialMix{1.0, 0.0, 0}, 1.0);

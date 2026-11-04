@@ -84,6 +84,7 @@ bool EngineAudio::update(const std::string &vehicle, const std::string &script,
         8192.0 / 44100.0); // Match the maximum queued 44.1-kHz PCM packet.
     m_lastUpdate = when;
     try {
+        m_backend->set_game_max_rpm(state.maxRpm);
         if (!m_backend->advance(delta, state.rpm, state.throttle, state.ignition)) {
             m_updateStatus.store(UpdateStatus::AdvanceFailed);
             stop_locked();

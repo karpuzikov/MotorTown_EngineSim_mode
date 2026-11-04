@@ -171,10 +171,15 @@ public:
         }
     }
 
+    void set_game_max_rpm(double maxRpm) override {
+        m_gameMaxRpm = std::isfinite(maxRpm) && maxRpm > 0 ? maxRpm : 0.0;
+    }
+
     bool advance(double seconds, double gameRpm, double throttle, bool combustion) override {
         if (!m_simulator || !m_engine || !std::isfinite(gameRpm) || !std::isfinite(throttle)) return false;
-        const double targetRpm = gameRpm * m_rpmScale;
         const double redlineRpm = m_engine->getRedline() / units::rpm(1.0);
+        const double targetRpm = engine_rpm_for_game_rpm(
+            gameRpm * m_rpmScale, m_gameMaxRpm * m_rpmScale, redlineRpm);
         m_targetLoudnessGain.store(std::pow(10.0,
             engine_loudness_gain_db(targetRpm, redlineRpm, throttle) / 20.0));
         const double starterReleaseRpm = std::max(
@@ -295,6 +300,7 @@ private:
     bool m_motoring = false;
     double m_secondsFarBelowGameRpm = 0.0;
     std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
+    double m_gameMaxRpm = 0.0;                     // advance() thread; 0 = unknown
     double m_loudnessGain = -1.0;                  // read() thread only; negative until the first read
     double m_lastTargetRpm = -1.0; // negative until the first frame
     double m_rpmScale = 1.0;

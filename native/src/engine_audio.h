@@ -15,6 +15,7 @@ struct EngineState {
     double throttle = 0;
     int gear = 0; // Motor Town: neutral 0, forward gears 1..
     bool ignition = false;
+    double maxRpm = 0; // the game's top rpm for this engine; 0 if unknown
 };
 
 // The crankshaft is turning: running, or cranked by the starter / spinning
@@ -29,6 +30,8 @@ class EngineBackend {
 public:
     virtual ~EngineBackend() = default;
     virtual bool load(const std::string &script) = 0;
+    // The game's top rpm for the engine being played (0: unknown).
+    virtual void set_game_max_rpm(double) {}
     // combustion false: the starter or momentum turns the engine unfired.
     virtual bool advance(double seconds, double rpm, double throttle, bool combustion) = 0;
     virtual std::size_t read(std::int16_t *dst, std::size_t frames) = 0;

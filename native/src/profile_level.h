@@ -65,6 +65,18 @@ inline double engine_loudness_gain_db(double rpm, double redlineRpm, double thro
     return std::clamp(gain, LoudnessFloorDb, 0.0);
 }
 
+// Motor Town's rev range often tops out above the real engine's redline (a
+// scooter reads 9000, its engine 6500; trucks 2850-3000, engines 2100-2600)
+// and Engine Simulator's rev limiter then cuts the ignition. Game and engine
+// agree at low rpm (idle); from half the redline up, the rest of the game's
+// range is fitted into the engine's, so the game's top rpm is the redline.
+// Unknown max rpm, or a game range inside the engine's, changes nothing.
+inline double engine_rpm_for_game_rpm(double gameRpm, double gameMaxRpm, double redlineRpm) {
+    const double kneeRpm = 0.5 * redlineRpm;
+    if (!(redlineRpm > 0) || !(gameMaxRpm > redlineRpm) || !(gameRpm > kneeRpm)) return gameRpm;
+    return kneeRpm + (gameRpm - kneeRpm) * (redlineRpm - kneeRpm) / (gameMaxRpm - kneeRpm);
+}
+
 // Two-stroke engines fire every revolution. Engine Simulator only models
 // four-strokes, so such a profile runs at this multiple of the game RPM:
 //     // mtes-rpm-scale: 2

@@ -32,6 +32,9 @@ class AudioMixTests(unittest.TestCase):
         self.assertLess(backend.index('start_turning_forward(m_engine'),
                         backend.index('simulateStep()'))
         self.assertIn('profile_rpm_scale(script)', backend)  # two-strokes
+        # Game rpm above the engine's redline would hit its rev limiter.
+        self.assertIn('engine_rpm_for_game_rpm(', backend)
+        self.assertIn('void set_game_max_rpm(double maxRpm) override', backend)
         # Timbre from Engine Simulator's own leveler and impulse responses
         # (no compressor, no tone filter); the level follows rpm and pedal.
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)

@@ -26,12 +26,14 @@ struct FakeEngine : EngineBackend {
     bool last_combustion = false;
     double last_rpm = 0;
     double last_throttle = 0;
+    double last_game_max_rpm = -1;
 
     bool load(const std::string &path) override {
         ++loads;
         script = path;
         return load_ok;
     }
+    void set_game_max_rpm(double maxRpm) override { last_game_max_rpm = maxRpm; }
     bool advance(double, double rpm, double throttle, bool combustion) override {
         ++advances;
         last_rpm = rpm;
@@ -78,6 +80,10 @@ int main() {
     assert(engine->loads == 1 && engine->advances == 1);
     assert(engine->last_rpm == 1500 && engine->last_throttle == 0.3);
     assert(engine->last_combustion);
+    assert(engine->last_game_max_rpm == 0); // unknown unless the telemetry says
+    assert(audio.update("Tuscan_C", "assets/engines/tuscan.mr",
+        {1500, 0.3, 2, true, 2900}, start));
+    assert(engine->last_game_max_rpm == 2900); // the backend fits the game's range
     assert(!audio.is_replacing_stock());
     assert(audio.render(pcm.data(), pcm.size(), start) == 16);
     assert(pcm[0] == 2048 && pcm[15] == 2048);

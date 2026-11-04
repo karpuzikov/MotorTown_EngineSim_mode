@@ -106,6 +106,7 @@ std::optional<GameTelemetrySample> parse_game_telemetry(std::string_view line) {
         !std::isfinite(sample.max_rpm) || sample.max_rpm < 0 ||
         sample.max_rpm > 25000) return std::nullopt;
     sample.state.ignition = ignition == 1;
+    sample.state.maxRpm = sample.max_rpm;
     sample.session = std::move(session);
     sample.vehicle = std::move(*vehicle);
     sample.engine_asset = std::move(*asset);
