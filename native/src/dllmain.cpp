@@ -76,8 +76,6 @@ std::string engine_sound_name(const std::string& engineSoundSpec) {
     auto name = std::filesystem::path(spec->script).filename().string();
     if (!spec->exhaustImpulse.empty())
         name += " + exhaust " + std::filesystem::path(spec->exhaustImpulse).filename().string();
-    if (spec->fullThrottleLoudnessDba)
-        name += " @ " + std::to_string(static_cast<int>(*spec->fullThrottleLoudnessDba)) + " dB(A)";
     return name;
 }
 

@@ -23,17 +23,17 @@ class AudioMixTests(unittest.TestCase):
             run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=20)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
-    def test_backend_spins_engines_forward_with_engine_sim_leveler(self):
+    def test_backend_keeps_engine_simulators_sound_and_sets_only_the_level(self):
         backend = (ROOT / 'src/engine_sim_backend.cpp').read_text()
-        # In game every model ran backwards (dyno from rest): 30-atm intake,
-        # inverted throttle, drill-like coasting. Direction follows the
-        # script's starter speed sign; forward spin precedes simulation.
+        # In game every model once ran backwards (dyno from rest): 30-atm
+        # intake, inverted throttle, drill-like coasting. The direction follows
+        # the script's starter speed sign, and the crank turns forward first.
         self.assertIn('getStarterSpeed() < 0.0 ? 1.0 : -1.0', backend)
-        self.assertLess(backend.index('spin_forward(m_engine, from);'),
-                        backend.index('m_simulator->startFrame(seconds);'))
+        self.assertLess(backend.index('start_turning_forward(m_engine'),
+                        backend.index('simulateStep()'))
         self.assertIn('profile_rpm_scale(script)', backend)  # two-strokes
-        # Timbre from Engine Simulator's leveler; level from the vehicle's
-        # real-world loudness, engine speed and load (no compressor).
+        # Timbre from Engine Simulator's own leveler and impulse responses
+        # (no compressor, no tone filter); the level follows rpm and pedal.
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
         self.assertIn('engine_loudness_gain_db(', backend)
         self.assertNotIn('LoudnessLeveler', backend)

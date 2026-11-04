@@ -1,5 +1,4 @@
 // Spatial mix, settings and profile directive parsing (no audio device).
-#include "firing_harmonic_cut.h"
 #include "mod_settings.h"
 #include "profile_level.h"
 #include "spatial_mix.h"
@@ -7,9 +6,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cmath>
-#include <cstdint>
 #include <sstream>
-#include <vector>
 
 using namespace mtes;
 
@@ -35,47 +32,27 @@ int main() {
     // A vehicle's exhaust rides along with its engine script.
     {
         const auto plain = parse_engine_sound_spec("C:/mod/assets/es_volvo_d13.mr");
-        assert(plain && plain->script == "C:/mod/assets/es_volvo_d13.mr" &&
-            plain->exhaustImpulse.empty() && !plain->fullThrottleLoudnessDba);
+        assert(plain && plain->script == "C:/mod/assets/es_volvo_d13.mr" && plain->exhaustImpulse.empty());
         const auto truck = parse_engine_sound_spec(
-            "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav#loudness=88");
+            "C:/mod/assets/es_volvo_d13.mr#exhaust=C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
         assert(truck && truck->script == "C:/mod/assets/es_volvo_d13.mr");
         assert(truck->exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
-        assert(truck->fullThrottleLoudnessDba && near(*truck->fullThrottleLoudnessDba, 88, 1e-12));
-        assert(!parse_engine_sound_spec("a.mr#loudness=88x"));
-        assert(!parse_engine_sound_spec("a.mr#loudness=-1"));
     }
 
-    // Real-world loudness: a semi is louder than a hatchback. Engine
-    // Simulator's leveled output already drops ~16 dB to idle, so the model
-    // adds little there (the Dory idled 37 dB under revving with 25 dB/decade).
+    // Engine Simulator's leveler makes idle as loud as flat out; the level
+    // follows the game's rpm and pedal instead, never above Engine Simulator's.
     {
-        const double semi = engine_loudness_gain_db(88, 1680, 2100, 1.0);
-        const double hatchback = engine_loudness_gain_db(74, 5200, 6500, 1.0);
-        assert(near(semi - hatchback, 14, 1e-9));
-        const double idle = engine_loudness_gain_db(74, 850, 6500, 0.0);
-        assert(hatchback - idle > 5 && hatchback - idle < 10);
-        assert(near(hatchback - engine_loudness_gain_db(74, 5200, 6500, 0.0), 3, 1e-9));
-        assert(engine_loudness_gain_db(130, 9000, 6500, 1.0) == 0.0); // never above full scale
-    }
-
-    // The firing-harmonic cut keeps the firing thump (-1.5 dB) and cuts its
-    // 2nd harmonic (the three overlapping filters: ~18 dB at 14); 0 dB
-    // leaves the sound untouched.
-    {
-        const auto level_after_cut = [](double cutDb, double hz) {
-            FiringHarmonicCut cut(cutDb);
-            std::vector<std::int16_t> pcm(44100);
-            for (std::size_t i = 0; i < pcm.size(); ++i)
-                pcm[i] = static_cast<std::int16_t>(10000 * std::sin(2 * 3.14159265358979 * hz * i / 44100));
-            cut.process(pcm.data(), pcm.size(), 60.0);
-            double sum = 0;
-            for (std::size_t i = 22050; i < pcm.size(); ++i) sum += double(pcm[i]) * pcm[i];
-            return 20 * std::log10(std::sqrt(sum / 22050) / (10000 / std::sqrt(2.0)));
-        };
-        assert(std::abs(level_after_cut(14, 60)) < 2.0);
-        assert(level_after_cut(14, 120) < -14.0);
-        assert(std::abs(level_after_cut(0, 120)) < 0.1);
+        assert(near(engine_loudness_gain_db(4400, 5500, 1.0), 0.0, 1e-9));      // flat out at 80% of redline
+        assert(engine_loudness_gain_db(5500, 5500, 1.0) == 0.0);                // never above full scale
+        const double idle = engine_loudness_gain_db(800, 5500, 0.0);
+        assert(idle < -14.0 && idle > -20.0);                                   // ~17 dB under flat out
+        assert(near(engine_loudness_gain_db(3000, 5500, 1.0) -
+                    engine_loudness_gain_db(3000, 5500, 0.0), 6.0, 1e-9));     // closed throttle is quieter
+        assert(engine_loudness_gain_db(2000, 5500, 0.5) < engine_loudness_gain_db(3000, 5500, 0.5));
+        assert(engine_loudness_gain_db(0, 5500, 1.0) == LoudnessFloorDb);
+        const double cranking = engine_loudness_gain_db(150, 5500, 0.0);
+        assert(cranking < -20.0 && cranking > LoudnessFloorDb);                 // cranking is quiet, not silent
+        assert(engine_loudness_gain_db(NAN, 5500, 1.0) == LoudnessFloorDb);
     }
 
     // Unreal's equal-power pan; gain and settings volume multiply.

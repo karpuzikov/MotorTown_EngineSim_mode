@@ -28,34 +28,17 @@ inline std::optional<double> parse_profile_directive(std::istream& script,
 }
 
 // A vehicle's engine sound: an engine script, optionally with the vehicle's
-// own exhaust impulse response in place of the script's, and the vehicle's
-// real-world loudness (full-throttle pass-by dB(A) at 7.5 m):
-//     "<engine.mr>[#exhaust=<exhaust.wav>][#loudness=<dBA>]"   (engine_families.tsv)
+// own exhaust impulse response in place of the script's:
+//     "<engine.mr>[#exhaust=<exhaust.wav>]"   (engine_families.tsv)
 struct EngineSoundSpec {
     std::string script;
-    std::string exhaustImpulse;               // empty: the script's own impulse responses
-    std::optional<double> fullThrottleLoudnessDba; // none: Engine Simulator's level as is
+    std::string exhaustImpulse; // empty: the script's own impulse responses
 };
 
 inline constexpr const char* ExhaustSpecMarker = "#exhaust=";
-inline constexpr const char* LoudnessSpecMarker = "#loudness=";
 
-// Fails (nullopt) on a malformed gain: a wrong level must not play.
 inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) {
     EngineSoundSpec parsed;
-    const auto loudnessAt = spec.find(LoudnessSpecMarker);
-    if (loudnessAt != std::string::npos) {
-        const auto text = spec.substr(loudnessAt + std::char_traits<char>::length(LoudnessSpecMarker));
-        try {
-            std::size_t used = 0;
-            const double loudness = std::stod(text, &used);
-            if (used != text.size() || !std::isfinite(loudness) || loudness < 40 || loudness > 130)
-                return std::nullopt;
-            parsed.fullThrottleLoudnessDba = loudness;
-        }
-        catch (...) { return std::nullopt; }
-        spec.resize(loudnessAt);
-    }
     const auto exhaustAt = spec.find(ExhaustSpecMarker);
     if (exhaustAt != std::string::npos) {
         parsed.exhaustImpulse = spec.substr(
@@ -66,25 +49,20 @@ inline std::optional<EngineSoundSpec> parse_engine_sound_spec(std::string spec) 
     return parsed;
 }
 
-// Real-world engine loudness. Engine Simulator's raw output puts idle ~56 dB
-// under full throttle (measured, all profiles; real engines ~20 dB) and its
-// leveler flattens every engine to one peak level (in game: a hatchback as
-// loud as a semi). So its leveler keeps the timbre and this sets the level,
-// in dB of output gain for a vehicle that makes fullThrottleLoudnessDba at
-// 7.5 m flat out at 80% of redline:
-//   - leveled output already falls ~16 dB from revving to idle (sparse
-//     pulses at low RPM; in-game recording 2026-11-02), so RPM and load
-//     add only 4 dB per decade and 3 dB for a closed throttle (the leveler
-//     would otherwise make coasting as loud as flat out). (25 dB/decade + 6 dB put the
-//     Dory's idle 37 dB under revving: "almost non-existent".)
-//   - 98 dB(A) plays at full scale; 7.5 m distance is in the 3D mix.
-inline double engine_loudness_gain_db(double fullThrottleLoudnessDba, double rpm,
-    double redlineRpm, double throttle) {
-    if (!(rpm > 0) || !(redlineRpm > 0)) return -90.0;
+// Engine Simulator's leveler flattens every engine to one level, idle as loud
+// as flat out (measured: within 1 dB), where a real engine spans ~20 dB. The
+// synthesizer keeps its timbre; the level follows the game's rpm and pedal,
+// relative to flat out at 80% of redline.
+inline constexpr double LoudnessDbPerDecadeOfRpm = 15.0;
+inline constexpr double LoudnessDbWithClosedThrottle = 6.0;
+inline constexpr double LoudnessFloorDb = -40.0;
+
+inline double engine_loudness_gain_db(double rpm, double redlineRpm, double throttle) {
+    if (!(rpm > 0) || !(redlineRpm > 0)) return LoudnessFloorDb;
     const double load = std::clamp(std::isfinite(throttle) ? throttle : 0.0, 0.0, 1.0);
-    const double gain = fullThrottleLoudnessDba - 98.0 +
-        4.0 * std::log10(rpm / (0.8 * redlineRpm)) + 3.0 * (load - 1.0);
-    return std::clamp(gain, -90.0, 0.0);
+    const double gain = LoudnessDbPerDecadeOfRpm * std::log10(rpm / (0.8 * redlineRpm)) +
+        LoudnessDbWithClosedThrottle * (load - 1.0);
+    return std::clamp(gain, LoudnessFloorDb, 0.0);
 }
 
 // Two-stroke engines fire every revolution. Engine Simulator only models
@@ -94,14 +72,6 @@ inline double profile_rpm_scale(const std::string& path) {
     std::ifstream script(path);
     if (!script) return 1.0;
     return parse_profile_directive(script, "// mtes-rpm-scale:", 4).value_or(1.0);
-}
-
-// dB cut of the 2nd-4th firing harmonics (firing_harmonic_cut.h); 0 = none:
-//     // mtes-harmonic-cut-db: 16
-inline double profile_harmonic_cut_db(const std::string& path) {
-    std::ifstream script(path);
-    if (!script) return 0.0;
-    return parse_profile_directive(script, "// mtes-harmonic-cut-db:", 40).value_or(0.0);
 }
 
 } // namespace mtes

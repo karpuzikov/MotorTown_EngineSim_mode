@@ -28,12 +28,3 @@ class HandmadeProfileTest(unittest.TestCase):
         name = "es_ford_flathead_239__1948_ford_f_1"
         packaged = (packager.PROFILES_DIR / f"{name}.mr").read_text()
         self.assertEqual(packaged, (packager.HANDMADE_DIR / f"{name}.mr").read_text())
-
-    def test_every_vehicle_gets_the_one_fleet_exhaust_response(self):
-        self.assertEqual((packager.EXHAUST_DIR / "fleet.wav").read_bytes(),
-                         packager.FLEET_EXHAUST_SOURCE.read_bytes())
-        rules = [line.split("\t") for line in (packager.PROFILES_DIR / "engine_families.tsv").read_text().splitlines()
-                 if line and not line.startswith("#")]
-        scripted = [rule for rule in rules if rule[2] != "-"]
-        self.assertGreater(len(scripted), 100)
-        self.assertEqual([rule for rule in scripted if not rule[2].endswith(packager.FLEET_EXHAUST_SUFFIX)], [])

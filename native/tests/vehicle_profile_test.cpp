@@ -212,17 +212,10 @@ int main(int argc, char** argv) {
     const auto spec = parse_engine_sound_spec(*catalog.script_for(car));
     assert(spec && fs::equivalent(spec->script, root / "profiles/v6.mr"));
     assert(fs::equivalent(spec->exhaustImpulse, root / "assets/sound-library/mtes-exhaust/truck_stack.wav"));
-    {
-        std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
-        rules << "vehicle\t^kira\tprofiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#loudness=84\n";
-    }
-    assert(catalog.reload());
-    const auto calibrated = parse_engine_sound_spec(*catalog.script_for(car));
-    assert(calibrated && calibrated->fullThrottleLoudnessDba && *calibrated->fullThrottleLoudnessDba == 84);
     for (const char* bad : {"profiles/v6.mr#exhaust=mtes-exhaust/missing.wav",
                             "profiles/v6.mr#exhaust=../../outside.wav",
                             "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.mr",
-                            "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#loudness=0"}) {
+                            "profiles/v6.mr#exhaust=mtes-exhaust/truck_stack.wav#loudness=84"}) { // retired suffix
         std::ofstream rules(root / "engine_families.tsv", std::ios::trunc);
         rules << "vehicle\t^kira\t" << bad << "\n";
         rules.close();

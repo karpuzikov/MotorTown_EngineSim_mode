@@ -62,7 +62,6 @@ std::optional<std::string> packaged_script(const fs::path& root, const std::stri
         if (!impulse) return std::nullopt;
         *script += ExhaustSpecMarker + *impulse;
     }
-    if (spec->fullThrottleLoudnessDba) *script += text.substr(text.find(LoudnessSpecMarker));
     return script;
 }
 

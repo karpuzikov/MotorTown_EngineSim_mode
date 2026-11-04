@@ -1,7 +1,6 @@
 #include "engine_sim_backend.h"
 #include "impulse_wav.h"
-#include "firing_harmonic_cut.h"
-#include "overrun_fuel_cut.h"
+#include "crank_speed_follower.h"
 #include "profile_level.h"
 #include "real_spec_profile.h"
 
@@ -21,24 +20,45 @@
 #include <atomic>
 #include <cmath>
 #include <optional>
-#include <random>
 #include <filesystem>
 #include <limits>
 
 namespace mtes {
 namespace {
 
+// Engine Simulator's leveler (its own loudness control) with half its stock
+// target: its gain smoothing lags each firing pulse and overshot the stock 30000
+// target, clipping ~4% of samples. A level, not a tone, change.
 constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
-// Volume of a rule's own exhaust response (#exhaust=): the fleet-wide one made
-// by pipeline/tune_impulse_to_recording.py, stored at half the volume of the
-// library response it was made from so the equalizer boost fits 16 bits.
+// Volume of a rule's own exhaust response (#exhaust=), when it names one.
 constexpr double VehicleExhaustImpulseVolume = 0.02;
+// The starter cranks until the crank turns at this multiple of its own speed
+// or half the game's rpm, whichever is higher; then the engine runs by itself.
+// It cranks again only if the engine falls under this fraction of that speed
+// (a one-cylinder engine's speed swings across a single threshold).
+constexpr double StarterReleaseOfStarterSpeed = 1.2;
+constexpr double StarterReleaseOfGameRpm = 0.5;
+constexpr double StarterReengageFraction = 0.6;
+
+// Motor Town simulates a drivetrain; Engine Simulator here does not. Its
+// dynamometer stands in for it, but only at the extremes, so the engine's own
+// combustion keeps shaping its crank speed (a rigid hold removed ~10 dB of
+// 400-1600 Hz from the same engine at the same speed, 2026-11-04):
+//  - a brake takes over the road load this far above the game's rpm, and
+//  - the driveline turns the engine when it cannot keep up: more than 15%
+//    below the game's rpm for 0.3 s (cranking a diesel, coasting down),
+//    until it is within 5%.
+constexpr double DrivetrainBrakeMarginAboveGameRpm = 0.10;
+constexpr double DrivetrainMotoringBelowGameRpm = 0.15;
+constexpr double DrivetrainMotoringReleasedBelowGameRpm = 0.05;
+constexpr double DrivetrainMotoringDwellSeconds = 0.3;
+constexpr double LoudnessGlideSeconds = 0.08;
 
 // Engine Simulator's starter turns the crank to -starter_speed: negative
 // v_theta for most models, positive for those scripted with a negative
-// starter speed (e.g. the Honda B18C). The dynamometer keeps whichever
-// direction the crank already turns, and drives a resting crank backwards.
-void spin_forward(Engine *engine, double speed) {
+// starter speed. The dynamometer keeps whichever direction the crank already
+// turns, and drives a resting crank backwards.
+void start_turning_forward(Engine *engine, double speed) {
     const double direction = engine->getStarterSpeed() < 0.0 ? 1.0 : -1.0;
     const double forward = direction * std::max(std::abs(speed), units::rpm(1.0));
     for (int i = 0; i < engine->getCrankshaftCount(); ++i) {
@@ -98,24 +118,19 @@ public:
             audio.inputSampleNoise = static_cast<float>(m_engine->getInitialJitter());
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
-            // Engine Simulator's leveler, with half its target: its gain
-            // smoothing lags each firing pulse, which overshot the stock 30000
-            // target and clipped ~4% of samples.
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
-            // Real-spec profiles: Engine Simulator's own sound (in game a
-            // physical tailpipe model made a synthetic hum) through one slow
-            // compressor; boost and fuel metering from the generator; no
-            // per-profile level or tone fixes.
-            m_realSpec = is_real_spec_profile(script);
-            m_boost = m_realSpec ? read_full_load_boost(script) : FullLoadBoost{};
-            m_fuelLoadControl = m_realSpec ? read_fuel_load_control(script, m_engine) : FuelLoadControl{};
-            if (m_realSpec) use_real_spec_sound(m_simulator);
-            m_fullThrottleLoudnessDba = spec.fullThrottleLoudnessDba;
-            m_loudnessGain = -1.0; // first read() jumps to the target
+            // Generated profiles may carry a boost file and meter diesel fuel;
+            // other scripts yield the defaults (no boost, a throttle plate).
+            m_boost = read_full_load_boost(script);
+            m_fuelLoadControl = read_fuel_load_control(script, m_engine);
             m_rpmScale = profile_rpm_scale(script);
-            m_harmonicCut.reset();
-            if (!m_realSpec) m_harmonicCut.emplace(profile_harmonic_cut_db(script));
+            m_follower.reset();
+            m_starterEngaged = true;
+            m_motoring = false;
+            m_secondsFarBelowGameRpm = 0.0;
+            m_loudnessGain = -1.0; // first read() jumps to the target
+            m_lastTargetRpm = -1.0;
 
             const int exhausts = m_engine->getExhaustSystemCount();
             if (exhausts <= 0) {
@@ -153,55 +168,33 @@ public:
     }
 
     bool advance(double seconds, double gameRpm, double throttle, bool combustion) override {
-        if (!m_simulator || !m_engine || !m_transmission ||
-            !std::isfinite(gameRpm) || !std::isfinite(throttle)) return false;
-        const double rpm = gameRpm * m_rpmScale;
-        // Engine Simulator's four-stroke model fires cylinders/2 times a turn.
-        m_firingHz.store(rpm / 60.0 * m_engine->getCylinderCount() / 2.0);
-
-        // Follow Motor Town crankshaft speed; its driving physics remain
-        // authoritative. The simulator's dynamometer holds that speed while
-        // its own combustion model generates the audio samples.
+        if (!m_simulator || !m_engine || !std::isfinite(gameRpm) || !std::isfinite(throttle)) return false;
+        const double targetRpm = gameRpm * m_rpmScale;
         const double redlineRpm = m_engine->getRedline() / units::rpm(1.0);
-        // The engine's real speed and redline: a two-stroke's doubled model
-        // RPM (600 rpm idle -> 1200) sat above the cut-in, so its idle never
-        // fired (in game: the Cheetah's idle was a motored, buzzing pump).
-        const bool fuelCut = m_fuelCut.update(gameRpm, throttle, redlineRpm / m_rpmScale);
-        // Unfired while the starter cranks or the engine spins down: only
-        // compression and the exhaust, as a real start and shut-down sound.
-        m_engine->getIgnitionModule()->m_enabled = combustion && !fuelCut;
-        // Real engines never repeat a cycle exactly: combustion varies cycle
-        // to cycle and idle speed hunts. Held perfectly by the dynamometer,
-        // idle was a buzz of razor-sharp harmonics (in-game recording: lines
-        // 20 dB over the noise vs 10-15 dB for a real Ford flathead).
-        // Matched to the real flathead: tonality 12 dB at idle (real 10-15),
-        // and steady cruise must not turn back into a pure tone.
-        const double idleness = std::clamp(1.0 - rpm / (0.5 * redlineRpm), 0.6, 1.0);
-        m_speedWander = 0.97 * m_speedWander + m_cycleVariation(m_random) * 0.0035 * idleness;
-        const double variedThrottle = std::clamp(throttle + m_cycleVariation(m_random) * 0.03, 0.0, 1.0);
-        apply_pedal(m_engine, m_fuelLoadControl, variedThrottle);
-        if (m_realSpec) apply_boost(m_engine, m_boost, rpm, throttle);
-        if (m_fullThrottleLoudnessDba) {
-            m_targetLoudnessGain.store(std::pow(10.0, engine_loudness_gain_db(
-                *m_fullThrottleLoudnessDba, rpm, redlineRpm, throttle) / 20.0));
-        }
-        m_simulator->m_starterMotor.m_enabled = false;
-        m_simulator->m_dyno.m_enabled = true;
-        m_simulator->m_dyno.m_hold = true;
-        // Motor Town RPM arrives every 50-150 ms. Stepping the dynamometer to
-        // each new speed jerks the crankshaft, audible as an odd falling-RPM
-        // sound in game. Ramp from the previous target across this frame.
-        const double target = units::rpm(rpm * (1.0 + m_speedWander));
-        const double from = m_lastDynoSpeed >= 0.0 ? m_lastDynoSpeed : target;
-        // The dynamometer drives a resting crankshaft BACKWARDS. Without a
-        // starter every model ran in reverse: intake valves pumped gas into
-        // a closed throttle (30 atm manifold), throttle response was inverted
-        // and coasting whined like a drill. Spin it forward first.
-        spin_forward(m_engine, from);
-        // The clutch stays open (the dynamometer holds the game RPM), so the
-        // simulated gearbox stays in neutral: Motor Town gears beyond the
-        // profile's gearbox must never reach the simulator.
+        m_targetLoudnessGain.store(std::pow(10.0,
+            engine_loudness_gain_db(targetRpm, redlineRpm, throttle) / 20.0));
+        const double starterReleaseRpm = std::max(
+            StarterReleaseOfStarterSpeed * std::abs(m_engine->getStarterSpeed()) / units::rpm(1.0),
+            StarterReleaseOfGameRpm * targetRpm);
+
+        // The engine runs free, as in the Engine Simulator application: ignition
+        // on or off, the starter while it is cranking, no clutch (neutral), so
+        // its own combustion sets the crank's speed. See the drivetrain notes
+        // above for the dynamometer.
+        m_engine->getIgnitionModule()->m_enabled = combustion;
         m_transmission->setClutchPressure(0.0);
+        if (!combustion) {
+            m_follower.reset();
+            m_starterEngaged = true; // the next key turn cranks
+            m_motoring = false;
+            m_secondsFarBelowGameRpm = 0.0;
+        }
+        m_simulator->m_dyno.m_enabled = combustion;
+
+        // Motor Town RPM arrives every 50-150 ms: aim at a target that moves
+        // smoothly across the frame instead of stepping.
+        const double fromRpm = m_lastTargetRpm >= 0.0 ? m_lastTargetRpm : targetRpm;
+        m_lastTargetRpm = targetRpm;
 
         // Engine Simulator's standalone GUI varies its physics step count by
         // +/-10% to chase a preferred input-audio latency. Motor Town supplies
@@ -216,13 +209,40 @@ public:
         m_simulator->startFrame(seconds);
         const int steps = m_simulator->getFrameIterationCount();
         do {
-            const double t = steps > 0
+            const double progress = steps > 0
                 ? std::min(1.0, (m_simulator->getCurrentIteration() + 1) / static_cast<double>(steps))
                 : 1.0;
-            m_simulator->m_dyno.m_rotationSpeed = from + (target - from) * t;
+            const double engineRpm = std::abs(m_engine->getRpm());
+            const double followedRpm = fromRpm + (targetRpm - fromRpm) * progress;
+            const double pedal = combustion
+                ? m_follower.update(m_simulator->getTimestep(), followedRpm, engineRpm, redlineRpm)
+                : 0.0;
+            apply_pedal(m_engine, m_fuelLoadControl, pedal);
+            apply_boost(m_engine, m_boost, targetRpm, throttle);
+            const double smoothedRpm = m_follower.smoothedRpm();
+            m_starterEngaged = combustion && (m_starterEngaged
+                ? smoothedRpm < starterReleaseRpm
+                : smoothedRpm < StarterReengageFraction * starterReleaseRpm);
+            m_simulator->m_starterMotor.m_enabled = m_starterEngaged;
+
+            const double deficit = followedRpm > 0.0 ? 1.0 - smoothedRpm / followedRpm : 0.0;
+            if (m_motoring) {
+                if (deficit < DrivetrainMotoringReleasedBelowGameRpm) {
+                    m_motoring = false;
+                    m_secondsFarBelowGameRpm = 0.0;
+                }
+            }
+            else {
+                m_secondsFarBelowGameRpm = deficit > DrivetrainMotoringBelowGameRpm
+                    ? m_secondsFarBelowGameRpm + m_simulator->getTimestep() : 0.0;
+                m_motoring = m_secondsFarBelowGameRpm >= DrivetrainMotoringDwellSeconds;
+            }
+            if (m_motoring) start_turning_forward(m_engine, units::rpm(followedRpm));
+            m_simulator->m_dyno.m_hold = m_motoring;
+            m_simulator->m_dyno.m_rotationSpeed = units::rpm(
+                m_motoring ? followedRpm : followedRpm * (1.0 + DrivetrainBrakeMarginAboveGameRpm));
         } while (m_simulator->simulateStep());
         m_simulator->endFrame();
-        m_lastDynoSpeed = target;
         return true;
     }
 
@@ -232,15 +252,12 @@ public:
             frames, std::numeric_limits<int>::max()));
         const auto read = static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
-        if (m_harmonicCut) m_harmonicCut->process(dst, read, m_firingHz.load());
-        if (m_fullThrottleLoudnessDba) {
-            // ~80 ms glide: throttle and gear changes swell, never click.
-            const double target = m_targetLoudnessGain.load();
-            if (m_loudnessGain < 0) m_loudnessGain = target;
-            for (std::size_t i = 0; i < read; ++i) {
-                m_loudnessGain += (target - m_loudnessGain) * (1.0 / (0.08 * 44100.0));
-                dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * m_loudnessGain));
-            }
+        // ~80 ms glide: pedal and gear changes swell, never click.
+        const double target = m_targetLoudnessGain.load();
+        if (m_loudnessGain < 0) m_loudnessGain = target;
+        for (std::size_t i = 0; i < read; ++i) {
+            m_loudnessGain += (target - m_loudnessGain) * (1.0 / (LoudnessGlideSeconds * 44100.0));
+            dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * m_loudnessGain));
         }
         return read;
     }
@@ -248,8 +265,6 @@ public:
     void stop() noexcept override {
         // Requires native/patch_engine_sim_core.py applied to the build-only
         // Engine Simulator checkout: upstream forgets several allocations.
-        m_lastDynoSpeed = -1.0;
-        m_fuelCut.reset();
         if (m_simulator) {
             m_simulator->releaseSimulation();
             delete m_simulator;
@@ -271,20 +286,16 @@ private:
     Vehicle *m_vehicle = nullptr;
     Transmission *m_transmission = nullptr;
     Simulator *m_simulator = nullptr;
-    double m_lastDynoSpeed = -1.0; // rad/s; negative until the first frame
-    OverrunFuelCut m_fuelCut;
+    CrankSpeedFollower m_follower;
+    bool m_starterEngaged = true;
+    bool m_motoring = false;
+    double m_secondsFarBelowGameRpm = 0.0;
+    std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
+    double m_loudnessGain = -1.0;                  // read() thread only; negative until the first read
+    double m_lastTargetRpm = -1.0; // negative until the first frame
     double m_rpmScale = 1.0;
-    bool m_realSpec = false;
     FullLoadBoost m_boost;
     FuelLoadControl m_fuelLoadControl;
-    std::optional<FiringHarmonicCut> m_harmonicCut; // read() thread after load()
-    std::atomic<double> m_firingHz{0.0};            // advance() thread -> read() thread
-    std::optional<double> m_fullThrottleLoudnessDba;
-    std::mt19937 m_random{0x4d544553u};
-    std::normal_distribution<double> m_cycleVariation{0.0, 1.0};
-    double m_speedWander = 0.0; // fraction of the game RPM
-    std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
-    double m_loudnessGain = -1.0;                  // read() thread only
 };
 
 } // namespace
