@@ -1249,7 +1249,7 @@ end
 -- The nearest vehicles that traffic_mix lists: one that never would be must
 -- not take a voice from a car that can sound. Logs what the scan saw when it
 -- changes, so a missing traffic engine can be explained from UE4SS.log.
-local lastTrafficScanSummary = nil
+local lastTrafficScanSummary, lastTrafficIdentitySummary = nil, nil
 local function scan_running_traffic(pc, playerVehicle)
     local lx, ly, lz = camera_location(pc)
     local ok, all = pcall(FindAllOf, "MTVehicle")
@@ -1284,6 +1284,20 @@ local function scan_running_traffic(pc, playerVehicle)
     if summary ~= lastTrafficScanSummary then
         lastTrafficScanSummary = summary
         log(summary)
+    end
+    -- What the native side picks a traffic engine script from.
+    local identities = {}
+    for i, vehicle in ipairs(chosen) do
+        local engineData = path_value(vehicle, "EngineComponent.EngineData")
+        identities[i] = string.format("%s | %s | max RPM %s",
+            (full_name(vehicle) or "unknown vehicle"):match("^(%S+)"),
+            valid(engineData) and full_name(engineData) or "no engine data",
+            tostring(path_value(vehicle, "EngineComponent.EngineData.EngineProperty.MaxRPM")))
+    end
+    local identitySummary = table.concat(identities, " ;; ")
+    if identitySummary ~= lastTrafficIdentitySummary then
+        lastTrafficIdentitySummary = identitySummary
+        if identitySummary ~= "" then log("Traffic voices: " .. identitySummary) end
     end
     return chosen
 end
