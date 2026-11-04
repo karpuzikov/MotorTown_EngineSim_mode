@@ -120,10 +120,9 @@ public:
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             m_simulator->synthesizer().setAudioParameters(audio);
-            // Generated profiles may carry a boost file and meter diesel fuel;
-            // other scripts yield the defaults (no boost, a throttle plate).
+            // Generated profiles may carry a boost file; other scripts yield
+            // the default (no boost).
             m_boost = read_full_load_boost(script);
-            m_fuelLoadControl = read_fuel_load_control(script, m_engine);
             m_rpmScale = profile_rpm_scale(script);
             m_follower.reset();
             m_starterEngaged = true;
@@ -217,7 +216,7 @@ public:
             const double pedal = combustion
                 ? m_follower.update(m_simulator->getTimestep(), followedRpm, engineRpm, redlineRpm)
                 : 0.0;
-            apply_pedal(m_engine, m_fuelLoadControl, pedal);
+            m_engine->setSpeedControl(pedal);
             apply_boost(m_engine, m_boost, targetRpm, throttle);
             const double smoothedRpm = m_follower.smoothedRpm();
             m_starterEngaged = combustion && (m_starterEngaged
@@ -295,7 +294,6 @@ private:
     double m_lastTargetRpm = -1.0; // negative until the first frame
     double m_rpmScale = 1.0;
     FullLoadBoost m_boost;
-    FuelLoadControl m_fuelLoadControl;
 };
 
 } // namespace

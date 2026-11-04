@@ -205,8 +205,7 @@ int main(int argc, char **argv) {
     simulator->m_dyno.m_enabled = true;
     simulator->m_dyno.m_hold = true;
     engine->getIgnitionModule()->m_enabled = true;
-    const mtes::FuelLoadControl pedal = mtes::read_fuel_load_control(argv[1], engine);
-    mtes::apply_pedal(engine, pedal, 1.0);
+    engine->setSpeedControl(1.0);
     output.transmission->setClutchPressure(0.0);
 
     const double redlineRpm = engine->getRedline() / units::rpm(1.0);
@@ -252,7 +251,7 @@ int main(int argc, char **argv) {
     // shortcut: idle speed by rule (a quarter of redline, 600-900 rpm); use
     // each engine's real idle when the spec database has it.
     const double idleRpm = std::clamp(0.25 * redlineRpm, 600.0, 900.0);
-    mtes::apply_pedal(engine, pedal, 0.0);
+    engine->setSpeedControl(0.0);
     g_boostThrottle = 0.0;
     {
         std::vector<std::int16_t> pcm;

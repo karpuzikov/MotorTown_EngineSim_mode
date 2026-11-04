@@ -1,5 +1,4 @@
 // mtes-real-spec-profile: 1
-// mtes-fuel-load-control: 1
 import "engine_sim.mr"
 
 units units()

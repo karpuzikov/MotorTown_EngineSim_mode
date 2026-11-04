@@ -61,6 +61,15 @@ class ScriptGenerationTest(unittest.TestCase):
             self.assertIn("impulse_response: ir_lib.mild_exhaust_0_reverb", script, car["real_car"])
             self.assertNotIn("minimal_muffling", script, car["real_car"])
 
+    def test_diesels_are_throttled_not_fuel_metered(self):
+        # Metering fuel leaned the charge past Engine Simulator's flame limit:
+        # every diesel flared and stalled ~1.6 times a second (the pulsing).
+        diesels = [engine for engine in ENGINES.values() if engine["fuel"] in ("diesel", "multifuel")]
+        self.assertTrue(diesels)
+        for engine in diesels:
+            script, _ = generator.engine_script(engine, generator.first_car_using(engine["id"], CARS))
+            self.assertNotIn("fuel-load-control", script, engine["id"])
+
     def test_a_car_without_silencer_data_fails_loudly(self):
         car = dict(CARS[0], exhaust=dict(CARS[0]["exhaust"], silencers=[]))
         with self.assertRaises(ValueError):

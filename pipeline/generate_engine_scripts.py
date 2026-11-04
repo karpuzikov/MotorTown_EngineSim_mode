@@ -89,6 +89,11 @@ INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
 PIPE_DISCHARGE_COEFFICIENT = 3.2                 # fleet fit 2026-11-03; Engine Simulator's pipe flow needs ~4x the bench figure
+# A diesel is throttled like a petrol engine, never fuel-metered: Engine
+# Simulator's flame goes out when the charge is leaner than about the full-load
+# one, so metering fuel made every one of 28 diesels flare and stall about 1.6
+# times a second (engine speed swinging 8-17% around a steady target, the
+# pulsing heard in game; measured 2026-11-04). Air control holds it within 2%.
 DIESEL_FULL_LOAD_LAMBDA = 1.45                   # diesels burn lean even at full load
 ENGINE_SIM_INTAKE_LAMBDA = 0.8                   # fixed in Engine Simulator's Intake::process
 SIMULATION_FREQUENCY_PER_REDLINE_RPM = 2.0
@@ -516,7 +521,7 @@ def engine_script(engine, car):
     exhaust_count = exhaust_count_for(engine, car)
     diesel = engine["fuel"] in ("diesel", "multifuel")
     redline = engine["redline_rpm"]
-    out = ["// mtes-real-spec-profile: 1"] + (["// mtes-fuel-load-control: 1"] if diesel else []) + [
+    out = ["// mtes-real-spec-profile: 1"] + [
            'import "engine_sim.mr"', "", "units units()", "constants constants()", "impulse_response_library ir_lib()",
            ""] + flame_speed_node(engine)
 
