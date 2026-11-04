@@ -181,12 +181,22 @@ def car_slug(car):
     return re.sub(r"[^a-z0-9]+", "_", ascii_script_text(car["real_car"]).lower()).strip("_")
 
 
-# Engine Simulator's own recorded exhaust response that comes closest to a real
-# recording (1948 Ford F-1 flathead V8, the Dory's car; 2026-11-04,
-# pipeline/compare_to_recording.py): octave bands 63 Hz-16 kHz within 4.2 dB
-# RMS. mild_exhaust_0_reverb, used by its demo engines, was 8.4 dB off: 10-14 dB
-# short above 2 kHz and too boomy below 250 Hz, "cartoonish" in game.
-EXHAUST_IMPULSE_RESPONSE = "ir_lib.minimal_muffling_01"
+# Engine Simulator's own exhaust response for a silenced exhaust. Every car in
+# real_cars.json has at least one silencer, and the response used by most of
+# Engine Simulator's demo engines is mild_exhaust_0_reverb. Measured 2026-11-04
+# (octave bands 63 Hz-8 kHz, relative to the loudest band, 28 fleet engines at
+# 40% of redline): with this response the fleet lies inside the range of
+# Engine Simulator's own demo engines (median 4 kHz -32 dB, demos -36 dB).
+# minimal_muffling_01 (open pipes), used here until 2026-11-04, left every
+# engine at -6 dB at 4 kHz: hissy, "nothing like Engine Simulator".
+SILENCED_EXHAUST_IMPULSE_RESPONSE = "ir_lib.mild_exhaust_0_reverb"
+
+
+def exhaust_impulse_response(car):
+    if not car["exhaust"]["silencers"]:
+        raise ValueError(f"{car['real_car']} has no silencer in its exhaust data; "
+                         "wire Engine Simulator's open-pipe response (minimal_muffling_01) before generating it")
+    return SILENCED_EXHAUST_IMPULSE_RESPONSE
 
 
 def exhaust_runner_volume_m3(d):
@@ -565,7 +575,7 @@ def engine_script(engine, car):
             f"        primary_flow_rate: k_carb({area_flow_cfm(d['exhaust_runner_area']):.1f}),",
             f"        velocity_decay: 1.0, audio_volume: 1.0)"]
     for index in range(exhaust_count):
-        out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: {EXHAUST_IMPULSE_RESPONSE})")
+        out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: {exhaust_impulse_response(car)})")
     out.append("")
 
     for side in ("intake", "exhaust"):
