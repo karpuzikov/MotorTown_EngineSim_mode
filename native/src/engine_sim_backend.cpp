@@ -30,6 +30,10 @@ namespace {
 // target: its gain smoothing lags each firing pulse and overshot the stock 30000
 // target, clipping ~4% of samples. A level, not a tone, change.
 constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
+// Its stock maximum boost (x1.9) left a throttled diesel's idle 6-10 dB under
+// every petrol engine; at x8 each engine reaches the target (measured: no
+// clipping; the pedal-and-rpm level below then applies to all alike).
+constexpr float EngineSimLevelerMaxGain = 8.0f;
 // Volume of a rule's own exhaust response (#exhaust=), when it names one.
 constexpr double VehicleExhaustImpulseVolume = 0.02;
 // The starter cranks until the crank turns at this multiple of its own speed
@@ -119,6 +123,7 @@ public:
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
+            audio.levelerMaxGain = EngineSimLevelerMaxGain;
             m_simulator->synthesizer().setAudioParameters(audio);
             // Generated profiles may carry a boost file; other scripts yield
             // the default (no boost).

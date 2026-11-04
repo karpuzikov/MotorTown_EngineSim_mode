@@ -35,6 +35,7 @@ class AudioMixTests(unittest.TestCase):
         # Timbre from Engine Simulator's own leveler and impulse responses
         # (no compressor, no tone filter); the level follows rpm and pedal.
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
+        self.assertIn('audio.levelerMaxGain = EngineSimLevelerMaxGain;', backend)
         self.assertIn('engine_loudness_gain_db(', backend)
         self.assertNotIn('LoudnessLeveler', backend)
 
