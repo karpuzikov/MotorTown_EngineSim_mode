@@ -1,3 +1,4 @@
+#include "audio_lead.h"
 #include "audio_pipeline.h"
 
 #include <algorithm>
@@ -88,6 +89,9 @@ public:
     }
     bool start() override { events.push_back("start"); started = true; return true; }
     void stop() noexcept override { events.push_back("stop"); started = false; last.clear(); }
+    // What the speaker still has to play; the test sets it, as the device would.
+    std::size_t queued = 0;
+    std::size_t queued_frames() const noexcept override { return queued; }
 };
 
 class Profiles final : public VehicleProfileLookup {
@@ -155,7 +159,7 @@ int main() {
     assert(pipeline.stage() == NativeAudioPipeline::Stage::Playing);
     assert(source->scripts.size() == 1 && source->advances == 2);
     assert(source->last_rpm == 3200 && source->last_combustion);
-    assert(sink.queues == 2 && sink.last.size() == 2205 && first->muted); // 60-ms lead + PCM
+    assert(sink.queues == 1 && sink.last.size() == 2205 && first->muted); // PCM only
     for (auto v : sink.last) assert(v == 0); // Engine Volume 0 remains silent.
 
     // On a vehicle change the old stock emitter must be restored BEFORE
@@ -414,16 +418,21 @@ int main() {
     assert(clockSource->advances == 1 && clockSink.queues == 0);
     assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(10)));
     assert(clockSource->advances == 1 && clockSink.queues == 0);
+    // The first sound fills the standing lead from empty: one worker period
+    // (the 25 ms include the wait for the first tick) plus half of 100 ms.
     assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(25)));
-    assert(clockSink.queues == 2 && clockSink.last.size() == 1103);
+    assert(clockSink.queues == 1 && clockSink.last.size() == 882 + 2205);
+    assert(clockSource->last_seconds > 0.0699 && clockSource->last_seconds < 0.0701);
     assert(clockEmitter->muted && clockSink.started);
+    // With the lead in place a packet is just the time that passed.
+    clockSink.queued = OutputLeadTargetFrames;
     assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(45)));
-    assert(clockSource->advances == 3 && clockSink.queues == 3);
+    assert(clockSource->advances == 3 && clockSink.queues == 2);
     assert(clockSink.last.size() == 882 && clockSource->last_seconds < 0.021);
     for (int ms : {65, 85, 105, 125, 145}) {
         assert(clockPipeline.process(clockSample, t + std::chrono::milliseconds(ms)));
     }
-    assert(clockSink.queues == 8 && clockEmitter->muted);
+    assert(clockSink.queues == 7 && clockEmitter->muted);
     // Even with a cached packet still fresh, losing game focus must stop the
     // independent voice, never wait for an Unreal tick or a new sequence.
     assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(165), false));
@@ -433,4 +442,63 @@ int main() {
     assert(!clockPipeline.process(clockSample, t + std::chrono::milliseconds(260)));
     assert(clockPipeline.stage() == NativeAudioPipeline::Stage::StalePacket);
     assert(!clockEmitter->muted && !clockSink.started);
+
+    // frames_for_tick: elapsed time plus half of the gap to the target lead,
+    // never under half the elapsed time, never over the packet limit.
+    assert(frames_for_tick(882, OutputLeadTargetFrames, 8192) == 882);
+    assert(frames_for_tick(882, 0, 8192) == 882 + OutputLeadTargetFrames / 2);
+    assert(frames_for_tick(882, 2 * OutputLeadTargetFrames, 8192) == 441);
+    assert(frames_for_tick(882, 100000, 8192) == 441);
+    assert(frames_for_tick(8000, 0, 8192) == 8192);
+    assert(frames_for_tick(0, OutputLeadTargetFrames, 8192) == 1);
+
+    // Standing lead on the worker's clock, packet by packet.
+    std::vector<std::string> leadEvents;
+    auto leadBackend = std::make_unique<TraceBackend>(leadEvents);
+    auto* leadSource = leadBackend.get();
+    EngineAudio leadEngine(std::move(leadBackend));
+    TraceSink leadSink(leadEvents);
+    GameAudioOutput leadOutput(leadEngine, leadSink);
+    Profiles leadProfiles;
+    Emitters leadEmitters;
+    leadEmitters.car_a = std::make_shared<TraceEmitter>(leadEvents, "lead");
+    NativeAudioPipeline leadPipeline(leadEngine, leadOutput, leadProfiles, leadEmitters,
+        NativeAudioPipeline::NominalPacketFrames, NativeAudioPipeline::Pacing::WorkerClock);
+    const auto leadSample = [](int sequence) {
+        return parse_game_telemetry("MTES4 1234567890ABCDEF " + std::to_string(sequence) +
+            " 2400 0.5 1 2 43617241 2 6500 - 0.8");
+    };
+    const auto at = [&](int ms) { return t + std::chrono::milliseconds(ms); };
+    const auto queuedSince = [&](std::size_t before) {
+        std::size_t frames = 0;
+        for (auto i = before; i < leadSink.packet_sizes.size(); ++i) frames += leadSink.packet_sizes[i];
+        return frames;
+    };
+    assert(!leadPipeline.process(leadSample(1), at(0))); // priming
+    // The script compile took 800 ms. That wait is not sound to make up: the
+    // first packet is a worker period plus half the lead, not the 8192-frame limit.
+    assert(leadPipeline.process(leadSample(2), at(800)));
+    assert(queuedSince(0) == 882 + 2205);
+    leadSink.queued = OutputLeadTargetFrames;
+    // A late worker tick (100 ms) while the queue still holds the lead: just the time.
+    auto before = leadSink.packet_sizes.size();
+    assert(leadPipeline.process(leadSample(3), at(900)));
+    assert(queuedSince(before) == 4410);
+    // The same late tick with the queue nearly drained: also half of what is missing.
+    leadSink.queued = 1000;
+    before = leadSink.packet_sizes.size();
+    assert(leadPipeline.process(leadSample(4), at(1000)));
+    assert(queuedSince(before) == 4410 + (OutputLeadTargetFrames - 1000) / 2);
+    assert(leadSource->last_seconds > 6115.0 / 44100.0 - 0.0001 &&
+        leadSource->last_seconds < 6115.0 / 44100.0 + 0.0001);
+    // A queue above the target is allowed to drain: half the elapsed time.
+    leadSink.queued = 2 * OutputLeadTargetFrames;
+    before = leadSink.packet_sizes.size();
+    assert(leadPipeline.process(leadSample(5), at(1020)));
+    assert(queuedSince(before) == 441);
+    // The packet limit holds however long the tick was late.
+    leadSink.queued = 0;
+    before = leadSink.packet_sizes.size();
+    assert(leadPipeline.process(leadSample(6), at(1420)));
+    assert(queuedSince(before) == NativeAudioPipeline::MaxPacketFrames);
 }

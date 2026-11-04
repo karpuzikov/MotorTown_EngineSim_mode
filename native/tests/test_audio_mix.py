@@ -40,6 +40,8 @@ class AudioMixTests(unittest.TestCase):
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
         self.assertIn('audio.levelerMaxGain = EngineSimLevelerMaxGain;', backend)
         self.assertIn('engine_loudness_gain_db(', backend)
+        # Size, from the simulated engine's own displacement: one rule for all.
+        self.assertIn('engine_class_loudness_db(m_engine->getDisplacement() * 1000.0)', backend)
         self.assertNotIn('LoudnessLeveler', backend)
 
     def test_every_packaged_profile_is_a_complete_engine(self):

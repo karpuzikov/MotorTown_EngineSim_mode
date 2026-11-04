@@ -1,12 +1,23 @@
 #include "game_audio.h"
 
-#include <array>
 #include "pcm_block_pool.h"
 
 #include <algorithm>
 #include <fstream>
 
 namespace mtes {
+
+// A slow game frame can represent 100-185 ms of simulation. The XAudio2 pool
+// owns fixed-size callback blocks; queue *all* PCM, never truncate the packet
+// to a single 4096-sample block.
+bool queue_in_blocks(ProceduralAudioSink& sink, const std::int16_t* pcm, std::size_t frames) {
+    for (std::size_t offset = 0; offset < frames;) {
+        const auto chunk = std::min(frames - offset, PcmBlockPool::FramesPerBlock);
+        if (!sink.queue(pcm + offset, chunk)) return false;
+        offset += chunk;
+    }
+    return true;
+}
 
 GameAudioOutput::GameAudioOutput(EngineAudio& source, ProceduralAudioSink& sink)
     : m_source(source), m_sink(sink) {}
@@ -115,28 +126,12 @@ bool GameAudioOutput::submit(const std::string& vehicle,
             m_status = Status::StockMuteFailed;
             return false;
         }
-        // Start 60 ms behind real time, so one late worker tick drains
-        // this lead instead of the speaker.
-        if (!m_playing) {
-            static const std::array<std::int16_t, LeadSilenceFrames> lead{};
-            if (!m_sink.queue(lead.data(), lead.size())) {
-                stop();
-                m_status = Status::QueueFailed;
-                return false;
-            }
-        }
-        // A slow game frame can represent 100-185 ms of simulation. The
-        // XAudio2 pool owns fixed-size callback blocks; queue *all* PCM,
-        // never truncate the game frame to a single 4096-sample block.
-        for (std::size_t offset = 0; offset < frames;) {
-            const auto chunk = std::min(frames - offset,
-                PcmBlockPool::FramesPerBlock);
-            if (!m_sink.queue(scratch + offset, chunk)) {
-                stop();
-                m_status = Status::QueueFailed;
-                return false;
-            }
-            offset += chunk;
+        // The pipeline makes more sound than time has passed until the sink
+        // holds its standing lead (audio_lead.h), so there is no silent lead.
+        if (!queue_in_blocks(m_sink, scratch, frames)) {
+            stop();
+            m_status = Status::QueueFailed;
+            return false;
         }
         capture(scratch, frames);
         if (stillEligible && !stillEligible()) {

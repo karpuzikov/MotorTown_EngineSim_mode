@@ -34,8 +34,13 @@ namespace {
 constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
 // Its stock maximum boost (x1.9) left a throttled diesel's idle 6-10 dB under
 // every petrol engine; at x8 each engine reaches the target (measured: no
-// clipping; the pedal-and-rpm level below then applies to all alike).
-constexpr float EngineSimLevelerMaxGain = 8.0f;
+// clipping; the pedal-and-rpm level below then applies to all alike). Engine
+// Simulator's own road-vehicle exhaust response (default_0) is 10x quieter
+// than the sporty one the generated engines used before, and x8 then left the
+// Mercedes OM 422 diesel 10 dB under the rest of 28 engines (11 dB spread; at
+// x64 the spread is 3 dB). The leveler attacks at once, so the cap only matters
+// for engines whose raw output is quiet.
+constexpr float EngineSimLevelerMaxGain = 64.0f;
 // Volume of a rule's own exhaust response (#exhaust=), when it names one.
 constexpr double VehicleExhaustImpulseVolume = 0.02;
 // The starter cranks until the crank turns at this multiple of its own speed
@@ -144,6 +149,7 @@ public:
         m_transmission = output.transmission;
         try {
             m_engine->calculateDisplacement();
+            m_classLoudnessDb = engine_class_loudness_db(m_engine->getDisplacement() * 1000.0);
             m_simulator = m_engine->createSimulator(m_vehicle, m_transmission);
             if (!m_simulator) {
                 stop();
@@ -219,7 +225,7 @@ public:
         const double targetRpm = engine_rpm_for_game_rpm(
             gameRpm * m_rpmScale, m_gameMaxRpm * m_rpmScale, redlineRpm);
         m_targetLoudnessGain.store(std::pow(10.0,
-            engine_loudness_gain_db(targetRpm, redlineRpm, throttle) / 20.0));
+            (engine_loudness_gain_db(targetRpm, redlineRpm, throttle) + m_classLoudnessDb) / 20.0));
         const double starterReleaseRpm = std::max(
             StarterReleaseOfStarterSpeed * std::abs(m_engine->getStarterSpeed()) / units::rpm(1.0),
             StarterReleaseOfGameRpm * targetRpm);
@@ -362,6 +368,7 @@ private:
     double m_secondsFarBelowGameRpm = 0.0;
     double m_secondsHeldAtGameRpm = 0.0;     // warm start
     double m_secondsFollowingFaster = 0.0;   // warm start
+    double m_classLoudnessDb = 0.0;                // this engine's size, from load()
     std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
     double m_gameMaxRpm = 0.0;                     // advance() thread; 0 = unknown
     double m_loudnessGain = -1.0;                  // read() thread only; negative until the first read

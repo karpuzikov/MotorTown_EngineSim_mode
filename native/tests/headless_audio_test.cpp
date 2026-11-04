@@ -21,6 +21,9 @@ struct FakeEngine : EngineBackend {
     bool partial_once = false;
     int final_sample_deficit = 0;
     bool throw_after_partial_write = false;
+    bool counting = false; // samples 1, 2, 3...: shows a hole or a repeat
+    std::int16_t next_value = 1;
+    double last_seconds = 0;
     Clock::time_point ready_after{};
     std::string script;
     bool last_combustion = false;
@@ -34,8 +37,9 @@ struct FakeEngine : EngineBackend {
         return load_ok;
     }
     void set_game_max_rpm(double maxRpm) override { last_game_max_rpm = maxRpm; }
-    bool advance(double, double rpm, double throttle, bool combustion) override {
+    bool advance(double seconds, double rpm, double throttle, bool combustion) override {
         ++advances;
+        last_seconds = seconds;
         last_rpm = rpm;
         last_throttle = throttle;
         last_combustion = combustion;
@@ -56,7 +60,7 @@ struct FakeEngine : EngineBackend {
                 ? requested - static_cast<std::size_t>(final_sample_deficit) : 0
             : underrun || partial_once ? requested / 2 : requested;
         partial_once = false;
-        for (std::size_t i = 0; i < count; ++i) dst[i] = 2048;
+        for (std::size_t i = 0; i < count; ++i) dst[i] = counting ? next_value++ : 2048;
         return count;
     }
     void stop() noexcept override { ++stops; }
@@ -84,6 +88,15 @@ int main() {
     assert(audio.update("Tuscan_C", "assets/engines/tuscan.mr",
         {1500, 0.3, 2, true, 2900}, start));
     assert(engine->last_game_max_rpm == 2900); // the backend fits the game's range
+    // Without a duration the simulator advances by the time since the last update
+    // (at least 5 ms); the pipeline asks for more while it builds the output lead.
+    assert(engine->last_seconds == 0.005);
+    assert(audio.update("Tuscan_C", "assets/engines/tuscan.mr",
+        {1500, 0.3, 2, true}, start, 0.07));
+    assert(engine->last_seconds == 0.07);
+    assert(audio.update("Tuscan_C", "assets/engines/tuscan.mr",
+        {1500, 0.3, 2, true}, start, 5.0));
+    assert(engine->last_seconds == 8192.0 / 44100.0); // the packet limit
     assert(!audio.is_replacing_stock());
     assert(audio.render(pcm.data(), pcm.size(), start) == 16);
     assert(pcm[0] == 2048 && pcm[15] == 2048);
@@ -109,9 +122,16 @@ int main() {
     assert(pcm[14] == 2048 && pcm[15] == 2048);
     assert(audio.is_replacing_stock());
     engine->final_sample_deficit = 2;
+    engine->counting = true;
     assert(audio.render(pcm.data(), pcm.size(), start) == 0);
     assert(!audio.is_replacing_stock());
     for (auto sample : pcm) assert(sample == 0);
+    // A render that missed its deadline is a delay, not a hole: the 14 samples
+    // it did read start the next packet, the stream continues without a gap.
+    engine->final_sample_deficit = 0;
+    assert(audio.render(pcm.data(), pcm.size(), start) == pcm.size());
+    for (std::size_t i = 0; i < pcm.size(); ++i) assert(pcm[i] == static_cast<std::int16_t>(i + 1));
+    engine->counting = false;
 
     // The authored 6.5-kHz V10 simulation can be short by 3-9 output samples
     // when its integer physics steps round at the 8192-sample packet limit.
@@ -128,6 +148,18 @@ int main() {
     assert(!audio.is_replacing_stock());
     for (auto sample : maxPacket) assert(sample == 0);
     engine->final_sample_deficit = 0;
+    // The 8181 samples it did read lead the next packet, with the rest read fresh.
+    assert(audio.render(maxPacket.data(), maxPacket.size(), start) == maxPacket.size());
+    assert(audio.is_replacing_stock());
+
+    // A packet is rendered after the simulator advanced through it, so a long
+    // one is given longer to arrive than a short one (a fixed 30 ms cut off the
+    // 70-100 ms packets that build the output lead).
+    engine->ready_after = Clock::now() + std::chrono::milliseconds(60);
+    assert(audio.render(maxPacket.data(), maxPacket.size(), start) == maxPacket.size());
+    engine->ready_after = Clock::now() + std::chrono::milliseconds(80);
+    assert(audio.render(pcm.data(), pcm.size(), start) == 0); // 16 frames: gives up at 30 ms
+    engine->ready_after = {};
 
     // Genuine Engine Simulator synthesizes asynchronously and can need
     // >5ms to finish a packet. On the dedicated native worker, allow 20ms
@@ -167,6 +199,7 @@ int main() {
     assert(audio.update("Atlas_4x2_Semi_C", "assets/engines/atlas.mr",
         {150, 1.0, 0, false}, start + std::chrono::milliseconds(2100)));
     assert(engine->loads == 2 && !engine->last_combustion && engine->last_rpm == 150);
+    assert(engine->last_seconds > 0.0999 && engine->last_seconds < 0.1001); // the 100 ms since
     // A standing engine is not advanced.
     assert(!audio.update("Atlas_4x2_Semi_C", "assets/engines/atlas.mr",
         {0, 0, 0, false}, start + std::chrono::milliseconds(2200)));

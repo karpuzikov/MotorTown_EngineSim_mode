@@ -22,6 +22,7 @@ public:
     bool queue(const std::int16_t* pcm, std::size_t frames) override;
     bool start() override;
     void stop() noexcept override;
+    std::size_t queued_frames() const noexcept override;
     void set_mix(const SpatialMix& mix) noexcept override;
     // settings.ini "volume": scales the stock-matched level.
     void set_output_volume(double volume) noexcept;

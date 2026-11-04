@@ -36,6 +36,8 @@ public:
 // genuine Engine Simulator PCM and fail-open stock-emitter ownership.
 // Nominal 2205 frames = 50 ms of 44.1-kHz mono PCM16; delayed Lua telemetry
 // ticks produce larger packets to keep the XAudio2 queue continuously fed.
+// On the worker's clock (the live path) each packet is the time that passed
+// plus a share of what the queue lacks of a 100-ms standing lead (audio_lead.h).
 class NativeAudioPipeline final {
 public:
     enum class Pacing { TelemetryPackets, WorkerClock };
@@ -49,6 +51,7 @@ public:
     using Clock = std::chrono::steady_clock;
     static constexpr std::size_t NominalPacketFrames = 2205;
     static constexpr std::size_t MaxPacketFrames = 8192;
+    static constexpr std::size_t WorkerPeriodFrames = 882; // 20 ms
 
     NativeAudioPipeline(EngineAudio& engine, GameAudioOutput& output,
         VehicleProfileLookup& profiles, StockEmitterLookup& emitters,
@@ -89,6 +92,7 @@ private:
     Pacing m_pacing = Pacing::TelemetryPackets;
     Clock::time_point m_lastAudioTickAt{};
     bool m_hasAudioTick = false;
+    bool m_afterPriming = false; // the next tick follows the engine's first
     std::shared_ptr<StockEngineEmitter> m_activeEmitter;
     std::string m_activeVehicle;
     std::string m_activeScript;

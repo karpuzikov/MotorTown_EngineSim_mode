@@ -69,6 +69,7 @@ struct Sink final : ProceduralAudioSink {
     }
     bool start() override { playing = true; return true; }
     void stop() noexcept override { playing = false; }
+    std::size_t queued_frames() const noexcept override { return 0; }
 };
 
 struct Profiles final : VehicleProfileLookup {

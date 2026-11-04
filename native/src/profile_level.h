@@ -73,6 +73,24 @@ inline constexpr double LoudnessDbPerDecadeOfRpm = 15.0;
 inline constexpr double LoudnessDbWithClosedThrottle = 6.0;
 inline constexpr double LoudnessFloorDb = -40.0;
 
+// Engines differ in size, and the leveler hides that too: a kei truck's 0.66 L
+// would play as loud as an industrial 20 L diesel. A real engine's sound power
+// follows its power, and power follows displacement: 10 dB per decade, one rule
+// for every vehicle, from the displacement of the engine the script describes.
+// 0 dB is a 20-litre industrial diesel (anything larger too); a 12.8-litre semi
+// engine sits 1.9 dB under it, a 2-litre car 10 dB, and 12 dB is the floor.
+inline constexpr double LoudnessReferenceDisplacementLitres = 20.0;
+inline constexpr double LoudnessDbPerDecadeOfDisplacement = 10.0;
+inline constexpr double LoudnessClassFloorDb = -12.0;
+
+// Unknown displacement (0, NaN): no change.
+inline double engine_class_loudness_db(double displacementLitres) {
+    if (!std::isfinite(displacementLitres) || !(displacementLitres > 0)) return 0.0;
+    return std::clamp(LoudnessDbPerDecadeOfDisplacement *
+            std::log10(displacementLitres / LoudnessReferenceDisplacementLitres),
+        LoudnessClassFloorDb, 0.0);
+}
+
 inline double engine_loudness_gain_db(double rpm, double redlineRpm, double throttle) {
     if (!(rpm > 0) || !(redlineRpm > 0)) return LoudnessFloorDb;
     const double load = std::clamp(std::isfinite(throttle) ? throttle : 0.0, 0.0, 1.0);

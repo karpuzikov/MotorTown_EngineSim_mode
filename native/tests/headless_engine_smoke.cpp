@@ -2,6 +2,7 @@
 // This executable is never installed with the mod.
 #include "engine_audio.h"
 #include "engine_sim_backend.h"
+#include "audio_lead.h"
 #include "audio_pipeline.h"
 
 #include <array>
@@ -71,6 +72,8 @@ public:
     }
     bool start() override { playing = true; return true; }
     void stop() noexcept override { playing = false; }
+    // Nothing plays: the whole run counts as queued, so no lead is requested.
+    std::size_t queued_frames() const noexcept override { return mtes::OutputLeadTargetFrames; }
     bool playing = false;
     std::size_t queuedFrames = 0;
 };

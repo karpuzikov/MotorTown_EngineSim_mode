@@ -1,6 +1,6 @@
 #include "traffic_engine_voices.h"
+#include "audio_lead.h"
 #include "engine_sim_backend.h"
-#include "pcm_block_pool.h"
 #include "profile_level.h"
 
 #include <algorithm>
@@ -14,7 +14,7 @@
 namespace mtes {
 
 TrafficEngineVoices::Voice::Voice()
-    : engine(make_engine_sim_backend()), pcm(PcmBlockPool::FramesPerBlock) {}
+    : engine(make_engine_sim_backend()), pcm(NativeAudioPipeline::MaxPacketFrames) {}
 
 TrafficEngineVoices::TrafficEngineVoices(std::filesystem::path telemetryFile,
     VehicleProfileLookup& profiles, std::function<bool()> inForeground)
@@ -173,30 +173,33 @@ void TrafficEngineVoices::play(Voice& voice, const GameTelemetrySample& sample,
     if (voice.vehicle != sample.vehicle || voice.script != spec) silence(voice);
     voice.vehicle = sample.vehicle;
     voice.script = spec;
-    if (!voice.engine.update(sample.vehicle, spec, sample.state, now)) {
+    // Same pacing as the player's engine: the sound made each tick is what has
+    // passed plus a share of what the queue lacks of its standing lead.
+    const bool firstTick = voice.lastTick == Clock::time_point{};
+    std::size_t frames = 0;
+    std::optional<double> advanceSeconds;
+    if (!firstTick) {
+        auto elapsedFrames = static_cast<std::size_t>(std::lround(std::clamp(
+            std::chrono::duration<double>(now - voice.lastTick).count(), 0.005,
+            static_cast<double>(voice.pcm.size()) / 44100.0) * 44100.0));
+        // Until the first sound is queued, the wait since the tick before was
+        // the script compile, not time the sound has to cover.
+        // (std::min): Windows.h defines max/min macros unless NOMINMAX is set.
+        if (!voice.started) elapsedFrames = (std::min)(elapsedFrames, NativeAudioPipeline::WorkerPeriodFrames);
+        frames = frames_for_tick(elapsedFrames, voice.sink.queued_frames(), voice.pcm.size());
+        advanceSeconds = static_cast<double>(frames) / 44100.0;
+    }
+    if (!voice.engine.update(sample.vehicle, spec, sample.state, now, advanceSeconds)) {
         silence(voice);
         return;
     }
-    const bool firstTick = voice.lastTick == Clock::time_point{};
-    const double elapsed = std::chrono::duration<double>(now - voice.lastTick).count();
     voice.lastTick = now;
     if (firstTick) return; // the simulator fills its first buffer meanwhile
-    const auto frames = std::clamp<std::size_t>(
-        static_cast<std::size_t>(std::lround(elapsed * 44100.0)), 1, voice.pcm.size());
     const auto rendered = voice.engine.render(voice.pcm.data(), frames, now,
         sample.engine_volume.value_or(1.0), sample.vehicle);
-    if (rendered != frames) return; // underrun: a short gap, never partial PCM
+    if (rendered != frames) return; // late: the sound it did read leads the next packet
     voice.sink.set_mix(sample.mix.value_or(SpatialMix{}));
-    if (!voice.started) {
-        // 60 ms of lead: a late 20-ms tick drains this, not the speaker
-        // (in game traffic glitched on every scheduling hiccup).
-        std::vector<std::int16_t> lead(2646, 0);
-        if (!voice.sink.queue(lead.data(), lead.size())) {
-            silence(voice);
-            return;
-        }
-    }
-    if (!voice.sink.queue(voice.pcm.data(), rendered)) {
+    if (!queue_in_blocks(voice.sink, voice.pcm.data(), rendered)) {
         silence(voice);
         return;
     }

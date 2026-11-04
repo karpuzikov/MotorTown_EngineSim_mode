@@ -70,6 +70,26 @@ int main() {
         assert(engine_loudness_gain_db(NAN, 5500, 1.0) == LoudnessFloorDb);
     }
 
+    // The leveler also hides engine size: one global rule, 10 dB per decade of
+    // displacement from a 20-litre industrial diesel, floor -12 dB.
+    {
+        assert(engine_class_loudness_db(20.0) == 0.0);
+        assert(engine_class_loudness_db(50.0) == 0.0);                          // never above the reference
+        assert(near(engine_class_loudness_db(12.8), -1.94, 0.01));              // semi truck
+        assert(near(engine_class_loudness_db(2.0), -10.0, 1e-9));               // car
+        assert(engine_class_loudness_db(0.66) == LoudnessClassFloorDb);         // kei truck: the floor
+        assert(engine_class_loudness_db(0.1) == LoudnessClassFloorDb);
+        assert(engine_class_loudness_db(0.0) == 0.0);                           // unknown: unchanged
+        assert(engine_class_loudness_db(NAN) == 0.0);
+        assert(engine_class_loudness_db(-3.0) == 0.0);
+        double previous = LoudnessClassFloorDb;
+        for (double litres = 0.1; litres < 60.0; litres *= 1.1) {               // bigger is never quieter
+            const double db = engine_class_loudness_db(litres);
+            assert(db >= previous && db <= 0.0);
+            previous = db;
+        }
+    }
+
     // The game's rev range is fitted into the engine's, so the game's top rpm
     // is the redline and the limiter (redline + 300) is never reached.
     {

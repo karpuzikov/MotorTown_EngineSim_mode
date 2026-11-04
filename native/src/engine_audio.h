@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace mtes {
 
@@ -48,8 +50,12 @@ public:
     EngineAudio(const EngineAudio &) = delete;
     EngineAudio &operator=(const EngineAudio &) = delete;
 
+    // Advances the simulator by advanceSeconds, or by the time since the
+    // previous update when none is given. The audio pipeline passes the time
+    // it wants sound for: more than has passed while it builds its lead.
     bool update(const std::string &vehicle, const std::string &script,
-        EngineState state, std::chrono::steady_clock::time_point when);
+        EngineState state, std::chrono::steady_clock::time_point when,
+        std::optional<double> advanceSeconds = std::nullopt);
     // Compiles the vehicle's engine while it stands still, so the starter's
     // first turn is heard instead of waiting for a script compile.
     bool preload(const std::string &vehicle, const std::string &script);
@@ -75,6 +81,9 @@ private:
     std::string m_script;
     std::chrono::steady_clock::time_point m_lastUpdate{};
     bool m_advancedSinceLoad = false;
+    // Sound read from the synthesizer by a render that then missed its
+    // deadline. Dropping it would cut a hole out of the middle of the stream.
+    std::vector<std::int16_t> m_undelivered;
 };
 
 } // namespace mtes

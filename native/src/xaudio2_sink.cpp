@@ -1,4 +1,5 @@
 #include "xaudio2_sink.h"
+#include "output_limiter.h"
 #include "pcm_block_pool.h"
 
 #ifdef _WIN32
@@ -22,7 +23,15 @@ struct XAudio2Sink::Impl final : IXAudio2VoiceCallback {
     IXAudio2SourceVoice* source = nullptr;
     UINT32 outputChannels = 0;
     float appliedLeft = -1.0f, appliedRight = -1.0f, appliedFilter = -1.0f;
+    // The loudest gain the output matrix gives the queued PCM (output_limiter.h).
+    float peakOutputGain = 1.0f;
     std::atomic<bool> failed{false};
+    // Frames submitted since this voice was created; the voice reports how
+    // many it has played (SamplesPlayed), the difference is the queued lead.
+    // SamplesPlayed counts from the voice's last Start (or end-of-stream
+    // buffer); this sink starts the voice once, never stops it before
+    // DestroyVoice and never sets XAUDIO2_END_OF_STREAM, so it only grows.
+    std::atomic<std::uint64_t> framesSubmitted{0};
 
     ~Impl() {
         if (source) {
@@ -59,6 +68,9 @@ struct XAudio2Sink::Impl final : IXAudio2VoiceCallback {
     void apply(const SpatialMix& mix, double volume) noexcept {
         if (!source) return;
         const auto [left, right] = equal_power_gains(mix, volume);
+        // (std::max): Windows.h defines max/min macros unless NOMINMAX is set.
+        peakOutputGain = outputChannels == 1 ? std::sqrt(left * left + right * right)
+                                             : (std::max)(left, right);
         if (std::abs(left - appliedLeft) > 0.0005f || std::abs(right - appliedRight) > 0.0005f) {
             std::vector<float> matrix(outputChannels, 0.0f);
             if (outputChannels == 1) matrix[0] = std::sqrt(left * left + right * right);
@@ -103,6 +115,7 @@ bool XAudio2Sink::queue(const std::int16_t* pcm, std::size_t frames) {
 
     auto* block = m_impl->pool.acquire(pcm, frames);
     if (!block) return false;
+    limit_peaks_for_gain(block->samples.data(), frames, m_impl->peakOutputGain);
     XAUDIO2_BUFFER packet{};
     packet.AudioBytes = static_cast<UINT32>(frames * sizeof(std::int16_t));
     packet.pAudioData = reinterpret_cast<const BYTE*>(block->samples.data());
@@ -111,7 +124,16 @@ bool XAudio2Sink::queue(const std::int16_t* pcm, std::size_t frames) {
         PcmBlockPool::release(block);
         return false;
     }
+    m_impl->framesSubmitted.fetch_add(frames, std::memory_order_release);
     return true;
+}
+
+std::size_t XAudio2Sink::queued_frames() const noexcept {
+    if (!m_impl || !m_impl->source) return 0;
+    XAUDIO2_VOICE_STATE state{};
+    m_impl->source->GetState(&state);
+    const auto submitted = m_impl->framesSubmitted.load(std::memory_order_acquire);
+    return static_cast<std::size_t>(submitted - (std::min<std::uint64_t>)(submitted, state.SamplesPlayed));
 }
 
 bool XAudio2Sink::start() {
@@ -143,6 +165,7 @@ XAudio2Sink::~XAudio2Sink() = default;
 bool XAudio2Sink::queue(const std::int16_t*, std::size_t) { return false; }
 bool XAudio2Sink::start() { return false; }
 void XAudio2Sink::stop() noexcept {}
+std::size_t XAudio2Sink::queued_frames() const noexcept { return 0; }
 void XAudio2Sink::set_mix(const SpatialMix& mix) noexcept { m_mix = mix; }
 void XAudio2Sink::set_output_volume(double volume) noexcept { m_volume = volume; }
 

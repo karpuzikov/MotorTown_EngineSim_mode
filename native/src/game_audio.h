@@ -37,9 +37,15 @@ public:
     virtual bool queue(const std::int16_t* pcm, std::size_t frames) = 0;
     virtual bool start() = 0;
     virtual void stop() noexcept = 0;
+    // Frames queued but not yet played: the producer keeps this near a
+    // standing lead (audio_lead.h), so a late tick drains the lead, not the speaker.
+    virtual std::size_t queued_frames() const noexcept = 0;
     // Position/loudness of the stock sound this output replaces.
     virtual void set_mix(const SpatialMix&) noexcept {}
 };
+
+// Queues any number of frames as blocks the sink's pool can hold.
+bool queue_in_blocks(ProceduralAudioSink& sink, const std::int16_t* pcm, std::size_t frames);
 
 // Fail-open handoff: never leave the stock emitter muted without complete
 // PCM from the matching vehicle and a started procedural output. Call only
@@ -51,7 +57,6 @@ public:
         Idle, InvalidInput, PcmUnavailable, MutePending, StockMuteFailed,
         QueueFailed, StartFailed, Playing
     };
-    static constexpr std::size_t LeadSilenceFrames = 2646; // 60 ms at 44.1 kHz
     GameAudioOutput(EngineAudio& source, ProceduralAudioSink& sink);
     ~GameAudioOutput();
 
@@ -64,6 +69,7 @@ public:
         const std::function<bool()>& stillEligible = {});
     void stop() noexcept;
     void set_mix(const SpatialMix& mix) noexcept { m_sink.set_mix(mix); }
+    std::size_t queued_frames() const noexcept { return m_sink.queued_frames(); }
     Status status() const noexcept { return m_status; }
     // Diagnostics: the last 20 s of exactly what was queued for playback are
     // written here (mono 44.1 kHz WAV) whenever playback stops, so in-game

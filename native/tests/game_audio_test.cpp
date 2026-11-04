@@ -85,6 +85,7 @@ public:
         started = false;
         last.clear();
     }
+    std::size_t queued_frames() const noexcept override { return 0; }
 };
 
 int main() {
@@ -113,9 +114,9 @@ int main() {
     assert(!second->muted && !sink.started);
     events.clear();
     assert(game.submit("Tuscan", first, scratch.data(), scratch.size(), t, 1.0));
-    // 60 ms of lead silence first, then the PCM.
-    assert((std::vector<std::string>(events.end() - 5, events.end()) ==
-        std::vector<std::string>{"prepare", "queue", "queue", "mute", "start"}));
+    // The PCM only: the pipeline makes the lead (audio_lead.h), no silence.
+    assert((std::vector<std::string>(events.end() - 4, events.end()) ==
+        std::vector<std::string>{"prepare", "queue", "mute", "start"}));
     assert(first->muted && !unrelated_horn_muted);
     assert(sink.started && sink.starts == 1 && sink.last.size() == 16);
     assert(sink.last[0] == 4096);
