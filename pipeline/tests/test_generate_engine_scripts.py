@@ -51,14 +51,16 @@ class ScriptGenerationTest(unittest.TestCase):
             self.assertTrue(script.rstrip().endswith("main()"), "the compiler only runs top-level statements")
             self.assertGreater(derived["chamber_volume"], 0.0)
 
-    def test_silenced_exhaust_uses_the_mild_response_not_the_open_pipe_one(self):
-        # minimal_muffling_01 (open pipes) put 4 kHz at -6 dB re the loudest band
-        # on every engine (Engine Simulator's own: -36 dB): hiss, not an engine.
+    def test_silenced_exhaust_uses_the_road_vehicle_response_of_engine_simulator(self):
+        # Engine Simulator's own road and truck engines use default_0. The
+        # sporty demo response (mild_exhaust_0_reverb) made every engine boom
+        # at 125 Hz and crackle above 3 kHz; open pipes (minimal_muffling_01) hissed.
         for car in CARS:
             if not car.get("exhaust") or not car["exhaust"]["silencers"]:
                 continue  # electric: keeps the stock sound
             script, _ = generator.engine_script(ENGINES[car["engines"][0]], car)
-            self.assertIn("impulse_response: ir_lib.mild_exhaust_0_reverb", script, car["real_car"])
+            self.assertIn("impulse_response: ir_lib.default_0", script, car["real_car"])
+            self.assertNotIn("mild_exhaust", script, car["real_car"])
             self.assertNotIn("minimal_muffling", script, car["real_car"])
 
     def test_diesels_are_throttled_not_fuel_metered(self):

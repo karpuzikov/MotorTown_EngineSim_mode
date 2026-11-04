@@ -11,6 +11,9 @@
 //   exhaust: each bank's three ports (the middle two cylinders siamesed) pass
 //   through the block into a cast manifold; the left manifold crosses over
 //   to the right, one muffler, side tailpipe
+// The muffler's response is Engine Simulator's road-vehicle one (default_0), the
+// same as every generated engine: real_engine_1 left 4 kHz only 4 dB under the
+// loudest band (a hiss) where the same engine on default_0 sits 23 dB under.
 import "engine_sim.mr"
 
 units units()
@@ -228,13 +231,13 @@ public node ford_flathead_239_8rt {
         es_params,
         audio_volume: 20.0,
         length: 110 * units.inch,
-        impulse_response: ir_lib.real_engine_1
+        impulse_response: ir_lib.default_0
     )
     exhaust_system exhaust_left(
         es_params,
         audio_volume: 20.0,
         length: (110 + 30) * units.inch,
-        impulse_response: ir_lib.real_engine_1
+        impulse_response: ir_lib.default_0
     )
 
     cylinder_bank_parameters bank_params(

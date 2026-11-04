@@ -1,3 +1,4 @@
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -17,6 +18,17 @@ class PackageModProfilesTest(unittest.TestCase):
         self.assertEqual(packager.vehicle_key("PoliceInterceptor1"), "policeinterceptor")
         self.assertEqual(packager.vehicle_key("FL1"), "fl1")
         self.assertEqual(packager.vehicle_key("Kuda_Dryvan_4x2"), "kudadryvan4x2")
+
+    def test_every_packaged_profile_uses_the_road_vehicle_exhaust_response(self):
+        # One response for all cars, hand-made scripts included: the Dory's own
+        # (real_engine_1) left 4 kHz only 4 dB under its loudest band where the
+        # same engine on this response sits 23 dB under, so the muffling differed.
+        profiles = sorted(packager.PROFILES_DIR.glob("es_*.mr"))
+        self.assertGreater(len(profiles), 100)
+        for profile in profiles:
+            responses = re.findall(r"impulse_response:\s*(ir_lib\.\w+)", profile.read_text())
+            self.assertTrue(responses, profile.name)
+            self.assertEqual(set(responses), {"ir_lib.default_0"}, profile.name)
 
 
 if __name__ == "__main__":

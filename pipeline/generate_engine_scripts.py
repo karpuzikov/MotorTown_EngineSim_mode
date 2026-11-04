@@ -80,6 +80,7 @@ CARBURETTOR_FLOW_SCALE = 4.0
 IDLE_MANIFOLD_PRESSURE_ATM = 0.35
 IDLE_RPM_PER_REDLINE_RPM = 0.25
 IDLE_RPM_RANGE = (600.0, 900.0)
+IDLE_LEAK_FLOW_SCALE = 1.0
 PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
 # A diesel's fuel is injected in the cylinder; Engine Simulator premixes it in
 # the intake, so a small premix volume keeps the pedal response immediate
@@ -186,15 +187,17 @@ def car_slug(car):
     return re.sub(r"[^a-z0-9]+", "_", ascii_script_text(car["real_car"]).lower()).strip("_")
 
 
-# Engine Simulator's own exhaust response for a silenced exhaust. Every car in
-# real_cars.json has at least one silencer, and the response used by most of
-# Engine Simulator's demo engines is mild_exhaust_0_reverb. Measured 2026-11-04
-# (octave bands 63 Hz-8 kHz, relative to the loudest band, 28 fleet engines at
-# 40% of redline): with this response the fleet lies inside the range of
-# Engine Simulator's own demo engines (median 4 kHz -32 dB, demos -36 dB).
-# minimal_muffling_01 (open pipes), used here until 2026-11-04, left every
-# engine at -6 dB at 4 kHz: hissy, "nothing like Engine Simulator".
-SILENCED_EXHAUST_IMPULSE_RESPONSE = "ir_lib.mild_exhaust_0_reverb"
+# Engine Simulator's own exhaust response for a road vehicle with silencers.
+# Every car in real_cars.json has at least one silencer. Engine Simulator's
+# stock road and truck engines (chev_truck_454, gm_ls, audi i5, bmw m52b28,
+# kohler) use default_0; mild_exhaust_0_reverb belongs to its sporty demo
+# engines (LFA V10, F136, 2JZ). Rendered offline with the same engines
+# (2026-11-04), mild_exhaust_0_reverb gave +11 dB at 125 Hz and a hollow dip at
+# 250-500 Hz, a crackly top end (impulsiveness of the >3 kHz band 6-15, the
+# original 454: 4) and a crest factor of 1.5-2.4 (squashed); default_0 gave the
+# 454's octave profile, impulsiveness 3-5 and a natural crest factor of 2.5-3.8.
+# An open pipe (minimal_muffling_01) hissed on every engine.
+SILENCED_EXHAUST_IMPULSE_RESPONSE = "ir_lib.default_0"
 
 
 def exhaust_impulse_response(car):
@@ -366,7 +369,7 @@ def closed_throttle_plate_position(engine, displacement_ci, wide_open_cfm):
     whose leak holds IDLE_MANIFOLD_PRESSURE_ATM at idle speed."""
     idle_rpm = min(max(IDLE_RPM_PER_REDLINE_RPM * engine["redline_rpm"], IDLE_RPM_RANGE[0]), IDLE_RPM_RANGE[1])
     idle_scfm = displacement_ci / 1728.0 * idle_rpm / (engine["cycle"] // 2) * IDLE_MANIFOLD_PRESSURE_ATM
-    leak_rating_cfm = idle_scfm / choked_to_carb_rating_flow_ratio()
+    leak_rating_cfm = IDLE_LEAK_FLOW_SCALE * idle_scfm / choked_to_carb_rating_flow_ratio()
     return 2 / math.pi * math.acos(min(1.0, leak_rating_cfm / wide_open_cfm))
 
 

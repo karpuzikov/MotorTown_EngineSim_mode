@@ -79,7 +79,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(646.0),
         velocity_decay: 1.0, audio_volume: 1.0)
-    exhaust_system exhaust0(exhaust_params, impulse_response: ir_lib.mild_exhaust_0_reverb)
+    exhaust_system exhaust0(exhaust_params, impulse_response: ir_lib.default_0)
 
     function intake_flow(50 * units.thou)
     intake_flow.add_sample(0 * units.thou, k_28inH2O(0.00))
