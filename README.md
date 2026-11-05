@@ -2,7 +2,7 @@
 
 Experimental Windows mod project to synchronize combustion audio from [karpuzikov/engine-sim](https://github.com/karpuzikov/engine-sim) with the player's vehicle in [Motor Town: Behind The Wheel](https://store.steampowered.com/app/1369670/Motor_Town_Behind_The_Wheel/).
 
-**Version: experimental v0.2.11.** The user's latest Windows build launches and receives zero-valued exporter packets. The new game log identifies the blocker: UE4SS reflection fails after one property. In the installed UE4SS f885e8d2 binding, returning `false` from an iteration callback removes its return value twice and corrupts the callback stack. The exporter now returns no value to continue and `true` only to stop. A native Lua5.4 boundary reproduces that failure and tests the workaround. Live RPM/throttle/ignition mapping and synchronized audio still need testing in Motor Town. Stock-audio replacement remains **unimplemented**.
+**Version: experimental v0.2.14 (legacy bridge); native mod in development.** The latest Windows report confirms live gear changes on the Tuscan (5, 4, 2, neutral) and discovers engine RPM, throttle and ignition, but the separate Engine Simulator still cannot follow gears: the MTES1 packet has no gear field. The native branch now **passes Windows headless PCM and three-engine switching tests** (boxer-four, V8, V10), but has **not passed in-game validation**. Unreal audio injection, stock-sound replacement, live game-gear and engine-volume integration, and automatic engine profiles remain **unimplemented**. This is **not** the finished downloadable native mod.
 
 ## Installation
 
@@ -17,7 +17,7 @@ The installer repairs Delta Studio's DirectX link configuration in place and reb
 
 If startup fails or remains blank, the installer prints the last startup stage and any engine-script errors into its installation log. The live runtime log is `source/engine-sim/build-mtes/MotorTownEngineSim_runtime.log` under the project directory. It records graphics, asset, engine-script and audio initialization separately. Startup readiness does not verify rendering, sound or game telemetry.
 
-**Known limitation:** No fully native spatial audio replacement yet; the simulator runs as a separate audio source. Motor Town's game telemetry field names are not confirmed for all versions; see `bridge/README.md`.
+**Known limitation:** No fully native spatial audio replacement yet; the simulator runs as a separate audio source. Motor Town's live fields still need verification. See `bridge/README.md` and the native mod design under `docs/superpowers/`.
 
 ## If the game does not affect Engine Simulator
 

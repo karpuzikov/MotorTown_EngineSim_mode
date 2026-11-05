@@ -1,10 +1,94 @@
-# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.11)
+# Motor Town -> Engine Simulator live audio bridge (experimental v0.2.15)
+
+## Native telemetry bridge (development only)
+
+The same in-game Lua exporter now writes a separate `MTES4` packet to
+`%TEMP%\MotorTownEngineSim_native_telemetry.txt` every game tick (20 Hz). It
+carries the actual reflected gear, vehicle identity and basic engine metadata
+alongside RPM, throttle and ignition. It also includes an exact reflected
+`EngineData` UObject full name when available, for future curated per-engine
+`.mr` profile matching; unknown identities are not guessed. Unknown gear is `-99`, which the native
+DLL rejects rather than pretending the transmission is in neutral. The native
+UE4SS `on_update()` reader consumes this without an external application and
+ignores stale files. Each Lua exporter load has its own session token, so
+reloading the script can restart its packet sequence. The final field carries
+`UMotorTownUserSettings.Values[Sound_EngineVolume].FloatValue` when the live
+setting has a verified float type and a value between 0 and 1, including zero.
+Unavailable, non-float and out-of-range values are `-1` (unknown), never an
+assumed maximum or the master volume. The SDK confirms the field layout, but
+the value and lookup still require a Windows in-game check. Native `MTES2` and
+`MTES3` parsing remain supported, and the legacy `MTES1` file
+remains compatible with v0.2.14 and v0.2.15.
+
+This is a transitional in-process integration, not procedural audio playback
+or stock engine-sound replacement.
+
+The November 1 SDK-backed diagnostic probe reads
+`EngineComponent.EngineSoundComponent.EngineAudioComponents` and
+`EngineComponent.EngineSoundComponent.ExhaustAudioComponents` directly, showing
+up to 16 component identities, assigned sounds and current volume multipliers
+under `SDK engine audio targets:` in the discovery snapshot. This check is
+independent of the general reflection budget and never modifies game audio.
+The latest component list is also refreshed independently every five seconds
+in `%TEMP%\MotorTownEngineSim_audio_targets.txt` and included in the read-only
+diagnostic collector, so late-loaded engine/exhaust loops can be inspected
+without repeating the expensive general reflection scan.
+
+Version 0.2.15 also probes `EngineComponent.AudioComponent`,
+`IntakeAudioComponent`, `JakeBrakeAudioComponent`, and
+`AfterfireAudioComponents` when the nested `EngineSoundComponent` is not yet
+available. It records engine ignition/RPM with each report and retains the
+last running-engine snapshot instead of losing it on engine shutdown. These
+fields are observed only; no component is muted or claimed by the native mod.
 
 **Status: experimental, not game-tested or a verified audio replacement.**
 The bridge implements a UE4SS game-side telemetry exporter and a patch for the original
 MIT-licensed Engine Simulator desktop application's RPM/dyno and throttle controls.
 Windows compilation was confirmed by the user's v0.2.6 installation log.
 Runtime rendering, telemetry and audio synchronization remain unverified.
+
+## Discovery diagnostics (v0.2.12)
+
+The exporter now examines engine and gearbox objects ahead of unrelated seat and
+physics objects. The bounded discovery report includes a dedicated list of
+engine/gear/audio fields and candidate values, even beyond its first 300 general
+inventory lines. It also logs live gear changes when a reflected integer field
+is available. The MTES1 packet stays unchanged for compatibility.
+
+This is diagnostic groundwork, **not** stock engine sound replacement or actual
+gear control. The native in-process mod design and phased implementation plan
+are in `docs/superpowers/`.
+
+## Discovery diagnostics (v0.2.13)
+
+The first v0.2.12 live report confirms nonzero vehicle RPM on the Atlas 4x2
+semi and exposes `EngineComponent.EngineData.EngineProperty` plus the engine
+`EnginesSound`, `EngineSoundComponent`, and `AudioComponent` objects. It also
+confirms the previous depth-first scan exhausted the 2,000-member budget before
+transmission state could be inspected (`gear=nil`). This revision:
+
+- Explores peer engine/transmission components before nested sound assets.
+- Prefers live EngineComponent throttle over player-input throttle (autopilot).
+- Recognizes explicit `bIgnitionOn` and `IsIgnitionOn` engine state.
+- Includes actual reflected object identities for relevant audio fields.
+- Keeps the first lines of long discovery snapshots in the diagnostic collector.
+
+These game fields are read-only; the diagnostic mod still does not mute stock
+engine sounds or supply a compiled native audio replacement.
+
+## Discovery diagnostics (v0.2.14)
+
+The user's new Tuscan report confirms the exporter reads real gear changes (5, 4,
+2 and 0) through `NetLC_TransmissionColdState.CurrentGear`. It also confirms
+that `EngineComponent.GetThrottle()` was triggering a full 2,000-metadata scan
+once per second. The revised scanner prioritizes nested engine specifications
+and audio objects over unrelated vehicle horns and effects, records engine
+component scans in the focused snapshot, and caches a verified engine throttle
+mapping until the player changes vehicles or the mapping becomes invalid.
+
+**Gear changes are observable in diagnostics but not transmitted to Engine
+Simulator yet**; its current bridge still forces neutral. The native audio mod
+and stock-engine replacement remain unfinished.
 
 ## What it does
 - Reads the **local player's** Motor Town vehicle through UE4SS reflection.
@@ -78,8 +162,9 @@ input is zero, late component availability, and ignition-off behavior. These tes
 do not verify the live game's field names, sound synchronization, or stock muting.
 
 ## Limitations
-- Motor Town RPM/throttle property paths are **not yet verified** on game 0.7.19.
-  Auto-discovery may choose the wrong property or none. Inspect
+- Motor Town RPM/throttle paths have been observed on Atlas and Tuscan vehicles,
+  but are not verified across all vehicle types. Auto-discovery may still choose
+  the wrong property or none. Inspect
   `%TEMP%\MotorTownEngineSim_diagnostics.txt` and set `RPM_PATH`, `THROTTLE_PATH`,
   `IGNITION_PATH` in `main.lua` if necessary.
 - Only the player's vehicle, not AI traffic, has Engine Simulator sound.
