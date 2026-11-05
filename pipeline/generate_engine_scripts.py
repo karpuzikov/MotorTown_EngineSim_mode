@@ -90,6 +90,16 @@ INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
 PIPE_DISCHARGE_COEFFICIENT = 3.2                 # fleet fit 2026-11-03; Engine Simulator's pipe flow needs ~4x the bench figure
+# The primary pipe's conductance decides how sharp every exhaust pulse is, and
+# the sound is that pulse. The fit above was made for the throttle and the
+# tailpipe, where power is limited; on the primary it made every generated
+# engine ring: half the energy sat at a median 398 Hz (Engine Simulator's own
+# engines: 164 Hz) and 20 % of it above 500 Hz (theirs: 2.4 %), the "knocking"
+# heard in game (offline, 2026-11-05). Engine Simulator's engines use primary
+# conductances near the physical bench figure, so the primary takes the bench
+# figure: the half-energy frequency falls to 188 Hz, and peak power and torque
+# move by less than 1.5 % (17 engines on the offline dynamometer).
+PRIMARY_PIPE_DISCHARGE_COEFFICIENT = 1.0
 # A diesel is throttled like a petrol engine, never fuel-metered: Engine
 # Simulator's flame goes out when the charge is leaner than about the full-load
 # one, so metering fuel made every one of 28 diesels flare and stall about 1.6
@@ -309,14 +319,16 @@ def valve_flow_cfm(diameter_m, lift_m, valve_count, side_valve=False):
             * velocity * CUBIC_METRES_PER_SECOND_TO_CFM)
 
 
-def pipe_flow_cfm(diameter_m):
+def pipe_flow_cfm(diameter_m, discharge_coefficient=None):
+    if discharge_coefficient is None:
+        discharge_coefficient = PIPE_DISCHARGE_COEFFICIENT
     area = math.pi * diameter_m ** 2 / 4.0
     velocity = math.sqrt(2.0 * PRESSURE_1_5_INCH_HG_PA / AIR_DENSITY_KG_M3)
-    return PIPE_DISCHARGE_COEFFICIENT * area * velocity * CUBIC_METRES_PER_SECOND_TO_CFM
+    return discharge_coefficient * area * velocity * CUBIC_METRES_PER_SECOND_TO_CFM
 
 
-def area_flow_cfm(area_m2):
-    return pipe_flow_cfm(math.sqrt(4.0 * area_m2 / math.pi))
+def area_flow_cfm(area_m2, discharge_coefficient=None):
+    return pipe_flow_cfm(math.sqrt(4.0 * area_m2 / math.pi), discharge_coefficient)
 
 
 def intake_molecular_afr(engine):
@@ -453,6 +465,8 @@ def derive(engine, car):
         "plenum_volume": (DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT if engine["fuel"] in ("diesel", "multifuel")
                           else PLENUM_VOLUME_TO_DISPLACEMENT) * displacement_litres / 1000.0,
         "exhaust_pipe": pipe, "exhaust_outlet_cfm": pipe_flow_cfm(pipe),
+        "exhaust_primary_cfm": area_flow_cfm(RUNNER_AREA_TO_VALVE_AREA * exhaust_valve_area,
+                                             PRIMARY_PIPE_DISCHARGE_COEFFICIENT),
         "exhaust_length": exhaust_length_m(car),
         "primary_tube_length": PRIMARY_LENGTH_BY_MANIFOLD_M[car["exhaust"]["manifold"]],
         "simulation_frequency": max(MINIMUM_SIMULATION_FREQUENCY_HZ, round(
@@ -580,7 +594,7 @@ def engine_script(engine, car):
             f"        length: {d['exhaust_length']:.3f} * units.m,",
             f"        outlet_flow_rate: k_carb({d['exhaust_outlet_cfm']:.1f}),",
             f"        primary_tube_length: {d['primary_tube_length']:.3f} * units.m,",
-            f"        primary_flow_rate: k_carb({area_flow_cfm(d['exhaust_runner_area']):.1f}),",
+            f"        primary_flow_rate: k_carb({d['exhaust_primary_cfm']:.1f}),",
             f"        velocity_decay: 1.0, audio_volume: 1.0)"]
     for index in range(exhaust_count):
         out.append(f"    exhaust_system exhaust{index}(exhaust_params, impulse_response: {exhaust_impulse_response(car)})")

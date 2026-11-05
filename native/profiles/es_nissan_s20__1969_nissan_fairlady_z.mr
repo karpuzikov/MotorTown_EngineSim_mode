@@ -77,7 +77,7 @@ public node motor_town_engine {
         length: 3.115 * units.m,
         outlet_flow_rate: k_carb(1223.0),
         primary_tube_length: 0.300 * units.m,
-        primary_flow_rate: k_carb(709.4),
+        primary_flow_rate: k_carb(221.7),
         velocity_decay: 1.0, audio_volume: 1.0)
     exhaust_system exhaust0(exhaust_params, impulse_response: ir_lib.default_0)
 

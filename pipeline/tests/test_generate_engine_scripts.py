@@ -124,3 +124,22 @@ class ExhaustRunnerTest(unittest.TestCase):
         volume = generator.exhaust_runner_volume_m3(derived)
         self.assertAlmostEqual(volume, derived["exhaust_runner_area"] * (derived["port_length"] + derived["primary_tube_length"]))
         self.assertGreater(volume, 5 * derived["exhaust_runner_area"] * derived["port_length"])
+
+    def test_primary_conductance_is_the_bench_flow_through_the_runner_not_the_fitted_one(self):
+        # Regression (2026-11-05, "everything makes knocking sound"): the 3.2x
+        # pipe fit on the primary made every exhaust pulse sharp. Engine
+        # Simulator's own engines sit near the bench figure. Offline, half the
+        # energy fell at a median 398 Hz (theirs 164 Hz, bench primary 188 Hz).
+        bench_velocity = generator.math.sqrt(
+            2.0 * generator.PRESSURE_1_5_INCH_HG_PA / generator.AIR_DENSITY_KG_M3)
+        for car in CARS:
+            if not car.get("exhaust") or not car["exhaust"]["silencers"]:
+                continue  # electric: keeps the stock sound
+            for engine_id in car["engines"]:
+                engine = ENGINES[engine_id]
+                script, derived = generator.engine_script(engine, car)
+                bench_cfm = (derived["exhaust_runner_area"] * bench_velocity
+                             * generator.CUBIC_METRES_PER_SECOND_TO_CFM)
+                self.assertIn(f"primary_flow_rate: k_carb({bench_cfm:.1f})", script, f"{car['real_car']} {engine_id}")
+                # the fit stays where power is limited: the tailpipe
+                self.assertIn(f"outlet_flow_rate: k_carb({derived['exhaust_outlet_cfm']:.1f})", script)
