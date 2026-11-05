@@ -97,8 +97,9 @@ PIPE_DISCHARGE_COEFFICIENT = 3.2                 # fleet fit 2026-11-03; Engine 
 # engines: 164 Hz) and 20 % of it above 500 Hz (theirs: 2.4 %), the "knocking"
 # heard in game (offline, 2026-11-05). Engine Simulator's engines use primary
 # conductances near the physical bench figure, so the primary takes the bench
-# figure: the half-energy frequency falls to 188 Hz, and peak power and torque
-# move by less than 1.5 % (17 engines on the offline dynamometer).
+# figure: the half-energy frequency falls to a median 248 Hz and the share above
+# 500 Hz to 5 % (168 profiles), and peak power and torque move by less than
+# 1.5 % (17 engines on the offline dynamometer).
 PRIMARY_PIPE_DISCHARGE_COEFFICIENT = 1.0
 # A diesel is throttled like a petrol engine, never fuel-metered: Engine
 # Simulator's flame goes out when the charge is leaner than about the full-load
