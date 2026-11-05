@@ -2,7 +2,9 @@
 #include "mod_settings.h"
 #include "profile_level.h"
 #include "spatial_mix.h"
+#include "starter_policy.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <cmath>
@@ -68,6 +70,66 @@ int main() {
         const double cranking = engine_loudness_gain_db(150, 5500, 0.0);
         assert(cranking < -20.0 && cranking > LoudnessFloorDb);                 // cranking is quiet, not silent
         assert(engine_loudness_gain_db(NAN, 5500, 1.0) == LoudnessFloorDb);
+    }
+
+    // The level glides to its target: quickly up, so a blip is heard, slowly
+    // down, so a lift or a shift fades. An 80 ms glide both ways made every
+    // 4-6 dB closed-throttle step a "random volume drop" in game (2026-11-05).
+    {
+        const double dt = 1.0 / 44100.0;
+        const auto settle = [dt](double gain, double target, double seconds) {
+            for (int i = 0, n = static_cast<int>(seconds / dt); i < n; ++i)
+                gain = glide_loudness_gain(gain, target, dt);
+            return gain;
+        };
+        const auto db = [](double gain) { return 20.0 * std::log10(gain); };
+        assert(near(settle(0.0, 1.0, LoudnessRiseSeconds), 1.0 - std::exp(-1.0), 0.01));   // one time constant
+        assert(near(settle(1.0, 0.0, LoudnessFallSeconds), std::exp(-1.0), 0.01));
+        assert(LoudnessRiseSeconds < LoudnessFallSeconds);
+        assert(glide_loudness_gain(0.37, 0.37, dt) == 0.37);                               // at rest at its target
+        // Lifting the pedal closes the throttle: 6 dB under. In 50 ms the old
+        // glide had fallen 2.3 dB; this one stays within 1 dB, and gets there smoothly.
+        assert(db(settle(1.0, 0.5, 0.05)) > -1.0);
+        assert(db(settle(1.0, 0.5, 2.0)) < -5.8);
+        double gain = 1.0, previous = 1.0, windowStart = 1.0, worstWindowDb = 0.0;
+        for (int i = 0; i < 44100; ++i) {
+            gain = glide_loudness_gain(gain, 0.5, dt);
+            assert(gain <= previous && gain >= 0.5);                                       // monotone, never past the target
+            previous = gain;
+            if (i % 2205 == 2204) {                                                        // every 50 ms
+                worstWindowDb = (std::max)(worstWindowDb, db(windowStart) - db(gain));
+                windowStart = gain;
+            }
+        }
+        assert(worstWindowDb < 1.0);                                                       // no step to hear
+        // Pressing the pedal swells within a tenth of a second.
+        assert(db(settle(0.5, 1.0, 0.1)) > -2.5);
+    }
+
+    // The starter cranks until the crank turns at 1.2x its own speed or half
+    // the game's rpm, whichever is higher; then the engine runs by itself.
+    {
+        assert(near(starter_release_rpm(200, 700), 350.0, 1e-9));                  // half of the idle
+        assert(near(starter_release_rpm(200, 150), 240.0, 1e-9));                  // 1.2x the starter
+        assert(near(starter_release_rpm(-200, 150), 240.0, 1e-9));                 // scripted with a negative speed
+        assert(near(starter_release_rpm(200, 0), 240.0, 1e-9));
+
+        // Ignition on: cranks up to the release speed, and again only if the
+        // engine falls under 60% of it (a single cylinder swings around one threshold).
+        assert(starter_engaged(true, true, false, 100, 700, 350));
+        assert(!starter_engaged(true, true, true, 400, 700, 350));
+        assert(!starter_engaged(false, true, true, 300, 700, 350));                // released, still above 210
+        assert(starter_engaged(false, true, true, 200, 700, 350));                 // stalled: cranks again
+
+        // Ignition flag down: the first key turn is still cranked, fired or
+        // not (it was silent, so the start was "binary on/off" in game).
+        assert(starter_engaged(false, false, false, 0, 150, 350));
+        assert(starter_engaged(true, false, false, 120, 150, 350));
+        // An engine that has run and is spinning down is not cranked, nor is
+        // one the game already turns faster than the starter could (a reload).
+        assert(!starter_engaged(true, false, true, 120, 150, 350));
+        assert(!starter_engaged(false, false, false, 0, 800, 350));
+        assert(!starter_engaged(false, false, true, 0, 150, 350));
     }
 
     // The leveler also hides engine size: one global rule, 10 dB per decade of

@@ -7,6 +7,7 @@
 #include "lua_mute_lease.h"
 #include "mod_settings.h"
 #include "profile_level.h"
+#include "start_trace.h"
 #include "traffic_engine_voices.h"
 #include "vehicle_profile.h"
 #include "xaudio2_sink.h"
@@ -261,6 +262,19 @@ public:
             m_lastGear = sample->state.gear;
             m_lastVolume = sample->engine_volume;
         }
+        // What the game reports while an engine starts (rpm while cranking, the
+        // ignition flag), for the next log: bounded windows, nothing in a steady drive.
+        const bool newTraceVehicle = !m_hadTelemetry || sample->vehicle != m_traceVehicle;
+        m_traceVehicle = sample->vehicle;
+        double traceSeconds = 0.0;
+        if (m_startTrace.update(now, newTraceVehicle, sample->state.ignition,
+                sample->state.rpm, traceSeconds)) {
+            RC::Output::send<RC::LogLevel::Normal>(
+                STR("[MTES] Start trace +{} s: game rpm {}, throttle {}, ignition {}, gear {}, audio: {}\n"),
+                traceSeconds, sample->state.rpm, sample->state.throttle,
+                sample->state.ignition ? 1 : 0, sample->state.gear,
+                audio_stage_name(m_worker.stage()));
+        }
         m_hadTelemetry = true;
     }
 
@@ -282,6 +296,8 @@ private:
         m_profiles, [] { return game_in_foreground(); }};
     std::size_t m_lastTrafficVoices = 0;
     std::string m_lastVehicle;
+    std::string m_traceVehicle;
+    mtes::StartTrace m_startTrace;
     std::string m_lastProfileVehicle, m_lastProfileAsset, m_lastProfileCue;
     std::optional<double> m_lastVolume;
     int m_lastGear = -99;

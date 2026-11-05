@@ -98,8 +98,15 @@ class UE4SSParentBuildTests(unittest.TestCase):
             package = staged.parent.parent
             self.assertTrue((package / 'Scripts/main.lua').is_file())
             self.assertTrue((package / 'engine_profiles.tsv').is_file())
-            self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239__1948_ford_f_1.mr\t99-100000',
+            self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239__1948_ford_f_1.mr'
+                          '#exhaust=exhaust/lp1_535.wav\t99-100000',
                           (package / 'engine_families.tsv').read_text())
+            # Each rule's own exhaust response is staged with the profiles and
+            # survives the Engine Simulator library being merged over them: a
+            # rule naming a missing file voids the whole manifest in game.
+            self.assertEqual(
+                (package / 'assets/sound-library/exhaust/lp1_535.wav').read_bytes(),
+                (ROOT / 'profiles/sound-library/exhaust/lp1_535.wav').read_bytes())
             self.assertTrue((package / 'assets/es_ford_flathead_239__1948_ford_f_1.mr').is_file())
             self.assertTrue((package / 'assets/es_lambo_l539_65.mr').is_file())
             self.assertTrue((package / 'assets/es_volvo_d13.boost.json').is_file())  # turbo boost travels with it

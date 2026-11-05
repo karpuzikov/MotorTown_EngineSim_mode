@@ -23,6 +23,11 @@ class ImpulseWavTests(unittest.TestCase):
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             args = [str(exe)]
+            # Every exhaust response the rules name loads and survives the
+            # synthesizer; a rule naming a file that fails voids the manifest.
+            responses = sorted((ROOT / "profiles/sound-library/exhaust").glob("*.wav"))
+            self.assertGreaterEqual(len(responses), 3)
+            args += [f"packaged:{path}" for path in responses]
             source = os.environ.get("MTES_ENGINE_SIM_SOURCE")
             if source:
                 for suffix in ("assets/sound-library/smooth/smooth_40.wav",

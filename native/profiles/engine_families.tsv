@@ -2,261 +2,261 @@
 # vehicle: Motor Town vehicle (blueprint class, lower case, no underscores) -> its real
 #          car's engine options; the 4th column is the installed engine's horsepower.
 # asset/cue/maxrpm: engine data of vehicles not listed (traffic, new cars); '-' keeps stock.
-vehicle	^kudalivefishtank4x2	assets/es_volvo_d13__2009_renault_magnum_480.mr
-vehicle	^longhornrollbackul	assets/es_volvo_d11__2014_volvo_vnl.mr	0-440
-vehicle	^longhornrollbackul	assets/es_volvo_d13__2014_volvo_vnl.mr	441-487
-vehicle	^longhornrollbackul	assets/es_cummins_isx15__2014_volvo_vnl.mr	488-525
-vehicle	^longhornrollbackul	assets/es_volvo_d16__2014_volvo_vnl.mr	526-100000
-vehicle	^policeinterceptor	assets/es_chrysler_318_la__1975_dodge_coronet.mr	0-158
-vehicle	^policeinterceptor	assets/es_chrysler_360_la__1975_dodge_coronet.mr	159-188
-vehicle	^policeinterceptor	assets/es_chrysler_400_b__1975_dodge_coronet.mr	189-222
-vehicle	^policeinterceptor	assets/es_chrysler_440_rb_police__1975_dodge_coronet.mr	223-100000
-vehicle	^kudacontainer6x2	assets/es_volvo_d13__2009_renault_magnum_480.mr
-vehicle	^brutusfireengine	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr
-vehicle	^longhornrollback	assets/es_volvo_d11__2014_volvo_vnl.mr	0-440
-vehicle	^longhornrollback	assets/es_volvo_d13__2014_volvo_vnl.mr	441-487
-vehicle	^longhornrollback	assets/es_cummins_isx15__2014_volvo_vnl.mr	488-525
-vehicle	^longhornrollback	assets/es_volvo_d16__2014_volvo_vnl.mr	526-100000
-vehicle	^kirarollbacktow	assets/es_fiat_8040__1977_iveco_zeta.mr	0-92
-vehicle	^kirarollbacktow	assets/es_fiat_8340__1977_iveco_zeta.mr	93-114
-vehicle	^kirarollbacktow	assets/es_fiat_8060__1977_iveco_zeta.mr	115-100000
-vehicle	^atlas6x2garbage	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^brutusambulance	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr
-vehicle	^tavanambulance	assets/es_chevy_305_v8__1980_gmc_vandura.mr	0-148
-vehicle	^tavanambulance	assets/es_chevy_250_i6__1980_gmc_vandura.mr	149-160
-vehicle	^tavanambulance	assets/es_chevy_350_truck__1980_gmc_vandura.mr	161-172
-vehicle	^tavanambulance	assets/es_chevy_400_sb__1980_gmc_vandura.mr	173-100000
-vehicle	^atlas6x2tanker	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^atlas6x2dryvan	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^kudaflatbed4x2	assets/es_volvo_d13__2009_renault_magnum_480.mr
-vehicle	^jemusiflatbed	assets/es_continental_ldt465__1970_gmc_m35.mr
-vehicle	^kudadryvan4x2	assets/es_volvo_d13__2009_renault_magnum_480.mr
-vehicle	^brutuswrecker	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr
-vehicle	^gunthoopolice	assets/es_honda_cb250_twin__honda_cb250.mr
-vehicle	^golimarotator	assets/es_cummins_isx15__peterbilt_389.mr
-vehicle	^jemusitanker	assets/es_continental_ldt465__1970_gmc_m35.mr
-vehicle	^atlas4x2semi	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^atlas6x2semi	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^atlas6x4semi	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^atlas8x4dump	assets/es_scania_dsc11__1987_scania_113h.mr
-vehicle	^brutustanker	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr
-vehicle	^longhornsemi	assets/es_volvo_d11__2014_volvo_vnl.mr	0-440
-vehicle	^longhornsemi	assets/es_volvo_d13__2014_volvo_vnl.mr	441-487
-vehicle	^longhornsemi	assets/es_cummins_isx15__2014_volvo_vnl.mr	488-525
-vehicle	^longhornsemi	assets/es_volvo_d16__2014_volvo_vnl.mr	526-100000
-vehicle	^dorywrecker	assets/es_ford_226_rebel__1948_ford_f_1.mr	0-98
-vehicle	^dorywrecker	assets/es_ford_flathead_239__1948_ford_f_1.mr	99-100000
-vehicle	^kiraflatbed	assets/es_fiat_8040__1977_iveco_zeta.mr	0-92
-vehicle	^kiraflatbed	assets/es_fiat_8340__1977_iveco_zeta.mr	93-114
-vehicle	^kiraflatbed	assets/es_fiat_8060__1977_iveco_zeta.mr	115-100000
-vehicle	^monarchlimo	assets/es_olds_307_v8__1987_cadillac_fleetwood.mr
-vehicle	^elisapolice	assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr
-vehicle	^muhanpolice	assets/es_gm_ly2_48__2007_chevrolet_tahoe.mr	0-308
-vehicle	^muhanpolice	assets/es_gm_lmg_53__2007_chevrolet_tahoe.mr	309-362
-vehicle	^muhanpolice	assets/es_gm_l92_62__2007_chevrolet_tahoe.mr	363-100000
+vehicle	^kudalivefishtank4x2	assets/es_volvo_d13__2009_renault_magnum_480.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^longhornrollbackul	assets/es_volvo_d11__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	0-440
+vehicle	^longhornrollbackul	assets/es_volvo_d13__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	441-487
+vehicle	^longhornrollbackul	assets/es_cummins_isx15__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	488-525
+vehicle	^longhornrollbackul	assets/es_volvo_d16__2014_volvo_vnl.mr#exhaust=exhaust/lp1_378.wav	526-100000
+vehicle	^policeinterceptor	assets/es_chrysler_318_la__1975_dodge_coronet.mr#exhaust=exhaust/lp1_450.wav	0-158
+vehicle	^policeinterceptor	assets/es_chrysler_360_la__1975_dodge_coronet.mr#exhaust=exhaust/lp1_450.wav	159-188
+vehicle	^policeinterceptor	assets/es_chrysler_400_b__1975_dodge_coronet.mr#exhaust=exhaust/lp1_450.wav	189-222
+vehicle	^policeinterceptor	assets/es_chrysler_440_rb_police__1975_dodge_coronet.mr#exhaust=exhaust/lp1_378.wav	223-100000
+vehicle	^kudacontainer6x2	assets/es_volvo_d13__2009_renault_magnum_480.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^brutusfireengine	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^longhornrollback	assets/es_volvo_d11__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	0-440
+vehicle	^longhornrollback	assets/es_volvo_d13__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	441-487
+vehicle	^longhornrollback	assets/es_cummins_isx15__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	488-525
+vehicle	^longhornrollback	assets/es_volvo_d16__2014_volvo_vnl.mr#exhaust=exhaust/lp1_378.wav	526-100000
+vehicle	^kirarollbacktow	assets/es_fiat_8040__1977_iveco_zeta.mr#exhaust=exhaust/lp1_636.wav	0-92
+vehicle	^kirarollbacktow	assets/es_fiat_8340__1977_iveco_zeta.mr#exhaust=exhaust/lp1_535.wav	93-114
+vehicle	^kirarollbacktow	assets/es_fiat_8060__1977_iveco_zeta.mr#exhaust=exhaust/lp1_450.wav	115-100000
+vehicle	^atlas6x2garbage	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^brutusambulance	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^tavanambulance	assets/es_chevy_305_v8__1980_gmc_vandura.mr#exhaust=exhaust/lp1_450.wav	0-148
+vehicle	^tavanambulance	assets/es_chevy_250_i6__1980_gmc_vandura.mr#exhaust=exhaust/lp1_535.wav	149-160
+vehicle	^tavanambulance	assets/es_chevy_350_truck__1980_gmc_vandura.mr#exhaust=exhaust/lp1_450.wav	161-172
+vehicle	^tavanambulance	assets/es_chevy_400_sb__1980_gmc_vandura.mr#exhaust=exhaust/lp1_450.wav	173-100000
+vehicle	^atlas6x2tanker	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^atlas6x2dryvan	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^kudaflatbed4x2	assets/es_volvo_d13__2009_renault_magnum_480.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^jemusiflatbed	assets/es_continental_ldt465__1970_gmc_m35.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^kudadryvan4x2	assets/es_volvo_d13__2009_renault_magnum_480.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^brutuswrecker	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^gunthoopolice	assets/es_honda_cb250_twin__honda_cb250.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^golimarotator	assets/es_cummins_isx15__peterbilt_389.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^jemusitanker	assets/es_continental_ldt465__1970_gmc_m35.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^atlas4x2semi	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^atlas6x2semi	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^atlas6x4semi	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^atlas8x4dump	assets/es_scania_dsc11__1987_scania_113h.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^brutustanker	assets/es_mercedes_om934__2014_mercedes_unimog_u5023.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^longhornsemi	assets/es_volvo_d11__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	0-440
+vehicle	^longhornsemi	assets/es_volvo_d13__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	441-487
+vehicle	^longhornsemi	assets/es_cummins_isx15__2014_volvo_vnl.mr#exhaust=exhaust/lp1_450.wav	488-525
+vehicle	^longhornsemi	assets/es_volvo_d16__2014_volvo_vnl.mr#exhaust=exhaust/lp1_378.wav	526-100000
+vehicle	^dorywrecker	assets/es_ford_226_rebel__1948_ford_f_1.mr#exhaust=exhaust/lp1_535.wav	0-98
+vehicle	^dorywrecker	assets/es_ford_flathead_239__1948_ford_f_1.mr#exhaust=exhaust/lp1_535.wav	99-100000
+vehicle	^kiraflatbed	assets/es_fiat_8040__1977_iveco_zeta.mr#exhaust=exhaust/lp1_636.wav	0-92
+vehicle	^kiraflatbed	assets/es_fiat_8340__1977_iveco_zeta.mr#exhaust=exhaust/lp1_535.wav	93-114
+vehicle	^kiraflatbed	assets/es_fiat_8060__1977_iveco_zeta.mr#exhaust=exhaust/lp1_450.wav	115-100000
+vehicle	^monarchlimo	assets/es_olds_307_v8__1987_cadillac_fleetwood.mr#exhaust=exhaust/lp2_636.wav
+vehicle	^elisapolice	assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr#exhaust=exhaust/lp2_757.wav
+vehicle	^muhanpolice	assets/es_gm_ly2_48__2007_chevrolet_tahoe.mr#exhaust=exhaust/lp1_535.wav	0-308
+vehicle	^muhanpolice	assets/es_gm_lmg_53__2007_chevrolet_tahoe.mr#exhaust=exhaust/lp1_535.wav	309-362
+vehicle	^muhanpolice	assets/es_gm_l92_62__2007_chevrolet_tahoe.mr#exhaust=exhaust/lp1_535.wav	363-100000
 vehicle	^zydropolice	-
-vehicle	^roadmaster	assets/es_cummins_nhrbs_743__1955_beck_semi_deck_half_cruiser.mr
-vehicle	^jemusidump	assets/es_continental_ldt465__1970_gmc_m35.mr
-vehicle	^jemusisemi	assets/es_continental_ldt465__1970_gmc_m35.mr
-vehicle	^kiratanker	assets/es_fiat_8040__1977_iveco_zeta.mr	0-92
-vehicle	^kiratanker	assets/es_fiat_8340__1977_iveco_zeta.mr	93-114
-vehicle	^kiratanker	assets/es_fiat_8060__1977_iveco_zeta.mr	115-100000
-vehicle	^nukepolice	assets/es_chrysler_225_slant6__1981_dodge_diplomat.mr	0-108
-vehicle	^nukepolice	assets/es_chrysler_318_la__1981_dodge_diplomat.mr	109-100000
-vehicle	^trophytaxi	assets/es_vaz_2105__1982_lada_2107.mr	0-70
-vehicle	^trophytaxi	assets/es_vaz_2103__1982_lada_2107.mr	71-74
-vehicle	^trophytaxi	assets/es_vaz_2106__1982_lada_2107.mr	75-100000
-vehicle	^formulascm	assets/es_ford_kent_1600__formula_1600.mr
-vehicle	^golimasemi	assets/es_cummins_isx15__peterbilt_389.mr
-vehicle	^scmkartone	assets/es_kart_100_2t__race_car_kart.mr
-vehicle	^towniebus	assets/es_vw_1131_flat4__1950_volkswagen_transporter_t1.mr
-vehicle	^cheetahmk	assets/es_detroit_8v71__1980_mci_mc_9.mr	0-320
-vehicle	^cheetahmk	assets/es_detroit_6v92ta__1980_mci_mc_9.mr	321-100000
-vehicle	^bongobus	assets/es_vw_1600_type1__1972_volkswagen_transporter_t2.mr	0-58
-vehicle	^bongobus	assets/es_vw_1700_type4__1972_volkswagen_transporter_t2.mr	59-100000
-vehicle	^savannah	assets/es_vw_1600_type1__1974_volkswagen_type_181.mr
-vehicle	^nuketaxi	assets/es_chrysler_225_slant6__1981_dodge_diplomat.mr	0-108
-vehicle	^nuketaxi	assets/es_chrysler_318_la__1981_dodge_diplomat.mr	109-100000
-vehicle	^compacty	assets/es_scania_dc9__scania_p_series.mr	0-350
-vehicle	^compacty	assets/es_scania_dc13__scania_p_series.mr	351-100000
-vehicle	^stinger	assets/es_chevy_350_l48__1969_chevrolet_camaro_ss.mr	0-312
-vehicle	^stinger	assets/es_chevy_396_l35__1969_chevrolet_camaro_ss.mr	313-350
-vehicle	^stinger	assets/es_chevy_396_l78__1969_chevrolet_camaro_ss.mr	351-100000
-vehicle	^kirabox	assets/es_fiat_8040__1977_iveco_zeta.mr	0-92
-vehicle	^kirabox	assets/es_fiat_8340__1977_iveco_zeta.mr	93-114
-vehicle	^kirabox	assets/es_fiat_8060__1977_iveco_zeta.mr	115-100000
-vehicle	^kiravan	assets/es_fiat_8040__1977_iveco_zeta.mr	0-92
-vehicle	^kiravan	assets/es_fiat_8340__1977_iveco_zeta.mr	93-114
-vehicle	^kiravan	assets/es_fiat_8060__1977_iveco_zeta.mr	115-100000
-vehicle	^mammoth	assets/es_lambo_l503_52__1986_lamborghini_lm002.mr
-vehicle	^monarch	assets/es_olds_307_v8__1987_cadillac_fleetwood.mr
-vehicle	^panther	assets/es_mazda_b6ze__1989_mazda_mx_5.mr
-vehicle	^aircity	assets/es_iveco_cursor8__2005_irisbus_citelis.mr
-vehicle	^liliput	assets/es_iveco_f1c_30__2009_tecnobus_gulliver.mr
-vehicle	^gunthoo	assets/es_honda_cb250_twin__honda_cb250.mr
-vehicle	^townie	assets/es_vw_1131_flat4__1950_volkswagen_transporter_t1.mr
-vehicle	^cervos	assets/es_chevy_230_i6__1964_chevrolet_impala.mr	0-168
-vehicle	^cervos	assets/es_chevy_283_v8__1964_chevrolet_impala.mr	169-222
-vehicle	^cervos	assets/es_chevy_327_v8__1964_chevrolet_impala.mr	223-295
-vehicle	^cervos	assets/es_chevy_409_w__1964_chevrolet_impala.mr	296-100000
-vehicle	^ranchy	assets/es_chevy_250_i6__1967_chevrolet_c_10.mr	0-162
-vehicle	^ranchy	assets/es_chevy_292_i6__1967_chevrolet_c_10.mr	163-182
-vehicle	^ranchy	assets/es_chevy_283_v8__1967_chevrolet_c_10.mr	183-222
-vehicle	^ranchy	assets/es_chevy_327_v8__1967_chevrolet_c_10.mr	223-100000
-vehicle	^tuscan	assets/es_chevy_153_i4__1969_chevrolet_nova.mr	0-115
-vehicle	^tuscan	assets/es_chevy_230_i6__1969_chevrolet_nova.mr	116-148
-vehicle	^tuscan	assets/es_chevy_250_i6__1969_chevrolet_nova.mr	149-178
-vehicle	^tuscan	assets/es_chevy_307_v8__1969_chevrolet_nova.mr	179-250
-vehicle	^tuscan	assets/es_chevy_350_l48__1969_chevrolet_nova.mr	251-312
-vehicle	^tuscan	assets/es_chevy_396_l35__1969_chevrolet_nova.mr	313-350
-vehicle	^tuscan	assets/es_chevy_396_l78__1969_chevrolet_nova.mr	351-100000
-vehicle	^jemusi	assets/es_continental_ldt465__1970_gmc_m35.mr
-vehicle	^trophy	assets/es_vaz_2105__1982_lada_2107.mr	0-70
-vehicle	^trophy	assets/es_vaz_2103__1982_lada_2107.mr	71-74
-vehicle	^trophy	assets/es_vaz_2106__1982_lada_2107.mr	75-100000
-vehicle	^stagon	assets/es_ford_302_windsor__1983_ford_ltd_country_squire.mr
-vehicle	^fortem	assets/es_porsche_930_32__1984_porsche_911.mr	0-262
-vehicle	^fortem	assets/es_porsche_930_33_turbo__1984_porsche_911.mr	263-100000
-vehicle	^voltex	assets/es_toyota_22re__1990_toyota_pickup.mr	0-132
-vehicle	^voltex	assets/es_toyota_3vze__1990_toyota_pickup.mr	133-100000
-vehicle	^taxi01	assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr
-vehicle	^enfogt	assets/es_volvo_b5254t3__2009_ford_focus_rs.mr
-vehicle	^police	assets/es_chrysler_pentastar_36__2012_dodge_charger.mr	0-331
-vehicle	^police	assets/es_chrysler_hemi_57__2012_dodge_charger.mr	332-100000
-vehicle	^mitage	assets/es_mazda_skyactiv_g20__2012_mazda_cx_5.mr	0-162
-vehicle	^mitage	assets/es_mazda_skyactiv_d22__2012_mazda_cx_5.mr	163-178
-vehicle	^mitage	assets/es_mazda_skyactiv_g25__2012_mazda_cx_5.mr	179-100000
-vehicle	^stella	assets/es_ford_125_sigma__2013_ford_fiesta.mr	0-87
-vehicle	^stella	assets/es_ford_14_sigma__2013_ford_fiesta.mr	88-106
-vehicle	^stella	assets/es_ford_16_sigma__2013_ford_fiesta.mr	107-120
-vehicle	^stella	assets/es_ford_10_ecoboost__2013_ford_fiesta.mr	121-152
-vehicle	^stella	assets/es_ford_16_ecoboost_st__2013_ford_fiesta.mr	153-100000
-vehicle	^spider	assets/es_gm_lt1_62__2014_chevrolet_corvette_c7.mr	0-552
-vehicle	^spider	assets/es_gm_lt4_62__2014_chevrolet_corvette_c7.mr	553-100000
-vehicle	^vulcan	assets/es_volvo_tad881ve__2019_konecranes_smv_25_1200_c.mr
-vehicle	^scooty	assets/es_vespa_150_2t__piaggio_vespa.mr
-vehicle	^tronko	assets/es_volvo_d11__volvo_fm.mr	0-440
-vehicle	^tronko	assets/es_volvo_d13__volvo_fm.mr	441-100000
-vehicle	^raven	assets/es_ford_model_b_33__1932_ford_5_window_coupe.mr	0-58
-vehicle	^raven	assets/es_ford_flathead_221__1932_ford_5_window_coupe.mr	59-100000
-vehicle	^terra	assets/es_cat_d343__1966_caterpillar_769.mr
-vehicle	^pulio	assets/es_ford_300_i6__1967_ford_f_600.mr	0-154
-vehicle	^pulio	assets/es_ford_ft330__1967_ford_f_600.mr	155-200
-vehicle	^pulio	assets/es_ford_fe360_truck__1967_ford_f_600.mr	201-100000
-vehicle	^essam	assets/es_nissan_l24__1969_nissan_fairlady_z.mr	0-153
-vehicle	^essam	assets/es_nissan_s20__1969_nissan_fairlady_z.mr	154-100000
-vehicle	^bongo	assets/es_vw_1600_type1__1972_volkswagen_transporter_t2.mr	0-58
-vehicle	^bongo	assets/es_vw_1700_type4__1972_volkswagen_transporter_t2.mr	59-100000
-vehicle	^campy	assets/es_chrysler_318_la__1979_dodge_ram_van.mr	0-158
-vehicle	^campy	assets/es_chrysler_360_la__1979_dodge_ram_van.mr	159-220
-vehicle	^campy	assets/es_chrysler_440_rb_police__1979_dodge_ram_van.mr	221-100000
-vehicle	^tavan	assets/es_chevy_305_v8__1980_gmc_vandura.mr	0-148
-vehicle	^tavan	assets/es_chevy_250_i6__1980_gmc_vandura.mr	149-160
-vehicle	^tavan	assets/es_chevy_350_truck__1980_gmc_vandura.mr	161-172
-vehicle	^tavan	assets/es_chevy_400_sb__1980_gmc_vandura.mr	173-100000
-vehicle	^daffy	assets/es_citroen_a06_602__1981_citroen_2cv.mr
-vehicle	^micky	assets/es_nissan_ma10__1983_nissan_micra_k10.mr
-vehicle	^titan	assets/es_mack_e6__1987_mack_r_series.mr
-vehicle	^sv200	assets/es_navistar_73_idi__1989_international_3800.mr	0-198
-vehicle	^sv200	assets/es_navistar_dt466__1989_international_3800.mr	199-100000
-vehicle	^vista	assets/es_nissan_rb20det__1989_nissan_skyline_gt_r.mr	0-244
-vehicle	^vista	assets/es_nissan_rb26dett__1989_nissan_skyline_gt_r.mr	245-100000
-vehicle	^magis	assets/es_toyota_2jz_ge__1993_toyota_supra.mr	0-270
-vehicle	^magis	assets/es_toyota_2jz_gte__1993_toyota_supra.mr	271-100000
-vehicle	^elisa	assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr
-vehicle	^muhan	assets/es_gm_ly2_48__2007_chevrolet_tahoe.mr	0-308
-vehicle	^muhan	assets/es_gm_lmg_53__2007_chevrolet_tahoe.mr	309-362
-vehicle	^muhan	assets/es_gm_l92_62__2007_chevrolet_tahoe.mr	363-100000
-vehicle	^dumbi	assets/es_man_d0836_loh__2009_temsa_opalin.mr
-vehicle	^raton	assets/es_lambo_l539_65__2011_lamborghini_aventador_lp_700_4.mr
-vehicle	^maity	assets/es_scania_dc9__scania_p_series.mr	0-350
-vehicle	^maity	assets/es_scania_dc13__scania_p_series.mr	351-100000
-vehicle	^dumpy	assets/es_scania_dc9__scania_p_series.mr	0-350
-vehicle	^dumpy	assets/es_scania_dc13__scania_p_series.mr	351-100000
+vehicle	^roadmaster	assets/es_cummins_nhrbs_743__1955_beck_semi_deck_half_cruiser.mr#exhaust=exhaust/lp1_378.wav
+vehicle	^jemusidump	assets/es_continental_ldt465__1970_gmc_m35.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^jemusisemi	assets/es_continental_ldt465__1970_gmc_m35.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^kiratanker	assets/es_fiat_8040__1977_iveco_zeta.mr#exhaust=exhaust/lp1_636.wav	0-92
+vehicle	^kiratanker	assets/es_fiat_8340__1977_iveco_zeta.mr#exhaust=exhaust/lp1_535.wav	93-114
+vehicle	^kiratanker	assets/es_fiat_8060__1977_iveco_zeta.mr#exhaust=exhaust/lp1_450.wav	115-100000
+vehicle	^nukepolice	assets/es_chrysler_225_slant6__1981_dodge_diplomat.mr#exhaust=exhaust/lp1_535.wav	0-108
+vehicle	^nukepolice	assets/es_chrysler_318_la__1981_dodge_diplomat.mr#exhaust=exhaust/lp1_450.wav	109-100000
+vehicle	^trophytaxi	assets/es_vaz_2105__1982_lada_2107.mr#exhaust=exhaust/lp2_900.wav	0-70
+vehicle	^trophytaxi	assets/es_vaz_2103__1982_lada_2107.mr#exhaust=exhaust/lp2_900.wav	71-74
+vehicle	^trophytaxi	assets/es_vaz_2106__1982_lada_2107.mr#exhaust=exhaust/lp2_900.wav	75-100000
+vehicle	^formulascm	assets/es_ford_kent_1600__formula_1600.mr#exhaust=exhaust/lp1_757.wav
+vehicle	^golimasemi	assets/es_cummins_isx15__peterbilt_389.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^scmkartone	assets/es_kart_100_2t__race_car_kart.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^towniebus	assets/es_vw_1131_flat4__1950_volkswagen_transporter_t1.mr#exhaust=exhaust/lp1_757.wav
+vehicle	^cheetahmk	assets/es_detroit_8v71__1980_mci_mc_9.mr#exhaust=exhaust/lp1_535.wav	0-320
+vehicle	^cheetahmk	assets/es_detroit_6v92ta__1980_mci_mc_9.mr#exhaust=exhaust/lp1_535.wav	321-100000
+vehicle	^bongobus	assets/es_vw_1600_type1__1972_volkswagen_transporter_t2.mr#exhaust=exhaust/lp1_757.wav	0-58
+vehicle	^bongobus	assets/es_vw_1700_type4__1972_volkswagen_transporter_t2.mr#exhaust=exhaust/lp1_636.wav	59-100000
+vehicle	^savannah	assets/es_vw_1600_type1__1974_volkswagen_type_181.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^nuketaxi	assets/es_chrysler_225_slant6__1981_dodge_diplomat.mr#exhaust=exhaust/lp1_535.wav	0-108
+vehicle	^nuketaxi	assets/es_chrysler_318_la__1981_dodge_diplomat.mr#exhaust=exhaust/lp1_450.wav	109-100000
+vehicle	^compacty	assets/es_scania_dc9__scania_p_series.mr#exhaust=exhaust/lp1_535.wav	0-350
+vehicle	^compacty	assets/es_scania_dc13__scania_p_series.mr#exhaust=exhaust/lp1_450.wav	351-100000
+vehicle	^stinger	assets/es_chevy_350_l48__1969_chevrolet_camaro_ss.mr#exhaust=exhaust/lp2_636.wav	0-312
+vehicle	^stinger	assets/es_chevy_396_l35__1969_chevrolet_camaro_ss.mr#exhaust=exhaust/lp2_636.wav	313-350
+vehicle	^stinger	assets/es_chevy_396_l78__1969_chevrolet_camaro_ss.mr#exhaust=exhaust/lp2_636.wav	351-100000
+vehicle	^kirabox	assets/es_fiat_8040__1977_iveco_zeta.mr#exhaust=exhaust/lp1_636.wav	0-92
+vehicle	^kirabox	assets/es_fiat_8340__1977_iveco_zeta.mr#exhaust=exhaust/lp1_535.wav	93-114
+vehicle	^kirabox	assets/es_fiat_8060__1977_iveco_zeta.mr#exhaust=exhaust/lp1_450.wav	115-100000
+vehicle	^kiravan	assets/es_fiat_8040__1977_iveco_zeta.mr#exhaust=exhaust/lp1_636.wav	0-92
+vehicle	^kiravan	assets/es_fiat_8340__1977_iveco_zeta.mr#exhaust=exhaust/lp1_535.wav	93-114
+vehicle	^kiravan	assets/es_fiat_8060__1977_iveco_zeta.mr#exhaust=exhaust/lp1_450.wav	115-100000
+vehicle	^mammoth	assets/es_lambo_l503_52__1986_lamborghini_lm002.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^monarch	assets/es_olds_307_v8__1987_cadillac_fleetwood.mr#exhaust=exhaust/lp2_636.wav
+vehicle	^panther	assets/es_mazda_b6ze__1989_mazda_mx_5.mr#exhaust=exhaust/lp2_900.wav
+vehicle	^aircity	assets/es_iveco_cursor8__2005_irisbus_citelis.mr#exhaust=exhaust/lp1_535.wav
+vehicle	^liliput	assets/es_iveco_f1c_30__2009_tecnobus_gulliver.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^gunthoo	assets/es_honda_cb250_twin__honda_cb250.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^townie	assets/es_vw_1131_flat4__1950_volkswagen_transporter_t1.mr#exhaust=exhaust/lp1_757.wav
+vehicle	^cervos	assets/es_chevy_230_i6__1964_chevrolet_impala.mr#exhaust=exhaust/lp2_757.wav	0-168
+vehicle	^cervos	assets/es_chevy_283_v8__1964_chevrolet_impala.mr#exhaust=exhaust/lp2_757.wav	169-222
+vehicle	^cervos	assets/es_chevy_327_v8__1964_chevrolet_impala.mr#exhaust=exhaust/lp2_636.wav	223-295
+vehicle	^cervos	assets/es_chevy_409_w__1964_chevrolet_impala.mr#exhaust=exhaust/lp2_636.wav	296-100000
+vehicle	^ranchy	assets/es_chevy_250_i6__1967_chevrolet_c_10.mr#exhaust=exhaust/lp1_535.wav	0-162
+vehicle	^ranchy	assets/es_chevy_292_i6__1967_chevrolet_c_10.mr#exhaust=exhaust/lp1_535.wav	163-182
+vehicle	^ranchy	assets/es_chevy_283_v8__1967_chevrolet_c_10.mr#exhaust=exhaust/lp1_535.wav	183-222
+vehicle	^ranchy	assets/es_chevy_327_v8__1967_chevrolet_c_10.mr#exhaust=exhaust/lp1_450.wav	223-100000
+vehicle	^tuscan	assets/es_chevy_153_i4__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_636.wav	0-115
+vehicle	^tuscan	assets/es_chevy_230_i6__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_535.wav	116-148
+vehicle	^tuscan	assets/es_chevy_250_i6__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_535.wav	149-178
+vehicle	^tuscan	assets/es_chevy_307_v8__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_450.wav	179-250
+vehicle	^tuscan	assets/es_chevy_350_l48__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_450.wav	251-312
+vehicle	^tuscan	assets/es_chevy_396_l35__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_450.wav	313-350
+vehicle	^tuscan	assets/es_chevy_396_l78__1969_chevrolet_nova.mr#exhaust=exhaust/lp1_450.wav	351-100000
+vehicle	^jemusi	assets/es_continental_ldt465__1970_gmc_m35.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^trophy	assets/es_vaz_2105__1982_lada_2107.mr#exhaust=exhaust/lp2_900.wav	0-70
+vehicle	^trophy	assets/es_vaz_2103__1982_lada_2107.mr#exhaust=exhaust/lp2_900.wav	71-74
+vehicle	^trophy	assets/es_vaz_2106__1982_lada_2107.mr#exhaust=exhaust/lp2_900.wav	75-100000
+vehicle	^stagon	assets/es_ford_302_windsor__1983_ford_ltd_country_squire.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^fortem	assets/es_porsche_930_32__1984_porsche_911.mr#exhaust=exhaust/lp1_535.wav	0-262
+vehicle	^fortem	assets/es_porsche_930_33_turbo__1984_porsche_911.mr#exhaust=exhaust/lp1_535.wav	263-100000
+vehicle	^voltex	assets/es_toyota_22re__1990_toyota_pickup.mr#exhaust=exhaust/lp1_636.wav	0-132
+vehicle	^voltex	assets/es_toyota_3vze__1990_toyota_pickup.mr#exhaust=exhaust/lp1_636.wav	133-100000
+vehicle	^taxi01	assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr#exhaust=exhaust/lp2_757.wav
+vehicle	^enfogt	assets/es_volvo_b5254t3__2009_ford_focus_rs.mr#exhaust=exhaust/lp2_900.wav
+vehicle	^police	assets/es_chrysler_pentastar_36__2012_dodge_charger.mr#exhaust=exhaust/lp2_900.wav	0-331
+vehicle	^police	assets/es_chrysler_hemi_57__2012_dodge_charger.mr#exhaust=exhaust/lp2_636.wav	332-100000
+vehicle	^mitage	assets/es_mazda_skyactiv_g20__2012_mazda_cx_5.mr#exhaust=exhaust/lp2_900.wav	0-162
+vehicle	^mitage	assets/es_mazda_skyactiv_d22__2012_mazda_cx_5.mr#exhaust=exhaust/lp2_900.wav	163-178
+vehicle	^mitage	assets/es_mazda_skyactiv_g25__2012_mazda_cx_5.mr#exhaust=exhaust/lp2_900.wav	179-100000
+vehicle	^stella	assets/es_ford_125_sigma__2013_ford_fiesta.mr#exhaust=exhaust/lp2_900.wav	0-87
+vehicle	^stella	assets/es_ford_14_sigma__2013_ford_fiesta.mr#exhaust=exhaust/lp2_900.wav	88-106
+vehicle	^stella	assets/es_ford_16_sigma__2013_ford_fiesta.mr#exhaust=exhaust/lp2_900.wav	107-120
+vehicle	^stella	assets/es_ford_10_ecoboost__2013_ford_fiesta.mr#exhaust=exhaust/lp2_900.wav	121-152
+vehicle	^stella	assets/es_ford_16_ecoboost_st__2013_ford_fiesta.mr#exhaust=exhaust/lp2_900.wav	153-100000
+vehicle	^spider	assets/es_gm_lt1_62__2014_chevrolet_corvette_c7.mr#exhaust=exhaust/lp2_636.wav	0-552
+vehicle	^spider	assets/es_gm_lt4_62__2014_chevrolet_corvette_c7.mr#exhaust=exhaust/lp2_636.wav	553-100000
+vehicle	^vulcan	assets/es_volvo_tad881ve__2019_konecranes_smv_25_1200_c.mr#exhaust=exhaust/lp1_535.wav
+vehicle	^scooty	assets/es_vespa_150_2t__piaggio_vespa.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^tronko	assets/es_volvo_d11__volvo_fm.mr#exhaust=exhaust/lp1_450.wav	0-440
+vehicle	^tronko	assets/es_volvo_d13__volvo_fm.mr#exhaust=exhaust/lp1_450.wav	441-100000
+vehicle	^raven	assets/es_ford_model_b_33__1932_ford_5_window_coupe.mr#exhaust=exhaust/lp1_535.wav	0-58
+vehicle	^raven	assets/es_ford_flathead_221__1932_ford_5_window_coupe.mr#exhaust=exhaust/lp1_535.wav	59-100000
+vehicle	^terra	assets/es_cat_d343__1966_caterpillar_769.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^pulio	assets/es_ford_300_i6__1967_ford_f_600.mr#exhaust=exhaust/lp1_535.wav	0-154
+vehicle	^pulio	assets/es_ford_ft330__1967_ford_f_600.mr#exhaust=exhaust/lp1_450.wav	155-200
+vehicle	^pulio	assets/es_ford_fe360_truck__1967_ford_f_600.mr#exhaust=exhaust/lp1_450.wav	201-100000
+vehicle	^essam	assets/es_nissan_l24__1969_nissan_fairlady_z.mr#exhaust=exhaust/lp2_900.wav	0-153
+vehicle	^essam	assets/es_nissan_s20__1969_nissan_fairlady_z.mr#exhaust=exhaust/lp2_900.wav	154-100000
+vehicle	^bongo	assets/es_vw_1600_type1__1972_volkswagen_transporter_t2.mr#exhaust=exhaust/lp1_757.wav	0-58
+vehicle	^bongo	assets/es_vw_1700_type4__1972_volkswagen_transporter_t2.mr#exhaust=exhaust/lp1_636.wav	59-100000
+vehicle	^campy	assets/es_chrysler_318_la__1979_dodge_ram_van.mr#exhaust=exhaust/lp1_450.wav	0-158
+vehicle	^campy	assets/es_chrysler_360_la__1979_dodge_ram_van.mr#exhaust=exhaust/lp1_450.wav	159-220
+vehicle	^campy	assets/es_chrysler_440_rb_police__1979_dodge_ram_van.mr#exhaust=exhaust/lp1_378.wav	221-100000
+vehicle	^tavan	assets/es_chevy_305_v8__1980_gmc_vandura.mr#exhaust=exhaust/lp1_450.wav	0-148
+vehicle	^tavan	assets/es_chevy_250_i6__1980_gmc_vandura.mr#exhaust=exhaust/lp1_535.wav	149-160
+vehicle	^tavan	assets/es_chevy_350_truck__1980_gmc_vandura.mr#exhaust=exhaust/lp1_450.wav	161-172
+vehicle	^tavan	assets/es_chevy_400_sb__1980_gmc_vandura.mr#exhaust=exhaust/lp1_450.wav	173-100000
+vehicle	^daffy	assets/es_citroen_a06_602__1981_citroen_2cv.mr#exhaust=exhaust/lp2_900.wav
+vehicle	^micky	assets/es_nissan_ma10__1983_nissan_micra_k10.mr#exhaust=exhaust/lp2_900.wav
+vehicle	^titan	assets/es_mack_e6__1987_mack_r_series.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^sv200	assets/es_navistar_73_idi__1989_international_3800.mr#exhaust=exhaust/lp1_535.wav	0-198
+vehicle	^sv200	assets/es_navistar_dt466__1989_international_3800.mr#exhaust=exhaust/lp1_535.wav	199-100000
+vehicle	^vista	assets/es_nissan_rb20det__1989_nissan_skyline_gt_r.mr#exhaust=exhaust/lp2_900.wav	0-244
+vehicle	^vista	assets/es_nissan_rb26dett__1989_nissan_skyline_gt_r.mr#exhaust=exhaust/lp2_900.wav	245-100000
+vehicle	^magis	assets/es_toyota_2jz_ge__1993_toyota_supra.mr#exhaust=exhaust/lp2_900.wav	0-270
+vehicle	^magis	assets/es_toyota_2jz_gte__1993_toyota_supra.mr#exhaust=exhaust/lp2_900.wav	271-100000
+vehicle	^elisa	assets/es_ford_46_modular_2v__2003_ford_crown_victoria.mr#exhaust=exhaust/lp2_757.wav
+vehicle	^muhan	assets/es_gm_ly2_48__2007_chevrolet_tahoe.mr#exhaust=exhaust/lp1_535.wav	0-308
+vehicle	^muhan	assets/es_gm_lmg_53__2007_chevrolet_tahoe.mr#exhaust=exhaust/lp1_535.wav	309-362
+vehicle	^muhan	assets/es_gm_l92_62__2007_chevrolet_tahoe.mr#exhaust=exhaust/lp1_535.wav	363-100000
+vehicle	^dumbi	assets/es_man_d0836_loh__2009_temsa_opalin.mr#exhaust=exhaust/lp1_535.wav
+vehicle	^raton	assets/es_lambo_l539_65__2011_lamborghini_aventador_lp_700_4.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^maity	assets/es_scania_dc9__scania_p_series.mr#exhaust=exhaust/lp1_535.wav	0-350
+vehicle	^maity	assets/es_scania_dc13__scania_p_series.mr#exhaust=exhaust/lp1_450.wav	351-100000
+vehicle	^dumpy	assets/es_scania_dc9__scania_p_series.mr#exhaust=exhaust/lp1_535.wav	0-350
+vehicle	^dumpy	assets/es_scania_dc13__scania_p_series.mr#exhaust=exhaust/lp1_450.wav	351-100000
 vehicle	^pulse	-
 vehicle	^zydro	-
-vehicle	^dory	assets/es_ford_226_rebel__1948_ford_f_1.mr	0-98
-vehicle	^dory	assets/es_ford_flathead_239__1948_ford_f_1.mr	99-100000
-vehicle	^koma	assets/es_bmc_a_998__1965_austin_mini_cooper.mr	0-64
-vehicle	^koma	assets/es_bmc_a_1275s__1965_austin_mini_cooper.mr	65-100000
-vehicle	^boxy	assets/es_chevy_250_i6__1971_chevrolet_p30_step_van.mr	0-160
-vehicle	^boxy	assets/es_chevy_350_truck__1971_chevrolet_p30_step_van.mr	161-168
-vehicle	^boxy	assets/es_chevy_292_i6__1971_chevrolet_p30_step_van.mr	169-100000
-vehicle	^nuke	assets/es_chrysler_225_slant6__1981_dodge_diplomat.mr	0-108
-vehicle	^nuke	assets/es_chrysler_318_la__1981_dodge_diplomat.mr	109-100000
-vehicle	^hana	assets/es_ford_300_i6__1982_ford_f_150_xl.mr	0-122
-vehicle	^hana	assets/es_ford_255_v8__1982_ford_f_150_xl.mr	123-126
-vehicle	^hana	assets/es_ford_302_windsor__1982_ford_f_150_xl.mr	127-133
-vehicle	^hana	assets/es_ford_351w__1982_ford_f_150_xl.mr	134-100000
-vehicle	^lobo	assets/es_mercedes_om422__1983_steinwinter_supercargo_2040.mr
-vehicle	^bora	assets/es_subaru_ek23__1985_subaru_sambar.mr
-vehicle	^vani	assets/es_chrysler_225_slant6__1986_dodge_ram_van.mr	0-108
-vehicle	^vani	assets/es_chrysler_318_la__1986_dodge_ram_van.mr	109-158
-vehicle	^vani	assets/es_chrysler_360_la__1986_dodge_ram_van.mr	159-100000
-vehicle	^duke	assets/es_olds_307_v8__1987_buick_gnx.mr	0-208
-vehicle	^duke	assets/es_buick_38_lc2__1987_buick_gnx.mr	209-100000
-vehicle	^zino	assets/es_bmw_s14_23__1991_bmw_m3_e30.mr	0-224
-vehicle	^zino	assets/es_bmw_s14_25_evo__1991_bmw_m3_e30.mr	225-100000
-vehicle	^nimo	assets/es_ford_46_modular_2v__2003_lincoln_town_car_stretched_limousine.mr
-vehicle	^ambi	assets/es_ford_60_powerstroke__2008_ford_e_series.mr	0-237
-vehicle	^ambi	assets/es_ford_46_modular_2v__2008_ford_e_series.mr	238-250
-vehicle	^ambi	assets/es_ford_54_triton_2v__2008_ford_e_series.mr	251-282
-vehicle	^ambi	assets/es_ford_68_triton_v10__2008_ford_e_series.mr	283-100000
-vehicle	^kuda	assets/es_volvo_d13__2009_renault_magnum_480.mr
-vehicle	^dabo	assets/es_daewoo_f8c__2014_daewoo_labo.mr
-vehicle	^zero	assets/es_yamaha_cp4_998__2015_yamaha_yzf_r1.mr
-vehicle	^cora	assets/es_bmw_n55_m2__2016_bmw_m2.mr
-vehicle	^mixi	assets/es_scania_dc9__scania_p_series.mr	0-350
-vehicle	^mixi	assets/es_scania_dc13__scania_p_series.mr	351-100000
+vehicle	^dory	assets/es_ford_226_rebel__1948_ford_f_1.mr#exhaust=exhaust/lp1_535.wav	0-98
+vehicle	^dory	assets/es_ford_flathead_239__1948_ford_f_1.mr#exhaust=exhaust/lp1_535.wav	99-100000
+vehicle	^koma	assets/es_bmc_a_998__1965_austin_mini_cooper.mr#exhaust=exhaust/lp2_900.wav	0-64
+vehicle	^koma	assets/es_bmc_a_1275s__1965_austin_mini_cooper.mr#exhaust=exhaust/lp2_900.wav	65-100000
+vehicle	^boxy	assets/es_chevy_250_i6__1971_chevrolet_p30_step_van.mr#exhaust=exhaust/lp1_535.wav	0-160
+vehicle	^boxy	assets/es_chevy_350_truck__1971_chevrolet_p30_step_van.mr#exhaust=exhaust/lp1_450.wav	161-168
+vehicle	^boxy	assets/es_chevy_292_i6__1971_chevrolet_p30_step_van.mr#exhaust=exhaust/lp1_535.wav	169-100000
+vehicle	^nuke	assets/es_chrysler_225_slant6__1981_dodge_diplomat.mr#exhaust=exhaust/lp1_535.wav	0-108
+vehicle	^nuke	assets/es_chrysler_318_la__1981_dodge_diplomat.mr#exhaust=exhaust/lp1_450.wav	109-100000
+vehicle	^hana	assets/es_ford_300_i6__1982_ford_f_150_xl.mr#exhaust=exhaust/lp1_450.wav	0-122
+vehicle	^hana	assets/es_ford_255_v8__1982_ford_f_150_xl.mr#exhaust=exhaust/lp1_535.wav	123-126
+vehicle	^hana	assets/es_ford_302_windsor__1982_ford_f_150_xl.mr#exhaust=exhaust/lp1_450.wav	127-133
+vehicle	^hana	assets/es_ford_351w__1982_ford_f_150_xl.mr#exhaust=exhaust/lp1_450.wav	134-100000
+vehicle	^lobo	assets/es_mercedes_om422__1983_steinwinter_supercargo_2040.mr#exhaust=exhaust/lp1_378.wav
+vehicle	^bora	assets/es_subaru_ek23__1985_subaru_sambar.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^vani	assets/es_chrysler_225_slant6__1986_dodge_ram_van.mr#exhaust=exhaust/lp1_535.wav	0-108
+vehicle	^vani	assets/es_chrysler_318_la__1986_dodge_ram_van.mr#exhaust=exhaust/lp1_450.wav	109-158
+vehicle	^vani	assets/es_chrysler_360_la__1986_dodge_ram_van.mr#exhaust=exhaust/lp1_450.wav	159-100000
+vehicle	^duke	assets/es_olds_307_v8__1987_buick_gnx.mr#exhaust=exhaust/lp1_535.wav	0-208
+vehicle	^duke	assets/es_buick_38_lc2__1987_buick_gnx.mr#exhaust=exhaust/lp1_535.wav	209-100000
+vehicle	^zino	assets/es_bmw_s14_23__1991_bmw_m3_e30.mr#exhaust=exhaust/lp2_900.wav	0-224
+vehicle	^zino	assets/es_bmw_s14_25_evo__1991_bmw_m3_e30.mr#exhaust=exhaust/lp2_900.wav	225-100000
+vehicle	^nimo	assets/es_ford_46_modular_2v__2003_lincoln_town_car_stretched_limousine.mr#exhaust=exhaust/lp2_757.wav
+vehicle	^ambi	assets/es_ford_60_powerstroke__2008_ford_e_series.mr#exhaust=exhaust/lp1_535.wav	0-237
+vehicle	^ambi	assets/es_ford_46_modular_2v__2008_ford_e_series.mr#exhaust=exhaust/lp1_535.wav	238-250
+vehicle	^ambi	assets/es_ford_54_triton_2v__2008_ford_e_series.mr#exhaust=exhaust/lp1_535.wav	251-282
+vehicle	^ambi	assets/es_ford_68_triton_v10__2008_ford_e_series.mr#exhaust=exhaust/lp1_450.wav	283-100000
+vehicle	^kuda	assets/es_volvo_d13__2009_renault_magnum_480.mr#exhaust=exhaust/lp1_450.wav
+vehicle	^dabo	assets/es_daewoo_f8c__2014_daewoo_labo.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^zero	assets/es_yamaha_cp4_998__2015_yamaha_yzf_r1.mr#exhaust=exhaust/lp1_900.wav
+vehicle	^cora	assets/es_bmw_n55_m2__2016_bmw_m2.mr#exhaust=exhaust/lp2_900.wav
+vehicle	^mixi	assets/es_scania_dc9__scania_p_series.mr#exhaust=exhaust/lp1_535.wav	0-350
+vehicle	^mixi	assets/es_scania_dc13__scania_p_series.mr#exhaust=exhaust/lp1_450.wav	351-100000
 vehicle	^evan	-
-vehicle	^fox	assets/es_willys_go_devil__1945_willys_mb.mr
-vehicle	^fl1	assets/es_cummins_ntc_big_cam__1985_freightliner_fla.mr	0-392
-vehicle	^fl1	assets/es_detroit_8v92__1985_freightliner_fla.mr	393-100000
-vehicle	^neo	assets/es_lancia_831e5_20t__1992_lancia_delta_hf_integrale_evo.mr
-vehicle	^srt	assets/es_scania_dc13__scania_prt_380.mr
+vehicle	^fox	assets/es_willys_go_devil__1945_willys_mb.mr#exhaust=exhaust/lp1_636.wav
+vehicle	^fl1	assets/es_cummins_ntc_big_cam__1985_freightliner_fla.mr#exhaust=exhaust/lp1_450.wav	0-392
+vehicle	^fl1	assets/es_detroit_8v92__1985_freightliner_fla.mr#exhaust=exhaust/lp1_450.wav	393-100000
+vehicle	^neo	assets/es_lancia_831e5_20t__1992_lancia_delta_hf_integrale_evo.mr#exhaust=exhaust/lp2_900.wav
+vehicle	^srt	assets/es_scania_dc13__scania_prt_380.mr#exhaust=exhaust/lp1_450.wav
 asset	electric|battery|e-?motor|(^|[^a-z])ev([^a-z]|$)	-
-asset	2jz	assets/es_toyota_2jz_gte.mr
-asset	rb2[0568]	assets/es_nissan_rb26dett.mr
-asset	(^|[^a-z0-9])[sn]5[02-8]([^0-9]|$)|b58	assets/es_bmw_n55_m2.mr
-asset	smal+-?block|302	assets/es_ford_302_windsor.mr	0-207
-asset	smal+-?block|302	assets/es_ford_351w.mr	208-100000
-asset	hemi|392	assets/es_chrysler_hemi_57.mr
-asset	81bb|454|427|big-?block	assets/es_chrysler_440_rb_police.mr
-asset	v10	assets/es_ford_68_triton_v10.mr
-asset	v12|ferrari_275	assets/es_lambo_l539_65.mr
-asset	v6	assets/es_buick_38_lc2.mr
-asset	(^|[^a-z0-9])v8	assets/es_chevy_350_l48.mr
-asset	kart	assets/es_kart_100_2t.mr
-asset	scooter|2-?stroke|moped	assets/es_vespa_150_2t.mr
-asset	bike_?i4	assets/es_yamaha_cp4_998.mr
-asset	bike|(^|[^a-z0-9])h2_	assets/es_honda_cb250_twin.mr
-asset	i4sport	assets/es_mazda_b6ze.mr
-asset	(^|[^a-z0-9])[il]4|inline-?4	assets/es_ford_14_sigma.mr
-asset	(^|[^a-z0-9])[il]6|inline-?6	assets/es_bmw_n55_m2.mr
-asset	(^|[^a-z0-9])[il]5	assets/es_volvo_b5254t3.mr
-asset	heavymachine	assets/es_volvo_d11.mr	0-396
-asset	heavymachine	assets/es_volvo_d13.mr	397-100000
-asset	heavyduty	assets/es_iveco_cursor8.mr	0-301
-asset	heavyduty	assets/es_cummins_isx15.mr	302-487
-asset	heavyduty	assets/es_volvo_d16.mr	488-100000
-asset	mediumduty	assets/es_navistar_dt466.mr	0-217
-asset	mediumduty	assets/es_man_d0836_loh.mr	218-269
-asset	mediumduty	assets/es_iveco_cursor8.mr	270-100000
-asset	bus	assets/es_iveco_f1c_30.mr	0-179
-asset	bus	assets/es_man_d0836_loh.mr	180-262
-asset	bus	assets/es_iveco_cursor8.mr	263-346
-asset	bus	assets/es_volvo_d11.mr	347-100000
-asset	diesel|truck	assets/es_man_d0836_loh.mr
+asset	2jz	assets/es_toyota_2jz_gte.mr#exhaust=exhaust/lp2_900.wav
+asset	rb2[0568]	assets/es_nissan_rb26dett.mr#exhaust=exhaust/lp2_900.wav
+asset	(^|[^a-z0-9])[sn]5[02-8]([^0-9]|$)|b58	assets/es_bmw_n55_m2.mr#exhaust=exhaust/lp2_900.wav
+asset	smal+-?block|302	assets/es_ford_302_windsor.mr#exhaust=exhaust/lp1_450.wav	0-207
+asset	smal+-?block|302	assets/es_ford_351w.mr#exhaust=exhaust/lp1_450.wav	208-100000
+asset	hemi|392	assets/es_chrysler_hemi_57.mr#exhaust=exhaust/lp2_636.wav
+asset	81bb|454|427|big-?block	assets/es_chrysler_440_rb_police.mr#exhaust=exhaust/lp1_378.wav
+asset	v10	assets/es_ford_68_triton_v10.mr#exhaust=exhaust/lp1_450.wav
+asset	v12|ferrari_275	assets/es_lambo_l539_65.mr#exhaust=exhaust/lp1_450.wav
+asset	v6	assets/es_buick_38_lc2.mr#exhaust=exhaust/lp1_535.wav
+asset	(^|[^a-z0-9])v8	assets/es_chevy_350_l48.mr#exhaust=exhaust/lp2_636.wav
+asset	kart	assets/es_kart_100_2t.mr#exhaust=exhaust/lp1_900.wav
+asset	scooter|2-?stroke|moped	assets/es_vespa_150_2t.mr#exhaust=exhaust/lp1_900.wav
+asset	bike_?i4	assets/es_yamaha_cp4_998.mr#exhaust=exhaust/lp1_900.wav
+asset	bike|(^|[^a-z0-9])h2_	assets/es_honda_cb250_twin.mr#exhaust=exhaust/lp1_900.wav
+asset	i4sport	assets/es_mazda_b6ze.mr#exhaust=exhaust/lp2_900.wav
+asset	(^|[^a-z0-9])[il]4|inline-?4	assets/es_ford_14_sigma.mr#exhaust=exhaust/lp2_900.wav
+asset	(^|[^a-z0-9])[il]6|inline-?6	assets/es_bmw_n55_m2.mr#exhaust=exhaust/lp2_900.wav
+asset	(^|[^a-z0-9])[il]5	assets/es_volvo_b5254t3.mr#exhaust=exhaust/lp2_900.wav
+asset	heavymachine	assets/es_volvo_d11.mr#exhaust=exhaust/lp1_450.wav	0-396
+asset	heavymachine	assets/es_volvo_d13.mr#exhaust=exhaust/lp1_450.wav	397-100000
+asset	heavyduty	assets/es_iveco_cursor8.mr#exhaust=exhaust/lp1_535.wav	0-301
+asset	heavyduty	assets/es_cummins_isx15.mr#exhaust=exhaust/lp1_450.wav	302-487
+asset	heavyduty	assets/es_volvo_d16.mr#exhaust=exhaust/lp1_378.wav	488-100000
+asset	mediumduty	assets/es_navistar_dt466.mr#exhaust=exhaust/lp1_535.wav	0-217
+asset	mediumduty	assets/es_man_d0836_loh.mr#exhaust=exhaust/lp1_535.wav	218-269
+asset	mediumduty	assets/es_iveco_cursor8.mr#exhaust=exhaust/lp1_535.wav	270-100000
+asset	bus	assets/es_iveco_f1c_30.mr#exhaust=exhaust/lp1_636.wav	0-179
+asset	bus	assets/es_man_d0836_loh.mr#exhaust=exhaust/lp1_535.wav	180-262
+asset	bus	assets/es_iveco_cursor8.mr#exhaust=exhaust/lp1_535.wav	263-346
+asset	bus	assets/es_volvo_d11.mr#exhaust=exhaust/lp1_450.wav	347-100000
+asset	diesel|truck	assets/es_man_d0836_loh.mr#exhaust=exhaust/lp1_535.wav
 cue	/electric/	-
-cue	2stroke|chainsaw	assets/es_vespa_150_2t.mr
-cue	/bike/i4	assets/es_yamaha_cp4_998.mr
-cue	/bike/	assets/es_honda_cb250_twin.mr
-cue	i4sport	assets/es_mazda_b6ze.mr
-cue	v6sport	assets/es_buick_38_lc2.mr
-cue	/v12/	assets/es_lambo_l539_65.mr
-cue	truck|midduty	assets/es_navistar_dt466.mr
-maxrpm	11000-40000	assets/es_yamaha_cp4_998.mr
-maxrpm	7600-10999	assets/es_mazda_b6ze.mr
-maxrpm	0-3300	assets/es_cummins_isx15.mr
-maxrpm	3301-4800	assets/es_chevy_350_truck.mr
-maxrpm	4801-7599	assets/es_chevy_350_l48.mr
+cue	2stroke|chainsaw	assets/es_vespa_150_2t.mr#exhaust=exhaust/lp1_900.wav
+cue	/bike/i4	assets/es_yamaha_cp4_998.mr#exhaust=exhaust/lp1_900.wav
+cue	/bike/	assets/es_honda_cb250_twin.mr#exhaust=exhaust/lp1_900.wav
+cue	i4sport	assets/es_mazda_b6ze.mr#exhaust=exhaust/lp2_900.wav
+cue	v6sport	assets/es_buick_38_lc2.mr#exhaust=exhaust/lp1_535.wav
+cue	/v12/	assets/es_lambo_l539_65.mr#exhaust=exhaust/lp1_450.wav
+cue	truck|midduty	assets/es_navistar_dt466.mr#exhaust=exhaust/lp1_535.wav
+maxrpm	11000-40000	assets/es_yamaha_cp4_998.mr#exhaust=exhaust/lp1_900.wav
+maxrpm	7600-10999	assets/es_mazda_b6ze.mr#exhaust=exhaust/lp2_900.wav
+maxrpm	0-3300	assets/es_cummins_isx15.mr#exhaust=exhaust/lp1_450.wav
+maxrpm	3301-4800	assets/es_chevy_350_truck.mr#exhaust=exhaust/lp1_450.wav
+maxrpm	4801-7599	assets/es_chevy_350_l48.mr#exhaust=exhaust/lp2_636.wav

@@ -40,6 +40,26 @@ class AudioMixTests(unittest.TestCase):
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
         self.assertIn('audio.levelerMaxGain = EngineSimLevelerMaxGain;', backend)
         self.assertIn('engine_loudness_gain_db(', backend)
+        # The leveler may lift a quiet raw signal this far: the unfired crank of
+        # a key turn is one (at x64 it played 20-36 dB under the idle: silence,
+        # then the engine, "binary on/off" in game).
+        reach = re.search(r'EngineSimLevelerMaxGain = (\d+)\.0f;', backend)
+        self.assertTrue(reach)
+        self.assertGreaterEqual(int(reach.group(1)), 1024)
+        # The level glides, fast up and slow down, and is silent until the first
+        # advance() says how loud (a read before it took 0 dB: a loud blip).
+        self.assertIn('glide_loudness_gain(m_loudnessGain, target,', backend)
+        self.assertIn('std::atomic<double> m_targetLoudnessGain{0.0};', backend)
+        self.assertIn('if (read == 0) return 0;', backend)
+        self.assertLess(backend.index('if (read == 0) return 0;'),
+                        backend.index('if (m_loudnessGain < 0) m_loudnessGain = target;'))
+        # The key turn is heard: cranked whether or not the game's ignition flag
+        # is up yet, driven at the game's rpm until the engine first catches.
+        self.assertIn('starter_engaged(m_starterEngaged, combustion, m_hasRun,', backend)
+        self.assertIn('const bool crankingUnfired = !combustion && !m_hasRun && targetRpm < starterReleaseRpm;',
+                      backend)
+        self.assertIn('m_simulator->m_dyno.m_enabled = combustion || crankingUnfired;', backend)
+        self.assertNotIn('m_dyno.m_enabled = combustion;', backend)
         # Size, from the simulated engine's own displacement: one rule for all.
         self.assertIn('engine_class_loudness_db(m_engine->getDisplacement() * 1000.0)', backend)
         self.assertNotIn('LoudnessLeveler', backend)

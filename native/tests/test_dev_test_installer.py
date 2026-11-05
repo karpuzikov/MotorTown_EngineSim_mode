@@ -44,6 +44,7 @@ class DevInstallerBehaviorTests(unittest.TestCase):
                 'ENGINE_SIM_LICENSE.txt',
                 'assets/es_chevy_350_l48.mr', 'assets/es_volvo_d13.mr', 'assets/es_volvo_d13.boost.json',
                 'assets/sound-library/smooth/smooth_39.wav',
+                'assets/sound-library/exhaust/lp1_450.wav',
                 'es/engine_sim.mr',
             ):
                 path = stage / relative
@@ -63,6 +64,8 @@ class DevInstallerBehaviorTests(unittest.TestCase):
                              'staged:dlls/boost_filesystem-vc143-mt-x64-1_92.dll')
             self.assertIn('Exporter v0.2.28 active', (mod / 'Scripts/main.lua').read_text())
             self.assertTrue((mod / 'assets/sound-library/smooth/smooth_39.wav').is_file())
+            self.assertTrue((mod / 'assets/sound-library/exhaust/lp1_450.wav').is_file(),
+                            "Every car's exhaust response is installed with the profiles")
             self.assertTrue((mod / 'engine_families.tsv').is_file())
             self.assertEqual((mod / 'settings.ini').read_text(), 'volume = 0.4\n',
                              "An update must keep the player's volume setting")

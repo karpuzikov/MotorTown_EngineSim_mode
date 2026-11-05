@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 using namespace mtes;
@@ -65,6 +66,20 @@ int main(int argc, char **argv) {
     assert(impulse_wav_path(script.string(), "").empty());
 
     for (int i = 1; i < argc; ++i) {
-        assert(load_impulse_wav(argv[i]).size() > 100);
+        const std::string argument = argv[i];
+        const std::string packaged = "packaged:";
+        if (argument.compare(0, packaged.size(), packaged) == 0) {
+            // A response the mod ships (an exhaust rule's): short by design (a
+            // low-pass of a few tens of milliseconds), loadable, and with
+            // samples the synthesizer keeps. Engine Simulator caps a response
+            // at 10000 samples and trims its tail at 100 of 32767.
+            const auto samples = load_impulse_wav(argument.substr(packaged.size()));
+            assert(usable_impulse_for_engine_sim(samples));
+            assert(samples.size() > 20 && samples.size() < 10000);
+            assert(samples.back() > 100 || samples.back() < -100);
+        }
+        else {
+            assert(load_impulse_wav(argument).size() > 100);
+        }
     }
 }

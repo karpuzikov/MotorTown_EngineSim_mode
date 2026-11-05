@@ -73,6 +73,20 @@ inline constexpr double LoudnessDbPerDecadeOfRpm = 15.0;
 inline constexpr double LoudnessDbWithClosedThrottle = 6.0;
 inline constexpr double LoudnessFloorDb = -40.0;
 
+// The level follows the pedal and rpm with a one-pole glide: quickly up, so a
+// blip is heard, slowly down, as an engine's note and exhaust pressure fall
+// when the pedal is lifted. The 80 ms glide both ways made every lift and shift
+// a 4-6 dB step in the recording of the Scania (2026-11-05): "random volume
+// drops".
+inline constexpr double LoudnessRiseSeconds = 0.10;
+inline constexpr double LoudnessFallSeconds = 0.40;
+
+// One output sample (dt seconds) of the glide from gain towards target.
+inline double glide_loudness_gain(double gain, double target, double dt) {
+    const double seconds = target > gain ? LoudnessRiseSeconds : LoudnessFallSeconds;
+    return gain + (target - gain) * (dt / seconds);
+}
+
 // Engines differ in size, and the leveler hides that too: a kei truck's 0.66 L
 // would play as loud as an industrial 20 L diesel. A real engine's sound power
 // follows its power, and power follows displacement: 10 dB per decade, one rule

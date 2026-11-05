@@ -27,9 +27,11 @@ class CrankSpeedFollowerTests(unittest.TestCase):
         backend = (ROOT / 'src/engine_sim_backend.cpp').read_text()
         self.assertIn('m_follower.update(', backend)
         # The dynamometer is no rigid hold: it brakes above the game's rpm and
-        # motors only an engine that cannot keep up, or (for a quarter second)
-        # one that just joined a running car and has not fired yet.
-        self.assertIn('const bool held = m_motoring || m_secondsHeldAtGameRpm > 0.0;', backend)
+        # motors only an engine that cannot keep up, the unfired crank of the
+        # first key turn, or (for a quarter second) one that just joined a
+        # running car and has not fired yet.
+        self.assertIn('const bool driven = m_motoring || crankingUnfired;', backend)
+        self.assertIn('const bool held = driven || m_secondsHeldAtGameRpm > 0.0;', backend)
         self.assertIn('m_simulator->m_dyno.m_hold = held;', backend)
         self.assertNotIn('m_dyno.m_hold = true', backend)
         for forbidden in ('use_real_spec_sound', 'FiringHarmonicCut',

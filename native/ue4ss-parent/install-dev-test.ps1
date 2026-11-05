@@ -47,6 +47,7 @@ $required = @(
     'engine_profiles.tsv', 'engine_families.tsv', 'settings.ini', 'ENGINE_SIM_LICENSE.txt',
     'assets\es_chevy_350_l48.mr', 'assets\es_volvo_d13.mr', 'assets\es_volvo_d13.boost.json',
     'assets\sound-library\smooth\smooth_39.wav',
+    'assets\sound-library\exhaust\lp1_450.wav',
     'es\engine_sim.mr'
 )
 foreach ($relative in $required) {

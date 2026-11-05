@@ -3,6 +3,7 @@
 #include "crank_speed_follower.h"
 #include "profile_level.h"
 #include "real_spec_profile.h"
+#include "starter_policy.h"
 
 #include "compiler.h"
 #include "crankshaft.h"
@@ -39,18 +40,14 @@ constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
 // than the sporty one the generated engines used before, and x8 then left the
 // Mercedes OM 422 diesel 10 dB under the rest of 28 engines (11 dB spread; at
 // x64 the spread is 3 dB). The leveler attacks at once, so the cap only matters
-// for engines whose raw output is quiet.
-constexpr float EngineSimLevelerMaxGain = 64.0f;
+// for engines whose raw output is quiet. One of those is the unfired crank of
+// the key turn: at x64 it played 20-36 dB under the idle (silence, then the
+// engine: "binary on/off" in game); at x1024 it is 10-15 dB under it on every
+// engine measured (V8, six, four, diesels, bikes), where the level laws below
+// put it, and the idle itself does not change (offline, 2026-11-05).
+constexpr float EngineSimLevelerMaxGain = 1024.0f;
 // Volume of a rule's own exhaust response (#exhaust=), when it names one.
 constexpr double VehicleExhaustImpulseVolume = 0.02;
-// The starter cranks until the crank turns at this multiple of its own speed
-// or half the game's rpm, whichever is higher; then the engine runs by itself.
-// It cranks again only if the engine falls under this fraction of that speed
-// (a one-cylinder engine's speed swings across a single threshold).
-constexpr double StarterReleaseOfStarterSpeed = 1.2;
-constexpr double StarterReleaseOfGameRpm = 0.5;
-constexpr double StarterReengageFraction = 0.6;
-
 // Motor Town simulates a drivetrain; Engine Simulator here does not. Its
 // dynamometer stands in for it, but only at the extremes, so the engine's own
 // combustion keeps shaping its crank speed (a rigid hold removed ~10 dB of
@@ -63,7 +60,6 @@ constexpr double DrivetrainBrakeMarginAboveGameRpm = 0.10;
 constexpr double DrivetrainMotoringBelowGameRpm = 0.15;
 constexpr double DrivetrainMotoringReleasedBelowGameRpm = 0.05;
 constexpr double DrivetrainMotoringDwellSeconds = 0.3;
-constexpr double LoudnessGlideSeconds = 0.08;
 
 // A car that already runs when it gets this simulator (traffic that came into
 // earshot) must not be heard starting: the starter, a wide-open pedal and an
@@ -171,6 +167,7 @@ public:
             m_rpmScale = profile_rpm_scale(script);
             m_follower.reset();
             m_starterEngaged = true;
+            m_hasRun = false;
             m_motoring = false;
             m_secondsFarBelowGameRpm = 0.0;
             m_loudnessGain = -1.0; // first read() jumps to the target
@@ -226,9 +223,8 @@ public:
             gameRpm * m_rpmScale, m_gameMaxRpm * m_rpmScale, redlineRpm);
         m_targetLoudnessGain.store(std::pow(10.0,
             (engine_loudness_gain_db(targetRpm, redlineRpm, throttle) + m_classLoudnessDb) / 20.0));
-        const double starterReleaseRpm = std::max(
-            StarterReleaseOfStarterSpeed * std::abs(m_engine->getStarterSpeed()) / units::rpm(1.0),
-            StarterReleaseOfGameRpm * targetRpm);
+        const double starterReleaseRpm = starter_release_rpm(
+            m_engine->getStarterSpeed() / units::rpm(1.0), targetRpm);
 
         // The engine runs free, as in the Engine Simulator application: ignition
         // on or off, the starter while it is cranking, no clutch (neutral), so
@@ -238,11 +234,16 @@ public:
         m_transmission->setClutchPressure(0.0);
         if (!combustion) {
             m_follower.reset();
-            m_starterEngaged = true; // the next key turn cranks
+            m_starterEngaged = !m_hasRun; // the first key turn cranks, fired or not
             m_motoring = false;
             m_secondsFarBelowGameRpm = 0.0;
         }
-        m_simulator->m_dyno.m_enabled = combustion;
+        // The key turn before the engine first catches is cranked unfired and
+        // driven at the game's speed: the starter alone stalled the 13-litre
+        // diesel on its compression within 0.8 s (silence), as the generated
+        // starter (200 lb-ft for every engine) is far under such an engine's need.
+        const bool crankingUnfired = !combustion && !m_hasRun && targetRpm < starterReleaseRpm;
+        m_simulator->m_dyno.m_enabled = combustion || crankingUnfired;
 
         // Motor Town RPM arrives every 50-150 ms: aim at a target that moves
         // smoothly across the frame instead of stepping.
@@ -253,6 +254,7 @@ public:
             // Already running at the game's speed: nothing to crank or hear.
             start_turning_forward(m_engine, units::rpm(targetRpm));
             m_starterEngaged = false;
+            m_hasRun = true;
             m_secondsHeldAtGameRpm = WarmStartHeldSeconds;
             m_secondsFollowingFaster = WarmStartFasterFollowingSeconds;
             m_framesToDiscard.store(static_cast<std::size_t>(
@@ -285,9 +287,9 @@ public:
             m_engine->setSpeedControl(pedal);
             apply_boost(m_engine, m_boost, targetRpm, throttle);
             const double smoothedRpm = m_follower.smoothedRpm();
-            m_starterEngaged = combustion && (m_starterEngaged
-                ? smoothedRpm < starterReleaseRpm
-                : smoothedRpm < StarterReengageFraction * starterReleaseRpm);
+            if (combustion && smoothedRpm >= starterReleaseRpm) m_hasRun = true;
+            m_starterEngaged = starter_engaged(m_starterEngaged, combustion, m_hasRun,
+                smoothedRpm, targetRpm, starterReleaseRpm);
             m_simulator->m_starterMotor.m_enabled = m_starterEngaged;
 
             const double deficit = followedRpm > 0.0 ? 1.0 - smoothedRpm / followedRpm : 0.0;
@@ -302,8 +304,9 @@ public:
                     ? m_secondsFarBelowGameRpm + m_simulator->getTimestep() : 0.0;
                 m_motoring = m_secondsFarBelowGameRpm >= DrivetrainMotoringDwellSeconds;
             }
-            const bool held = m_motoring || m_secondsHeldAtGameRpm > 0.0;
-            if (m_motoring) start_turning_forward(m_engine, units::rpm(followedRpm));
+            const bool driven = m_motoring || crankingUnfired;
+            const bool held = driven || m_secondsHeldAtGameRpm > 0.0;
+            if (driven) start_turning_forward(m_engine, units::rpm(followedRpm));
             m_secondsHeldAtGameRpm = std::max(0.0, m_secondsHeldAtGameRpm - m_simulator->getTimestep());
             m_simulator->m_dyno.m_hold = held;
             m_simulator->m_dyno.m_rotationSpeed = units::rpm(
@@ -328,11 +331,12 @@ public:
             frames, std::numeric_limits<int>::max()));
         const auto read = static_cast<std::size_t>(
             std::max(0, m_simulator->readAudioOutput(count, dst)));
-        // ~80 ms glide: pedal and gear changes swell, never click.
+        if (read == 0) return 0;
+        // Pedal and gear changes swell and fade, never click or drop.
         const double target = m_targetLoudnessGain.load();
         if (m_loudnessGain < 0) m_loudnessGain = target;
         for (std::size_t i = 0; i < read; ++i) {
-            m_loudnessGain += (target - m_loudnessGain) * (1.0 / (LoudnessGlideSeconds * 44100.0));
+            m_loudnessGain = glide_loudness_gain(m_loudnessGain, target, 1.0 / OutputSampleRate);
             dst[i] = static_cast<std::int16_t>(std::lround(dst[i] * m_loudnessGain));
         }
         return read;
@@ -364,12 +368,16 @@ private:
     Simulator *m_simulator = nullptr;
     CrankSpeedFollower m_follower;
     bool m_starterEngaged = true;
+    bool m_hasRun = false; // the engine has caught since it was loaded
     bool m_motoring = false;
     double m_secondsFarBelowGameRpm = 0.0;
     double m_secondsHeldAtGameRpm = 0.0;     // warm start
     double m_secondsFollowingFaster = 0.0;   // warm start
     double m_classLoudnessDb = 0.0;                // this engine's size, from load()
-    std::atomic<double> m_targetLoudnessGain{1.0}; // advance() thread -> read() thread
+    // advance() thread -> read() thread. Silent until the first advance() says
+    // how loud: a read before it took 0 dB as the level, 24 dB over the real one,
+    // and the slow fall then played it as a loud start.
+    std::atomic<double> m_targetLoudnessGain{0.0};
     double m_gameMaxRpm = 0.0;                     // advance() thread; 0 = unknown
     double m_loudnessGain = -1.0;                  // read() thread only; negative until the first read
     double m_lastTargetRpm = -1.0; // negative until the first frame
