@@ -34,7 +34,7 @@ With Motor Town running and the player seated in a vehicle, download and run `Co
 - `bridge/tests/test_runtime_patch.py`: executable startup failure/success and safe patching checks.
 - `bridge/package_installer.py`: regenerate the embedded source payloads and BAT after edits.
 - `bridge/README.md`: bridge design and diagnostic instructions.
-- `archive/MotorTown_EngineSim_Bridge_Prototype_v0.1.zip`: earlier bridge source package, if included.
+- `version-history/MotorTown_EngineSim_Bridge_Prototype_v0.1.zip`: earlier bridge source package, if included.
 
 ## Credits and license
 
