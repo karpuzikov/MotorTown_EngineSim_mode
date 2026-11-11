@@ -10,7 +10,8 @@ idle by itself. Run this after package_mod_profiles.py; it writes into native/pr
 - every car-less "es_<engine>.mr" (traffic and unknown vehicles) from the first EngineVoice car that has that engine;
 - the hand-made MC-9 (mc9_6v92ta.mr, fitted to the owner's recording) as the 1980 MCI MC-9's 6V92TA;
 - each script's boost file mirrored (copied, or removed when EngineVoice has none);
-- EngineVoice's own exhaust responses (truck_exhaust.wav, mc9_exhaust.wav) into sound-library/, where the mod resolves them;
+- EngineVoice's own exhaust responses (truck_exhaust.wav, mc9_exhaust.wav) next to the scripts: Engine Simulator resolves a
+  response named in a script relative to that script (in sound-library/ they were not found and every diesel was silent);
 - engine_families.tsv without "#exhaust=" overrides: each script plays the exhaust response it names, as in EngineVoice.
 
 Only scripts the mod already ships are written: the manifests name them, so a new name would never play.
@@ -61,7 +62,7 @@ def main():
     for source_name, target_name in HAND_MADE.items():
         write_script(engine_voice_folder / source_name, profiles_folder / target_name)
     for response in EXHAUST_RESPONSES:
-        shutil.copyfile(engine_voice_folder / response, profiles_folder / "sound-library" / response)
+        shutil.copyfile(engine_voice_folder / response, profiles_folder / response)
     manifest = profiles_folder / "engine_families.tsv"
     manifest.write_text(EXHAUST_OVERRIDE.sub("", manifest.read_text()))
 

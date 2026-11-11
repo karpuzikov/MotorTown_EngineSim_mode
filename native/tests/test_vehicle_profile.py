@@ -128,7 +128,7 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             'I4Sport_150HP': 'assets/es_mazda_b6ze.mr',
             'Bike_i4_160HP': 'assets/es_yamaha_cp4_998.mr',
             'Bike_50HP': 'assets/es_honda_cb250_twin.mr',
-            'Kart_20HP': 'assets/es_kart_100_2t.mr',
+            'Kart_20HP': 'assets/es_honda_gx160.mr',
             'Scooter_15HP': 'assets/es_vespa_150_2t.mr',
             'HeavyDuty_440HP': 'assets/es_cummins_isx15.mr',
             'MediumDuty_190HP': 'assets/es_navistar_dt466.mr',

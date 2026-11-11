@@ -375,8 +375,9 @@ assert(laterMotorWave.Volume == 1.0, "A wave found later in the electric motor's
 os.time = realTime
 
 -- Distance makes engines quieter like in real life: -6 dB per doubling past
--- the 7.5 m their loudness is rated at, at most +8 dB at 3 m (in game the
--- stock attenuation kept a car 30 m away as loud as sitting in it).
+-- the 7.5 m their loudness is rated at (in game the stock attenuation kept a
+-- car 30 m away as loud as sitting in it), never louder than at 7.5 m: next to
+-- the car it was up to +8 dB, louder than sitting in it (owner, 2026-11-11).
 channel.Sound = v8
 local engineAt = 1500
 channel.K2_GetComponentLocation = function() return { X = engineAt, Y = 0, Z = 0 } end
@@ -391,7 +392,13 @@ local at30 = __test_mix(pc, vehicle)
 engineAt = 100
 local inside = __test_mix(pc, vehicle)
 assert(at15 and math.abs(at15 / at30 - 2) < 1e-6, "Spherical spreading: " .. tostring(at15) .. " " .. tostring(at30))
-assert(math.abs(inside / at15 - 5) < 1e-6, "Capped at 3 m: " .. tostring(inside))
+engineAt = 750
+local atRated = __test_mix(pc, vehicle)
+assert(math.abs(at15 / atRated - 0.5) < 1e-6, "Halved at twice the rated distance: " .. tostring(at15))
+assert(math.abs(inside - atRated) < 1e-6, "Never above the rated level: " .. tostring(inside))
+-- Other cars play at half the player's level ("too loud" with 2-3 engines around).
+local trafficGain = tonumber((__test_traffic_mix(pc, vehicle) or ""):match("^(%S+)"))
+assert(trafficGain and math.abs(trafficGain - inside / 2) < 1e-3, "Traffic at half level: " .. tostring(trafficGain))
 
 -- The chunk shares main.lua's 200-local limit: each part is scoped.
 local trafficCar -- helper below

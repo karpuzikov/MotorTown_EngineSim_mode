@@ -35,9 +35,15 @@ class PackageModProfilesTest(unittest.TestCase):
                 self.assertEqual(responses, {"truck_exhaust"}, profile.name)
             else:
                 self.assertEqual(responses, {"ir_lib.default_0"}, profile.name)
-        for response in ("truck_exhaust.wav", "mc9_exhaust.wav", "smooth/smooth_39_treble_plus_8db.wav",
-                          "smooth/smooth_39_treble_plus_14db.wav"):
+        for response in ("smooth/smooth_39_treble_plus_8db.wav", "smooth/smooth_39_treble_plus_14db.wav"):
             self.assertTrue((packager.SOUND_LIBRARY_DIR / response).is_file(), response)
+
+    def test_a_response_a_script_names_ships_next_to_it(self):
+        # Engine Simulator resolves a response named in a script relative to the script's folder. With
+        # truck_exhaust.wav in sound-library/ every diesel failed to load in game: silent (2026-11-11).
+        for profile in sorted(packager.PROFILES_DIR.glob("es_*.mr")):
+            for name in re.findall(r'impulse_response \w+\(filename: "([^"]+)"', profile.read_text()):
+                self.assertTrue((profile.parent / name).is_file(), f"{profile.name}: {name}")
 
     def rules(self):
         rows = []

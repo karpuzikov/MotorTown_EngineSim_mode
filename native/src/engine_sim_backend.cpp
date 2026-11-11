@@ -215,7 +215,7 @@ public:
                 // engine script's generic muffler recording.
                 const auto impulse = muffler_variant_path(spec.exhaustImpulse.empty()
                     ? impulse_wav_path(script, response->getFilename())
-                    : std::filesystem::path(spec.exhaustImpulse), g_muffler.load());
+                    : std::filesystem::path(spec.exhaustImpulse), script, g_muffler.load());
                 auto samples = load_impulse_wav(impulse.string());
                 if (spec.distant) shorten_impulse(samples);
                 if (!usable_impulse_for_engine_sim(samples) ||

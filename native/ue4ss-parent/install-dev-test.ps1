@@ -56,7 +56,7 @@ foreach ($relative in $required) {
         throw "Incomplete staged development package; missing: $path"
     }
 }
-if (-not (Select-String -LiteralPath (Join-Path $StageRoot 'Scripts\main.lua') -Pattern 'Exporter v0.2.28 active' -Quiet)) {
+if (-not (Select-String -LiteralPath (Join-Path $StageRoot 'Scripts\main.lua') -Pattern 'Exporter v0.2.29 active' -Quiet)) {
     throw 'Refusing outdated staged Lua exporter.'
 }
 

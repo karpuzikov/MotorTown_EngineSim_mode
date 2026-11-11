@@ -28,14 +28,17 @@ int main(int argc, char **argv) {
     assert(usable_impulse_for_engine_sim({-32768}));
 
     // settings.ini "muffler" swaps only Engine Simulator's road muffler for its brightened copies.
-    const std::filesystem::path muffler = "C:/mod/assets/sound-library/smooth/smooth_39.wav";
-    assert(muffler_variant_path(muffler, MufflerTreble::Standard) == muffler);
-    assert(muffler_variant_path(muffler, MufflerTreble::Brighter) ==
+    // In game the script library resolves the road muffler into the mod's es/ folder; the
+    // brightened copies ship with the profiles (seen 2026-11-11).
+    const std::string profileScript = "C:/mod/assets/es_chevy_350_l48.mr";
+    const std::filesystem::path muffler = "C:/mod/assets/../es/sound-library/smooth/smooth_39.wav";
+    assert(muffler_variant_path(muffler, profileScript, MufflerTreble::Standard) == muffler);
+    assert(muffler_variant_path(muffler, profileScript, MufflerTreble::Brighter) ==
            "C:/mod/assets/sound-library/smooth/smooth_39_treble_plus_8db.wav");
-    assert(muffler_variant_path(muffler, MufflerTreble::Brightest) ==
+    assert(muffler_variant_path(muffler, profileScript, MufflerTreble::Brightest) ==
            "C:/mod/assets/sound-library/smooth/smooth_39_treble_plus_14db.wav");
-    const std::filesystem::path truck = "C:/mod/assets/sound-library/truck_exhaust.wav";
-    assert(muffler_variant_path(truck, MufflerTreble::Brightest) == truck);
+    const std::filesystem::path truck = "C:/mod/assets/truck_exhaust.wav";
+    assert(muffler_variant_path(truck, profileScript, MufflerTreble::Brightest) == truck);
 
     // A real engine-sim asset may have 24-bit samples; convert to PCM16.
     auto pcm24 = pcm16;

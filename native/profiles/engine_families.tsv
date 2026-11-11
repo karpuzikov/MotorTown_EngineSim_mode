@@ -68,7 +68,7 @@ vehicle	^trophytaxi	assets/es_vaz_2103__1982_lada_2107.mr	71-74
 vehicle	^trophytaxi	assets/es_vaz_2106__1982_lada_2107.mr	75-100000
 vehicle	^formulascm	assets/es_ford_kent_1600__formula_1600.mr
 vehicle	^golimasemi	assets/es_cummins_isx15__peterbilt_389.mr
-vehicle	^scmkartone	assets/es_kart_100_2t__race_car_kart.mr
+vehicle	^scmkartone	assets/es_honda_gx160__race_car_kart.mr
 vehicle	^towniebus	assets/es_vw_1131_flat4__1950_volkswagen_transporter_t1.mr
 vehicle	^cheetahmk	assets/es_detroit_8v71__1980_mci_mc_9.mr	0-320
 vehicle	^cheetahmk	assets/es_detroit_6v92ta__1980_mci_mc_9.mr	321-100000
@@ -226,7 +226,7 @@ asset	v10	assets/es_ford_68_triton_v10.mr
 asset	v12|ferrari_275	assets/es_lambo_l539_65.mr
 asset	v6	assets/es_buick_38_lc2.mr
 asset	(^|[^a-z0-9])v8	assets/es_chevy_350_l48.mr
-asset	kart	assets/es_kart_100_2t.mr
+asset	kart	assets/es_honda_gx160.mr
 asset	scooter|2-?stroke|moped	assets/es_vespa_150_2t.mr
 asset	bike_?i4	assets/es_yamaha_cp4_998.mr
 asset	bike|(^|[^a-z0-9])h2_	assets/es_honda_cb250_twin.mr

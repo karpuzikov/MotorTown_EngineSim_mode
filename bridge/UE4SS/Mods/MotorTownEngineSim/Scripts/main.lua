@@ -1,5 +1,5 @@
 -- Motor Town -> Engine Simulator (open-source version) telemetry exporter.
--- v0.2.28, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
+-- v0.2.29, single-player; UE4SS experimental with LoopInGameThreadWithDelay.
 -- Changes only the local car's own engine/intake cue gains, and only with a
 -- live native PCM mute lease. Never changes vehicle physics.
 
@@ -846,7 +846,7 @@ local function discover(vehicle, detailed)
     -- Refresh it on retries too, so late-loading components are captured.
     local snapshot = io.open(DISCOVERY, "w")
     if snapshot then
-        snapshot:write("Exporter v0.2.28 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
+        snapshot:write("Exporter v0.2.29 ", os.date("%Y-%m-%d %H:%M:%S"), "\n",
             vehicleLine, "\n", mappingLine, "\n", totalsLine, "\n",
             "Priority engine/gear/audio fields:\n", table.concat(priorityInventory, "\n"), "\n",
             "SDK engine audio targets:\n", table.concat(audioTargets, "\n"), "\n",
@@ -994,7 +994,8 @@ end
 -- Where the engine is for this camera, and how loud the distance makes it.
 -- The engine's own loudness (dB(A) by RPM and load) is applied natively;
 -- here: master volume x spherical spreading, -6 dB per doubling beyond the
--- 7.5 m the loudness is rated at, at most +8 dB at 3 m (in or by the car).
+-- 7.5 m the loudness is rated at, and never louder than that: standing next to
+-- the car was up to +8 dB, louder than sitting in it (owner, 2026-11-11).
 -- (The stock attenuation curve barely fell over tens of metres: in game a
 -- car 30 m away sounded as if you sat in it.) Pan from the camera's right
 -- vector; the stock distance low-pass when the cue has one. nil if unknown.
@@ -1029,7 +1030,7 @@ local function stock_mix(pc, vehicle)
         pan = math.max(-1, math.min(1, pan))
     end
     local settings = valid(channel) and attenuation_of(channel, member(channel, "Sound")) or nil
-    return math.min(8, gain), pan, settings and lowpass_of(settings, distance) or 0
+    return math.min(master, gain), pan, settings and lowpass_of(settings, distance) or 0
 end
 
 -- One-time inventory of every Motor Town engine and the stock sound data the
@@ -1051,7 +1052,7 @@ local function write_engine_catalog(vehicle)
     end)
     if #assets * 1000 + classes == catalogCount then return end
     catalogCount = #assets * 1000 + classes
-    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.28" }
+    local lines = { "# Motor Town engines seen by MotorTownEngineSim v0.2.29" }
     local engine = member(vehicle, "EngineComponent")
     local channel = valid(engine) and member(engine, "AudioComponent") or nil
     local intake = valid(engine) and member(engine, "IntakeAudioComponent") or nil
@@ -1226,13 +1227,16 @@ end
 -- car within 150 m had "no engine sound") and the stock assets are silenced, so
 -- nothing about a stock sound says whether a car should be heard.
 -- nil plus the reason when the vehicle is not listed.
+-- Other cars play at half the player's level: two or three running engines
+-- around at full level were "too loud" (owner, 2026-11-11).
+local TRAFFIC_VOICE_GAIN = 0.5
 local function traffic_mix(pc, vehicle)
     if path_value(vehicle, "EngineComponent.IsIgnitionOn()") == false then
         return nil, "ignition off"
     end
     local ok, gain, pan, lowpass = pcall(stock_mix, pc, vehicle)
     if not ok or not gain then return nil, "position unknown" end
-    return string.format("%.4f %.4f %.0f", gain, pan, lowpass)
+    return string.format("%.4f %.4f %.0f", gain * TRAFFIC_VOICE_GAIN, pan, lowpass)
 end
 
 -- The nearest vehicles that traffic_mix lists: one that never would be must
@@ -1584,7 +1588,7 @@ end
 if type(LoopInGameThreadWithDelay) ~= "function" then
     log("Requires a recent UE4SS experimental build with game-thread timers")
 else
-    log("Exporter v0.2.28 active. Telemetry: " .. TELEMETRY)
+    log("Exporter v0.2.29 active. Telemetry: " .. TELEMETRY)
     LoopInGameThreadWithDelay(50, function()
         local ok, err = pcall(tick)
         if not ok then

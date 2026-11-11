@@ -40,7 +40,7 @@ FALLBACK_RULES = [
     ("asset", r"v12|ferrari_275", "lambo_l539_65", None),
     ("asset", r"v6", "buick_38_lc2", None),
     ("asset", r"(^|[^a-z0-9])v8", "chevy_350_l48", None),
-    ("asset", r"kart", "kart_100_2t", None),
+    ("asset", r"kart", "honda_gx160", None),
     ("asset", r"scooter|2-?stroke|moped", "vespa_150_2t", None),
     ("asset", r"bike_?i4", "yamaha_cp4_998", None),
     ("asset", r"bike|(^|[^a-z0-9])h2_", "honda_cb250_twin", None),

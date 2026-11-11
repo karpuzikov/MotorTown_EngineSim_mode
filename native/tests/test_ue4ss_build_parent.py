@@ -101,8 +101,8 @@ class UE4SSParentBuildTests(unittest.TestCase):
             self.assertIn('vehicle\t^dory\tassets/es_ford_flathead_239__1948_ford_f_1.mr\t99-100000',
                           (package / 'engine_families.tsv').read_text())
             # EngineVoice's exhaust responses and the brightened mufflers travel with the profiles.
-            for response in ('truck_exhaust.wav', 'mc9_exhaust.wav', 'smooth/smooth_39_treble_plus_8db.wav'):
-                self.assertTrue((package / 'assets/sound-library' / response).is_file(), response)
+            for response in ('truck_exhaust.wav', 'mc9_exhaust.wav', 'sound-library/smooth/smooth_39_treble_plus_8db.wav'):
+                self.assertTrue((package / 'assets' / response).is_file(), response)
             # Each rule's own exhaust response is staged with the profiles and
             # survives the Engine Simulator library being merged over them: a
             # rule naming a missing file voids the whole manifest in game.
