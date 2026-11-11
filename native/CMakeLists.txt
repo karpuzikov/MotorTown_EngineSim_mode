@@ -10,8 +10,9 @@ include(FetchContent)
 # The karpuzikov/engine-sim fork (branch feat/physical-exhaust-sound) carries
 # the lifetime fixes this build used to patch in, plus physically based
 # exhaust sound, intake boost and two-stroke support used by the real-spec
-# profiles. FetchContent keeps the checkout inside the build directory.
-set(motor_town_engine_sim_core_commit 8124eea5aa211111fae9577f7178281c66d4466f)
+# profiles, and the fuel inputs EngineVoice's diesels use (lean_ignition_limit,
+# cycle_to_cycle_variation). FetchContent keeps the checkout inside the build directory.
+set(motor_town_engine_sim_core_commit 47a38e4d7113dda6b9e937dcea3dadd4d8c10d88)
 # One checkout per pinned commit: the Piranha fix below edits the checkout,
 # so moving an existing one to another commit makes Git refuse (local changes).
 string(SUBSTRING "${motor_town_engine_sim_core_commit}" 0 7 motor_town_engine_sim_core_short)

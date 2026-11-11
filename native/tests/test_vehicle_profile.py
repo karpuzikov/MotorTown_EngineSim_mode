@@ -82,15 +82,13 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         for field, _, profile, _ in self.rules():
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
-                # Real-spec profiles (pipeline/package_mod_profiles.py), each
-                # with the exhaust response of its real car's hardware. A rule
-                # naming a file that is not installed voids the whole manifest.
-                self.assertRegex(profile, r'^assets/es_\w+\.mr#exhaust=exhaust/lp[1-3]_\d+\.wav$')
-                script_name, _, exhaust = profile.partition('#exhaust=')
-                script = ROOT / 'profiles' / Path(script_name).name
+                # Engine scripts from EngineVoice (pipeline/sync_engine_voice_engines.py),
+                # each playing the exhaust response it names. A rule naming a
+                # file that is not installed voids the whole manifest.
+                self.assertRegex(profile, r'^assets/es_\w+\.mr$')
+                script = ROOT / 'profiles' / Path(profile).name
                 self.assertTrue(script.is_file(), profile)
-                self.assertTrue(script.read_text().startswith('// mtes-real-spec-profile: 1'), profile)
-                self.assertTrue((ROOT / 'profiles/sound-library' / exhaust).is_file(), profile)
+                self.assertTrue(script.read_text().rstrip().endswith('main()'), profile)
 
     def test_each_car_gets_its_real_counterparts_engine(self):
         cases = {
@@ -168,17 +166,13 @@ class PackagedFamilyRuleTests(unittest.TestCase):
     def test_vehicles_get_their_own_exhaust(self):
         import re
         lines = (ROOT / 'profiles/engine_families.tsv').read_text().splitlines()
-        def rule(key):
-            return next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2]
+        def script(key):
+            rule = next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2]
+            return (ROOT / 'profiles' / Path(rule).name).read_text()
         def collector_cm2(key):
-            text = (ROOT / 'profiles' / Path(rule(key).partition('#exhaust=')[0]).name).read_text()
-            return float(re.search(r'collector_cross_section_area: ([0-9.]+)', text).group(1))
-        def response(key):  # (stage corner in Hz, stages)
-            stages, corner = re.search(r'exhaust/lp(\d)_(\d+)\.wav$', rule(key)).groups()
-            return int(corner), int(stages)
+            return float(re.search(r'collector_cross_section_area: ([0-9.]+)', script(key)).group(1))
         self.assertGreater(collector_cm2('golimasemi'), 4 * collector_cm2('elisa'))  # a semi vs a sedan
-        # The sound path follows the hardware as well: a 15-litre semi's
-        # exhaust is a lower low-pass than a sedan's or a kei truck's.
-        semi, sedan, kei = response('golimasemi'), response('elisa'), response('bora')
-        self.assertLess(semi[0], sedan[0])
-        self.assertLess(semi[0], kei[0])
+        # The sound path: diesels play the truck response picked by ear in
+        # EngineVoice, petrol cars Engine Simulator's road muffler.
+        self.assertIn('impulse_response: truck_exhaust', script('golimasemi'))
+        self.assertIn('impulse_response: ir_lib.default_0', script('elisa'))

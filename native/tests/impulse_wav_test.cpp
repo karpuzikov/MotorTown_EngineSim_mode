@@ -27,6 +27,16 @@ int main(int argc, char **argv) {
     assert(usable_impulse_for_engine_sim({101}));
     assert(usable_impulse_for_engine_sim({-32768}));
 
+    // settings.ini "muffler" swaps only Engine Simulator's road muffler for its brightened copies.
+    const std::filesystem::path muffler = "C:/mod/assets/sound-library/smooth/smooth_39.wav";
+    assert(muffler_variant_path(muffler, MufflerTreble::Standard) == muffler);
+    assert(muffler_variant_path(muffler, MufflerTreble::Brighter) ==
+           "C:/mod/assets/sound-library/smooth/smooth_39_treble_plus_8db.wav");
+    assert(muffler_variant_path(muffler, MufflerTreble::Brightest) ==
+           "C:/mod/assets/sound-library/smooth/smooth_39_treble_plus_14db.wav");
+    const std::filesystem::path truck = "C:/mod/assets/sound-library/truck_exhaust.wav";
+    assert(muffler_variant_path(truck, MufflerTreble::Brightest) == truck);
+
     // A real engine-sim asset may have 24-bit samples; convert to PCM16.
     auto pcm24 = pcm16;
     pcm24[4] = 45;
@@ -69,14 +79,12 @@ int main(int argc, char **argv) {
         const std::string argument = argv[i];
         const std::string packaged = "packaged:";
         if (argument.compare(0, packaged.size(), packaged) == 0) {
-            // A response the mod ships (an exhaust rule's): short by design (a
-            // low-pass of a few tens of milliseconds), loadable, and with
-            // samples the synthesizer keeps. Engine Simulator caps a response
-            // at 10000 samples and trims its tail at 100 of 32767.
+            // A response the mod ships: loadable, with samples the synthesizer
+            // keeps, and no longer than Engine Simulator's own road muffler
+            // (smooth_39.wav, 33705 samples), of which the brightened copies are.
             const auto samples = load_impulse_wav(argument.substr(packaged.size()));
             assert(usable_impulse_for_engine_sim(samples));
-            assert(samples.size() > 20 && samples.size() < 10000);
-            assert(samples.back() > 100 || samples.back() < -100);
+            assert(samples.size() > 20 && samples.size() <= 33705);
         }
         else {
             assert(load_impulse_wav(argument).size() > 100);

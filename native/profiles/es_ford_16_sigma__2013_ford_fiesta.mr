@@ -66,7 +66,7 @@ public node motor_town_engine {
         molecular_afr: 12.5000,
         runner_length: 0.25 * units.m,
         idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.99769,
+        idle_throttle_plate_position: 0.998582,
         velocity_decay: 0.5)
     exhaust_system_parameters exhaust_params(
         collector_cross_section_area: 15.904 * units.cm2,

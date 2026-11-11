@@ -128,6 +128,11 @@ public:
     auto on_unreal_init() -> void override {
         m_ready = true;
         const auto settings = mtes::load_mod_settings(module_root());
+        if (!settings.problems.empty())
+            RC::Output::send<RC::LogLevel::Normal>(STR("[MTES] settings.ini: {}defaults kept\n"),
+                std::wstring(settings.problems.begin(), settings.problems.end()));
+        mtes::set_engine_sim_muffler(settings.muffler);
+        const std::string muffler = mtes::muffler_treble_name(settings.muffler);
         m_sink.set_output_volume(settings.volume);
         m_traffic.set_output_volume(settings.volume);
         m_output.set_capture_file(temp_file("MotorTownEngineSim_player_engine.wav"));
@@ -142,8 +147,8 @@ public:
         RC::Output::send<RC::LogLevel::Normal>(
             STR("[MTES] Native audio worker running: {}\n"), workerStarted);
         RC::Output::send<RC::LogLevel::Normal>(
-            STR("[MTES] Audio v0.4.0 active (all-engine profiles, 3D mix); settings volume {}\n"),
-            settings.volume);
+            STR("[MTES] Audio v0.5.0 active (EngineVoice engines, 3D mix); settings volume {}, muffler {}\n"),
+            settings.volume, std::wstring(muffler.begin(), muffler.end()));
     }
 
     auto on_update() -> void override {

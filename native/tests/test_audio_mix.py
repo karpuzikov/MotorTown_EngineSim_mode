@@ -35,11 +35,13 @@ class AudioMixTests(unittest.TestCase):
         # Game rpm above the engine's redline would hit its rev limiter.
         self.assertIn('engine_rpm_for_game_rpm(', backend)
         self.assertIn('void set_game_max_rpm(double maxRpm) override', backend)
-        # Timbre from Engine Simulator's own leveler and impulse responses
-        # (no compressor, no tone filter); the level follows rpm and pedal.
+        # Timbre and level from Engine Simulator's own leveler and impulse
+        # responses (no compressor, no tone filter). The level does not follow
+        # rpm and pedal: in EngineVoice the owner heard that as "the throttle
+        # working as a volume knob is insanity" (2026-11-11).
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
         self.assertIn('audio.levelerMaxGain = EngineSimLevelerMaxGain;', backend)
-        self.assertIn('engine_loudness_gain_db(', backend)
+        self.assertNotIn('engine_loudness_gain_db(', backend)
         # The leveler may lift a quiet raw signal this far: the unfired crank of
         # a key turn is one (at x64 it played 20-36 dB under the idle: silence,
         # then the engine, "binary on/off" in game).

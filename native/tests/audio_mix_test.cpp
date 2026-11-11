@@ -56,22 +56,6 @@ int main() {
                distantTruckSpec->exhaustImpulse == "C:/mod/assets/sound-library/mtes-exhaust/truck_stack.wav");
     }
 
-    // Engine Simulator's leveler makes idle as loud as flat out; the level
-    // follows the game's rpm and pedal instead, never above Engine Simulator's.
-    {
-        assert(near(engine_loudness_gain_db(4400, 5500, 1.0), 0.0, 1e-9));      // flat out at 80% of redline
-        assert(engine_loudness_gain_db(5500, 5500, 1.0) == 0.0);                // never above full scale
-        const double idle = engine_loudness_gain_db(800, 5500, 0.0);
-        assert(idle < -14.0 && idle > -20.0);                                   // ~17 dB under flat out
-        assert(near(engine_loudness_gain_db(3000, 5500, 1.0) -
-                    engine_loudness_gain_db(3000, 5500, 0.0), 6.0, 1e-9));     // closed throttle is quieter
-        assert(engine_loudness_gain_db(2000, 5500, 0.5) < engine_loudness_gain_db(3000, 5500, 0.5));
-        assert(engine_loudness_gain_db(0, 5500, 1.0) == LoudnessFloorDb);
-        const double cranking = engine_loudness_gain_db(150, 5500, 0.0);
-        assert(cranking < -20.0 && cranking > LoudnessFloorDb);                 // cranking is quiet, not silent
-        assert(engine_loudness_gain_db(NAN, 5500, 1.0) == LoudnessFloorDb);
-    }
-
     // The level glides to its target: quickly up, so a blip is heard, slowly
     // down, so a lift or a shift fades. An 80 ms glide both ways made every
     // 4-6 dB closed-throttle step a "random volume drop" in game (2026-11-05).
@@ -196,5 +180,18 @@ int main() {
         assert(parse_mod_settings(broken).volume == 1.0);
         std::istringstream empty("");
         assert(parse_mod_settings(empty).volume == 1.0);
+    }
+
+    // settings.ini muffler: three choices, an unknown value keeps standard and is reported.
+    {
+        std::istringstream brighter("muffler = brighter\n");
+        assert(parse_mod_settings(brighter).muffler == MufflerTreble::Brighter);
+        std::istringstream brightest("muffler=brightest ; comment\n");
+        assert(parse_mod_settings(brightest).muffler == MufflerTreble::Brightest);
+        std::istringstream unknown("muffler = loud\n");
+        const auto settings = parse_mod_settings(unknown);
+        assert(settings.muffler == MufflerTreble::Standard && !settings.problems.empty());
+        std::istringstream none("volume = 1\n");
+        assert(parse_mod_settings(none).muffler == MufflerTreble::Standard);
     }
 }

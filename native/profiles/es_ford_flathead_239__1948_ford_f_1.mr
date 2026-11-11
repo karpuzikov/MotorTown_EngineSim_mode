@@ -214,7 +214,7 @@ public node ford_flathead_239_8rt {
         runner_flow_rate: k_carb(250.0),
         runner_length: 10.0 * units.inch,
         idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.990,
+        idle_throttle_plate_position: 0.981632,
         velocity_decay: 0.5
     )
 

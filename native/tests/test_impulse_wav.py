@@ -25,8 +25,9 @@ class ImpulseWavTests(unittest.TestCase):
             args = [str(exe)]
             # Every exhaust response the rules name loads and survives the
             # synthesizer; a rule naming a file that fails voids the manifest.
-            responses = sorted((ROOT / "profiles/sound-library/exhaust").glob("*.wav"))
-            self.assertGreaterEqual(len(responses), 3)
+            # ...and so does every response the scripts and settings.ini "muffler" name.
+            responses = sorted((ROOT / "profiles/sound-library").rglob("*.wav"))
+            self.assertGreaterEqual(len(responses), 7)
             args += [f"packaged:{path}" for path in responses]
             source = os.environ.get("MTES_ENGINE_SIM_SOURCE")
             if source:

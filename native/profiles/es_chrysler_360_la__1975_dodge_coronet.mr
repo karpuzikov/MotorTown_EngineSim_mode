@@ -25,7 +25,7 @@ public node motor_town_engine {
 
     engine engine(
         name: "Chrysler 360 LA V8",
-        starter_torque: 200 * units.lb_ft,
+        starter_torque: 265 * units.lb_ft,
         starter_speed: 200 * units.rpm,
         redline: 4600 * units.rpm,
         throttle_gamma: 2.0,
@@ -74,7 +74,7 @@ public node motor_town_engine {
         molecular_afr: 12.5000,
         runner_length: 0.25 * units.m,
         idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.99639,
+        idle_throttle_plate_position: 0.997305,
         velocity_decay: 0.5)
     exhaust_system_parameters exhaust_params(
         collector_cross_section_area: 25.518 * units.cm2,

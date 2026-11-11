@@ -20,18 +20,24 @@ class PackageModProfilesTest(unittest.TestCase):
         self.assertEqual(packager.vehicle_key("FL1"), "fl1")
         self.assertEqual(packager.vehicle_key("Kuda_Dryvan_4x2"), "kudadryvan4x2")
 
-    def test_every_packaged_profile_has_the_same_library_response_as_its_fallback(self):
-        # One pipeline for all cars, hand-made scripts included (the Dory's own
-        # response left 4 kHz only 4 dB under its loudest band where the same
-        # engine on the library's road-vehicle response sits 23 dB under, so the
-        # muffling differed). The script keeps that response for anything that
-        # plays it without a rule; in game each rule's own exhaust replaces it.
+    def test_every_packaged_profile_plays_the_exhaust_response_engine_voice_gave_it(self):
+        # The profiles come from EngineVoice (sync_engine_voice_engines.py): petrol engines keep Engine
+        # Simulator's road muffler (settings.ini "muffler" may brighten it), diesels the truck response the
+        # owner picked by ear, the hand-made MC-9 its response fitted to the owner's recording.
         profiles = sorted(packager.PROFILES_DIR.glob("es_*.mr"))
         self.assertGreater(len(profiles), 100)
         for profile in profiles:
-            responses = re.findall(r"impulse_response:\s*(ir_lib\.\w+)", profile.read_text())
-            self.assertTrue(responses, profile.name)
-            self.assertEqual(set(responses), {"ir_lib.default_0"}, profile.name)
+            text = profile.read_text()
+            responses = set(re.findall(r"impulse_response:\s*(ir_lib\.\w+|\w+)", text))
+            if profile.name == "es_detroit_6v92ta__1980_mci_mc_9.mr":
+                self.assertEqual(responses, {"mc9_exhaust_response"}, profile.name)
+            elif "lean_ignition_limit: 1000.0" in text:
+                self.assertEqual(responses, {"truck_exhaust"}, profile.name)
+            else:
+                self.assertEqual(responses, {"ir_lib.default_0"}, profile.name)
+        for response in ("truck_exhaust.wav", "mc9_exhaust.wav", "smooth/smooth_39_treble_plus_8db.wav",
+                          "smooth/smooth_39_treble_plus_14db.wav"):
+            self.assertTrue((packager.SOUND_LIBRARY_DIR / response).is_file(), response)
 
     def rules(self):
         rows = []
@@ -40,24 +46,18 @@ class PackageModProfilesTest(unittest.TestCase):
                 rows.append(line.split("\t"))
         return rows
 
-    def test_every_rule_names_an_exhaust_response_that_ships(self):
-        # A rule naming a file that is not installed voids the whole manifest in
-        # game (the mod then keeps every stock sound), so none may.
-        named = set()
+    def test_every_rule_names_a_shipped_script_and_no_exhaust_override(self):
+        # A rule naming a file that is not installed voids the whole manifest in game (the mod then keeps every
+        # stock sound). No "#exhaust=": each script plays the response it names, as heard in EngineVoice.
         scripted = 0
         for field, pattern, script, *_ in self.rules():
             if script == "-":
                 continue
             scripted += 1
-            match = re.fullmatch(r"assets/(es_\w+)\.mr#exhaust=(exhaust/lp([1-3])_(\d+)\.wav)", script)
+            match = re.fullmatch(r"assets/(es_\w+)\.mr", script)
             self.assertTrue(match, f"{field} {pattern}: {script}")
             self.assertTrue((packager.PROFILES_DIR / f"{match.group(1)}.mr").is_file(), script)
-            self.assertTrue((packager.SOUND_LIBRARY_DIR / match.group(2)).is_file(), script)
-            named.add(match.group(2))
         self.assertGreater(scripted, 200)
-        # A few filters of one family, not a sound per car (and not one for all).
-        self.assertGreaterEqual(len(named), 4)
-        self.assertLessEqual(len(named), 24)
 
     def test_the_shipped_responses_are_those_the_specs_ask_for(self):
         # No stale or missing response after a spec change without repackaging.
@@ -75,17 +75,6 @@ class PackageModProfilesTest(unittest.TestCase):
         shipped = {f"exhaust/{path.name}" for path in (packager.SOUND_LIBRARY_DIR / "exhaust").glob("*.wav")}
         self.assertEqual(shipped, wanted)
 
-    def test_a_rule_carries_its_own_cars_exhaust(self):
-        # One rule from a 12.7-litre truck and one from a 0.66-litre kei truck.
-        by_key = {}
-        for field, pattern, script, *_ in self.rules():
-            by_key.setdefault(pattern, script)
-        truck = re.search(r"#exhaust=exhaust/lp(\d)_(\d+)\.wav", by_key["^atlas6x2semi"])
-        kei = re.search(r"#exhaust=exhaust/lp(\d)_(\d+)\.wav", by_key["^bora"])
-        self.assertEqual(truck.groups(), ("1", "450"))
-        self.assertGreater(int(kei.group(2)), 1.5 * int(truck.group(2)))
-
-
 if __name__ == "__main__":
     unittest.main()
 
@@ -93,5 +82,7 @@ if __name__ == "__main__":
 class HandmadeProfileTest(unittest.TestCase):
     def test_handmade_script_replaces_the_generated_one(self):
         name = "es_ford_flathead_239__1948_ford_f_1"
+        # EngineVoice calibrates every petrol engine's idle throttle; nothing else of the hand-made file changes.
+        without_idle = lambda text: re.sub(r"idle_throttle_plate_position: [0-9.]+", "", text)
         packaged = (packager.PROFILES_DIR / f"{name}.mr").read_text()
-        self.assertEqual(packaged, (packager.HANDMADE_DIR / f"{name}.mr").read_text())
+        self.assertEqual(without_idle(packaged), without_idle((packager.HANDMADE_DIR / f"{name}.mr").read_text()))

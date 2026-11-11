@@ -25,11 +25,14 @@ public node motor_town_engine {
 
     engine engine(
         name: "Mercedes OM934 5.1 I4 diesel",
-        starter_torque: 200 * units.lb_ft,
+        starter_torque: 346 * units.lb_ft,
         starter_speed: 200 * units.rpm,
         redline: 2500 * units.rpm,
         throttle_gamma: 2.0,
-        fuel: fuel(name: "Diesel", molecular_mass: 167 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 17.75, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
+        fuel: fuel(name: "Diesel", lean_ignition_limit: 1000.0, cycle_to_cycle_variation: 0.1, molecular_mass: 167 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 17.75, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
+        hf_gain: 0.0,
+        jitter: 0.9,
+        noise: 0.85,
         simulation_frequency: 10000
     )
 
@@ -66,7 +69,7 @@ public node motor_town_engine {
         molecular_afr: 32.1719,
         runner_length: 0.25 * units.m,
         idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.99582,
+        idle_throttle_plate_position: 0.0,
         velocity_decay: 0.5)
     exhaust_system_parameters exhaust_params(
         collector_cross_section_area: 63.617 * units.cm2,
@@ -75,7 +78,8 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(398.9),
         velocity_decay: 1.0, audio_volume: 1.0)
-    exhaust_system exhaust0(exhaust_params, impulse_response: ir_lib.default_0)
+    impulse_response truck_exhaust(filename: "truck_exhaust.wav", volume: 0.001)
+    exhaust_system exhaust0(exhaust_params, impulse_response: truck_exhaust)
 
     function intake_flow(50 * units.thou)
     intake_flow.add_sample(0 * units.thou, k_28inH2O(0.00))

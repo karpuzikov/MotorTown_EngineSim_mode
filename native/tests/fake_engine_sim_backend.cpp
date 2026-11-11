@@ -15,4 +15,5 @@ public:
 std::unique_ptr<EngineBackend> make_engine_sim_backend() {
     return std::make_unique<FakeBackend>();
 }
+void set_engine_sim_muffler(MufflerTreble) noexcept {}
 }

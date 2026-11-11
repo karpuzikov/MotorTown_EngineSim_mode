@@ -4,6 +4,25 @@ Experimental Windows mod project to synchronize combustion audio from [karpuziko
 
 **Version: experimental v0.2.14 (legacy bridge); native mod in development.** The latest Windows report confirms live gear changes on the Tuscan (5, 4, 2, neutral) and discovers engine RPM, throttle and ignition, but the separate Engine Simulator still cannot follow gears: the MTES1 packet has no gear field. The native branch now **passes Windows headless PCM and three-engine switching tests** (boxer-four, V8, V10), but has **not passed in-game validation**. Unreal audio injection, stock-sound replacement, live game-gear and engine-volume integration, and automatic engine profiles remain **unimplemented**. This is **not** the finished downloadable native mod.
 
+## Native mod: engines and settings
+
+The native mod plays the engines of **EngineVoice**, a stand-alone program built on the real Engine Simulator where every
+Motor Town engine (142, one per real car and engine option) is checked to start, idle and rev, and the sound is picked by ear:
+
+- petrol engines run as in Engine Simulator itself, with its road-car muffler;
+- diesels are fuel-metered like real diesels, with an exhaust response fitted to a real truck recording and natural
+  cycle-to-cycle variation at idle;
+- the MCI MC-9's Detroit Diesel 6V92TA is written by hand and fitted to a real recording of the bus.
+
+`settings.ini` in the mod folder (`ue4ss\Mods\MotorTownEngineSim`):
+
+| Setting | Values | Effect |
+|---|---|---|
+| `volume` | `1.0` (default), `0.5` = half | Loudness relative to Motor Town's own engine sound |
+| `muffler` | `standard` (default), `brighter`, `brightest` | How much treble the road-car muffler removes: Engine Simulator's own muffler recording, or the same with +8 dB / +14 dB above 2.5 kHz. Only the muffler file changes (made once by `pipeline/make_muffler_treble_variants.py`); the engine, the loudness and the CPU cost stay the same. Diesels and the MC-9 keep their own exhaust. |
+
+An unknown value keeps the default and is reported in `UE4SS.log` (`[MTES] settings.ini: ...`).
+
 ## Installation
 
 1. Download `Install-MotorTownEngineSim.bat` from this repository.

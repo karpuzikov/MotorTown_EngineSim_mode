@@ -25,7 +25,7 @@ public node motor_town_engine {
 
     engine engine(
         name: "Ford 300 4.9 I6",
-        starter_torque: 200 * units.lb_ft,
+        starter_torque: 221 * units.lb_ft,
         starter_speed: 200 * units.rpm,
         redline: 4000 * units.rpm,
         throttle_gamma: 2.0,
@@ -70,7 +70,7 @@ public node motor_town_engine {
         molecular_afr: 12.5000,
         runner_length: 0.25 * units.m,
         idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.99021,
+        idle_throttle_plate_position: 0.992971,
         velocity_decay: 0.5)
     exhaust_system_parameters exhaust_params(
         collector_cross_section_area: 32.170 * units.cm2,

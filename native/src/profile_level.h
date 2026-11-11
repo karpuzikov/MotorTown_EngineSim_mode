@@ -65,19 +65,9 @@ inline std::string distant_engine_sound_spec(std::string spec) {
     return spec;
 }
 
-// Engine Simulator's leveler flattens every engine to one level, idle as loud
-// as flat out (measured: within 1 dB), where a real engine spans ~20 dB. The
-// synthesizer keeps its timbre; the level follows the game's rpm and pedal,
-// relative to flat out at 80% of redline.
-inline constexpr double LoudnessDbPerDecadeOfRpm = 15.0;
-inline constexpr double LoudnessDbWithClosedThrottle = 6.0;
-inline constexpr double LoudnessFloorDb = -40.0;
-
-// The level follows the pedal and rpm with a one-pole glide: quickly up, so a
-// blip is heard, slowly down, as an engine's note and exhaust pressure fall
-// when the pedal is lifted. The 80 ms glide both ways made every lift and shift
-// a 4-6 dB step in the recording of the Scania (2026-11-05): "random volume
-// drops".
+// The output gain (the engine's size, engine_class_loudness_db) is reached with
+// a one-pole glide, quickly up and slowly down, so a new voice fades in instead
+// of starting with a click.
 inline constexpr double LoudnessRiseSeconds = 0.10;
 inline constexpr double LoudnessFallSeconds = 0.40;
 
@@ -103,14 +93,6 @@ inline double engine_class_loudness_db(double displacementLitres) {
     return std::clamp(LoudnessDbPerDecadeOfDisplacement *
             std::log10(displacementLitres / LoudnessReferenceDisplacementLitres),
         LoudnessClassFloorDb, 0.0);
-}
-
-inline double engine_loudness_gain_db(double rpm, double redlineRpm, double throttle) {
-    if (!(rpm > 0) || !(redlineRpm > 0)) return LoudnessFloorDb;
-    const double load = std::clamp(std::isfinite(throttle) ? throttle : 0.0, 0.0, 1.0);
-    const double gain = LoudnessDbPerDecadeOfRpm * std::log10(rpm / (0.8 * redlineRpm)) +
-        LoudnessDbWithClosedThrottle * (load - 1.0);
-    return std::clamp(gain, LoudnessFloorDb, 0.0);
 }
 
 // Motor Town's rev range often tops out above the real engine's redline (a

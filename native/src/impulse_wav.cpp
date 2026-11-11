@@ -28,6 +28,12 @@ std::filesystem::path impulse_wav_path(const std::string &script,
     return std::filesystem::path(script).parent_path() / "sound-library" / file;
 }
 
+std::filesystem::path muffler_variant_path(const std::filesystem::path &impulse, MufflerTreble muffler) {
+    if (impulse.filename() != "smooth_39.wav" || muffler == MufflerTreble::Standard) return impulse;
+    return impulse.parent_path() /
+        (muffler == MufflerTreble::Brighter ? "smooth_39_treble_plus_8db.wav" : "smooth_39_treble_plus_14db.wav");
+}
+
 std::vector<std::int16_t> parse_impulse_wav(const std::vector<std::uint8_t> &bytes) {
     if (bytes.size() < 44 || bytes.size() > MaxBytes ||
         !tag(bytes, 0, "RIFF") || !tag(bytes, 8, "WAVE")) return {};
