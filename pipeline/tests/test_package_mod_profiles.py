@@ -23,7 +23,8 @@ class PackageModProfilesTest(unittest.TestCase):
     def test_every_packaged_profile_plays_the_exhaust_response_engine_voice_gave_it(self):
         # The profiles come from EngineVoice (sync_engine_voice_engines.py): petrol engines keep Engine
         # Simulator's road muffler (settings.ini "muffler" may brighten it), diesels the truck response the
-        # owner picked by ear, the hand-made MC-9 its response fitted to the owner's recording.
+        # owner picked by ear, the hand-made MC-9 and the
+        # GX160 kart their responses fitted to the owner's recordings.
         profiles = sorted(packager.PROFILES_DIR.glob("es_*.mr"))
         self.assertGreater(len(profiles), 100)
         for profile in profiles:
@@ -31,6 +32,8 @@ class PackageModProfilesTest(unittest.TestCase):
             responses = set(re.findall(r"impulse_response:\s*(ir_lib\.\w+|\w+)", text))
             if profile.name == "es_detroit_6v92ta__1980_mci_mc_9.mr":
                 self.assertEqual(responses, {"mc9_exhaust_response"}, profile.name)
+            elif profile.name.startswith("es_honda_gx160"):  # the kart: its response fitted to the owner's recording
+                self.assertEqual(responses, {"kart_exhaust"}, profile.name)
             elif "lean_ignition_limit: 1000.0" in text:
                 self.assertEqual(responses, {"truck_exhaust"}, profile.name)
             else:
