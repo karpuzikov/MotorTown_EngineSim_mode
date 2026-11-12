@@ -110,7 +110,7 @@ class StaleVcpkgCacheTests(unittest.TestCase):
 
     def check(self, cache_lines, command=None, projects=None, vcpkg_root=LOCAL_ROOT, extra_env=None):
         command = command or '''
-$reason = Get-StaleVcpkgConfiguration $env:MTES_BUILD $env:MTES_VCPKG
+$reason = Get-StaleBuildConfiguration $env:MTES_BUILD $env:MTES_VCPKG
 if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
 '''
         with tempfile.TemporaryDirectory(prefix='MTES builder ') as temp:
@@ -126,7 +126,7 @@ if ($reason) { Write-Output "STALE $reason" } else { Write-Output 'CURRENT' }
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:MTES_BUILDER, [ref]$null, [ref]$null)
-foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'Get-StaleVcpkgConfiguration',
+foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'Get-StaleBuildConfiguration',
                    'Assert-VcpkgConfiguration', 'Select-VcpkgRoot', 'Get-PreferredVcpkgRoot')) {
     $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
     if ($fn.Count -ne 1) { throw "Missing builder function $name" }
@@ -151,8 +151,16 @@ foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'G
             f'CMAKE_TOOLCHAIN_FILE:FILEPATH={STALE_ROOT}/scripts/buildsystems/vcpkg.cmake',
             f'Z_VCPKG_ROOT_DIR:INTERNAL={STALE_ROOT}',
         ])
-        self.assertTrue(output.startswith('STALE toolchain'), output)
+        self.assertTrue(output.startswith('STALE vcpkg toolchain'), output)
         self.assertIn(STALE_ROOT, output)
+
+    def test_compiler_removed_by_a_visual_studio_update_forces_fresh_configure(self):
+        local = LOCAL_ROOT.replace('\\', '/')
+        output = self.stale([
+            f'CMAKE_TOOLCHAIN_FILE:FILEPATH={local}/scripts/buildsystems/vcpkg.cmake',
+            'CMAKE_CXX_COMPILER:FILEPATH=C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/0.0.0/bin/Hostx64/x64/cl.exe',
+        ])
+        self.assertTrue(output.startswith('STALE compiler'), output)
 
     def test_cached_packages_alone_do_not_force_fresh_configure(self):
         # VCPKG_INSTALLED_DIR is re-applied with -D on every configure; the user's

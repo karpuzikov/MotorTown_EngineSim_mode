@@ -74,13 +74,19 @@ function Test-SamePath([string]$Left, [string]$Right) {
 
 # CMake ignores a changed CMAKE_TOOLCHAIN_FILE in an existing cache, so a build
 # directory first configured with another vcpkg must be reconfigured from scratch.
-function Get-StaleVcpkgConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
+function Get-StaleBuildConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
     $cache = [IO.Path]::Combine($BuildDir, 'CMakeCache.txt')
     if (-not (Test-Path -LiteralPath $cache -PathType Leaf)) { return $null }
     $root = $VcpkgRoot.TrimEnd('\', '/')
     $cachedToolchain = Get-CMakeCacheValue $cache 'CMAKE_TOOLCHAIN_FILE'
     if (-not (Test-SamePath $cachedToolchain ($root + '\scripts\buildsystems\vcpkg.cmake'))) {
-        return "toolchain '$cachedToolchain'"
+        return "vcpkg toolchain '$cachedToolchain'"
+    }
+    # A Visual Studio update removes the MSVC version the cache points at; CMake then
+    # refuses to configure ("not a full path to an existing compiler tool").
+    $cachedCompiler = Get-CMakeCacheValue $cache 'CMAKE_CXX_COMPILER'
+    if ($cachedCompiler -and -not (Test-Path -LiteralPath $cachedCompiler -PathType Leaf)) {
+        return "compiler '$cachedCompiler', gone after a Visual Studio update"
     }
     # VCPKG_INSTALLED_DIR is passed with -D on every configure, so a different
     # cached value does not need a fresh configure.
@@ -257,10 +263,10 @@ try {
         '-DVCPKG_APPLOCAL_DEPS=OFF',
         "-DFLEX_EXECUTABLE=$flexExe", "-DBISON_EXECUTABLE=$bisonExe"
     )
-    $staleVcpkg = Get-StaleVcpkgConfiguration $buildDir $vcpkgRoot
-    if ($staleVcpkg) {
+    $staleConfiguration = Get-StaleBuildConfiguration $buildDir $vcpkgRoot
+    if ($staleConfiguration) {
         # --fresh (CMake 3.24+) rebuilds only the cache; compiled objects are kept.
-        Write-Host "Build directory was configured with another vcpkg ($staleVcpkg). Reconfiguring from scratch." -ForegroundColor Yellow
+        Write-Host "Build directory was configured with another $staleConfiguration. Reconfiguring from scratch." -ForegroundColor Yellow
         $cmakeArgs = @('--fresh') + $cmakeArgs
     }
     Invoke-Checked 'Configure native UE4SS + Engine Simulator DLL' 'cmake' $cmakeArgs
