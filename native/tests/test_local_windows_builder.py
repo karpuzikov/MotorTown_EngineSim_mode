@@ -158,7 +158,7 @@ foreach ($name in @('Get-CMakeCacheValue', 'Test-SamePath', 'Test-PathUnder', 'G
         local = LOCAL_ROOT.replace('\\', '/')
         output = self.stale([
             f'CMAKE_TOOLCHAIN_FILE:FILEPATH={local}/scripts/buildsystems/vcpkg.cmake',
-            'CMAKE_CXX_COMPILER:FILEPATH=C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/0.0.0/bin/Hostx64/x64/cl.exe',
+            'CMAKE_C_COMPILER:FILEPATH=C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/0.0.0/bin/Hostx64/x64/cl.exe',
         ])
         self.assertTrue(output.startswith('STALE compiler'), output)
 

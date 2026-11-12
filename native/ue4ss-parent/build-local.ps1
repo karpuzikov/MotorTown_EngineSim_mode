@@ -84,9 +84,11 @@ function Get-StaleBuildConfiguration([string]$BuildDir, [string]$VcpkgRoot) {
     }
     # A Visual Studio update removes the MSVC version the cache points at; CMake then
     # refuses to configure ("not a full path to an existing compiler tool").
-    $cachedCompiler = Get-CMakeCacheValue $cache 'CMAKE_CXX_COMPILER'
-    if ($cachedCompiler -and -not (Test-Path -LiteralPath $cachedCompiler -PathType Leaf)) {
-        return "compiler '$cachedCompiler', gone after a Visual Studio update"
+    foreach ($compilerEntry in @('CMAKE_C_COMPILER', 'CMAKE_CXX_COMPILER')) {
+        $cachedCompiler = Get-CMakeCacheValue $cache $compilerEntry
+        if ($cachedCompiler -and -not (Test-Path -LiteralPath $cachedCompiler -PathType Leaf)) {
+            return "compiler '$cachedCompiler', gone after a Visual Studio update"
+        }
     }
     # VCPKG_INSTALLED_DIR is passed with -D on every configure, so a different
     # cached value does not need a fresh configure.
