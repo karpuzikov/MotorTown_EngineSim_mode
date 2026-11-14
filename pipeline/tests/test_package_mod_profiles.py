@@ -20,22 +20,17 @@ class PackageModProfilesTest(unittest.TestCase):
         self.assertEqual(packager.vehicle_key("FL1"), "fl1")
         self.assertEqual(packager.vehicle_key("Kuda_Dryvan_4x2"), "kudadryvan4x2")
 
-    def test_every_packaged_profile_plays_the_exhaust_response_engine_voice_gave_it(self):
-        # The profiles come from EngineVoice (sync_engine_voice_engines.py): petrol engines keep Engine
-        # Simulator's road muffler (settings.ini "muffler" may brighten it), diesels the truck response the
-        # owner picked by ear, the hand-made MC-9 and the
-        # GX160 kart their responses fitted to the owner's recordings.
+    def test_every_packaged_profile_plays_engine_simulators_road_muffler(self):
+        # Petrol engines from EngineVoice (sync_engine_voice_engines.py) and diesels, simulated as petrol engines,
+        # alike play Engine Simulator's road muffler (settings.ini "muffler" may brighten it); only the GX160 kart
+        # keeps its response fitted to the owner's recording.
         profiles = sorted(packager.PROFILES_DIR.glob("es_*.mr"))
         self.assertGreater(len(profiles), 100)
         for profile in profiles:
             text = profile.read_text()
             responses = set(re.findall(r"impulse_response:\s*(ir_lib\.\w+|\w+)", text))
-            if profile.name == "es_detroit_6v92ta__1980_mci_mc_9.mr":
-                self.assertEqual(responses, {"mc9_exhaust_response"}, profile.name)
-            elif profile.name.startswith("es_honda_gx160"):  # the kart: its response fitted to the owner's recording
+            if profile.name.startswith("es_honda_gx160"):  # the kart: its response fitted to the owner's recording
                 self.assertEqual(responses, {"kart_exhaust"}, profile.name)
-            elif "lean_ignition_limit: 1000.0" in text:
-                self.assertEqual(responses, {"truck_exhaust"}, profile.name)
             else:
                 self.assertEqual(responses, {"ir_lib.default_0"}, profile.name)
         for response in ("smooth/smooth_39_treble_plus_8db.wav", "smooth/smooth_39_treble_plus_14db.wav"):
@@ -43,7 +38,7 @@ class PackageModProfilesTest(unittest.TestCase):
 
     def test_a_response_a_script_names_ships_next_to_it(self):
         # Engine Simulator resolves a response named in a script relative to the script's folder. With
-        # truck_exhaust.wav in sound-library/ every diesel failed to load in game: silent (2026-11-11).
+        # A response file in sound-library/ was not found: every engine naming it was silent in game (2026-11-11).
         for profile in sorted(packager.PROFILES_DIR.glob("es_*.mr")):
             for name in re.findall(r'impulse_response \w+\(filename: "([^"]+)"', profile.read_text()):
                 self.assertTrue((profile.parent / name).is_file(), f"{profile.name}: {name}")

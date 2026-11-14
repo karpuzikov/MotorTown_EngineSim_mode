@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -63,14 +64,16 @@ class ScriptGenerationTest(unittest.TestCase):
             self.assertNotIn("mild_exhaust", script, car["real_car"])
             self.assertNotIn("minimal_muffling", script, car["real_car"])
 
-    def test_diesels_use_the_injection_pump_with_a_governor(self):
-        diesels = [engine for engine in ENGINES.values() if engine["fuel"] in ("diesel", "multifuel")]
+    def test_diesels_are_simulated_exactly_as_petrol_engines(self):
+        raw = json.loads((generator.PIPELINE_DIR / "real_engines.json").read_text())["engines"]
+        diesels = [engine for engine in raw if engine["fuel"] in ("diesel", "multifuel")]
         self.assertTrue(diesels)
         for engine in diesels:
-            script, _ = generator.engine_script(engine, generator.first_car_using(engine["id"], CARS))
-            self.assertIn("diesel_injection_pump ignition_module(", script, engine["id"])
-            self.assertIn(f"governed_speed: {engine['redline_rpm']} * units.rpm", script, engine["id"])
-            self.assertGreater(generator.full_load_fuel_per_injection_g(engine), 0.0, engine["id"])
+            petrol = dict(engine, fuel="petrol" if engine["cycle"] == 4 else "petrol-oil")
+            car = generator.first_car_using(engine["id"], CARS)
+            script, _ = generator.engine_script(ENGINES[engine["id"]], car)
+            self.assertEqual(script, generator.engine_script(petrol, car)[0], engine["id"])
+            self.assertNotIn("Diesel", script.replace(engine["name"], ""), engine["id"])
 
     def test_a_car_without_silencer_data_fails_loudly(self):
         car = dict(CARS[0], exhaust=dict(CARS[0]["exhaust"], silencers=[]))

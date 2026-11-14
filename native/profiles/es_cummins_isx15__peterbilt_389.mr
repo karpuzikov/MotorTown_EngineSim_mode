@@ -8,16 +8,16 @@ impulse_response_library ir_lib()
 private node motor_town_flame_speed {
     alias output __out:
         function(5.0)
-            .add_sample(0.0, 27.0000)
-            .add_sample(5.0, 67.5000)
-            .add_sample(10.0, 135.0000)
-            .add_sample(15.0, 202.5000)
-            .add_sample(20.0, 270.0000)
-            .add_sample(25.0, 337.5000)
-            .add_sample(30.0, 405.0000)
-            .add_sample(35.0, 472.5000)
-            .add_sample(40.0, 540.0000)
-            .add_sample(45.0, 607.5000);
+            .add_sample(0.0, 9.0000)
+            .add_sample(5.0, 22.5000)
+            .add_sample(10.0, 45.0000)
+            .add_sample(15.0, 67.5000)
+            .add_sample(20.0, 90.0000)
+            .add_sample(25.0, 112.5000)
+            .add_sample(30.0, 135.0000)
+            .add_sample(35.0, 157.5000)
+            .add_sample(40.0, 180.0000)
+            .add_sample(45.0, 202.5000);
 }
 
 public node motor_town_engine {
@@ -25,14 +25,11 @@ public node motor_town_engine {
 
     engine engine(
         name: "Cummins ISX15 14.9 I6 diesel",
-        starter_torque: 1010 * units.lb_ft,
+        starter_torque: 673 * units.lb_ft,
         starter_speed: 200 * units.rpm,
         redline: 2100 * units.rpm,
         throttle_gamma: 2.0,
-        fuel: fuel(name: "Diesel", lean_ignition_limit: 1000.0, cycle_to_cycle_variation: 0.1, molecular_mass: 117.6 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 12.5, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
-        hf_gain: 0.0,
-        jitter: 0.9,
-        noise: 0.85,
+        fuel: fuel(name: "Gasoline", turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
         simulation_frequency: 10000
     )
 
@@ -66,14 +63,14 @@ public node motor_town_engine {
         moment_of_inertia: 0.00487357 * units.kg * units.m * units.m,
         center_of_mass: 0.0, length: 0.278850 * units.m)
     intake intake(
-        plenum_volume: 1.4948 * units.L,
+        plenum_volume: 14.9475 * units.L,
         plenum_cross_section_area: 298.030 * units.cm2,
         intake_flow_rate: k_carb(3325.6),
         runner_flow_rate: k_carb(3093.9),
-        molecular_afr: 32.1719,
+        molecular_afr: 12.5000,
         runner_length: 0.25 * units.m,
         idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.0,
+        idle_throttle_plate_position: 0.997828,
         velocity_decay: 0.5)
     exhaust_system_parameters exhaust_params(
         collector_cross_section_area: 126.677 * units.cm2,
@@ -82,8 +79,7 @@ public node motor_town_engine {
         primary_tube_length: 0.300 * units.m,
         primary_flow_rate: k_carb(618.8),
         velocity_decay: 1.0, audio_volume: 1.0)
-    impulse_response truck_exhaust(filename: "truck_exhaust.wav", volume: 0.001)
-    exhaust_system exhaust0(exhaust_params, impulse_response: truck_exhaust)
+    exhaust_system exhaust0(exhaust_params, impulse_response: ir_lib.default_0)
 
     function intake_flow(50 * units.thou)
     intake_flow.add_sample(0 * units.thou, k_28inH2O(0.00))
@@ -199,7 +195,7 @@ public node motor_town_engine {
     timing_curve.add_sample(3000 * units.rpm, 10.84 * units.deg)
     timing_curve.add_sample(3500 * units.rpm, 10.84 * units.deg)
     timing_curve.add_sample(4000 * units.rpm, 10.84 * units.deg)
-    diesel_injection_pump ignition_module(timing_curve: timing_curve, max_fuel_per_injection: 0.30584 * units.g, idle_speed: 600 * units.rpm, governed_speed: 2100 * units.rpm, sparks_per_cycle: 1)
+    ignition_module ignition_module(timing_curve: timing_curve, rev_limit: 2400 * units.rpm, limiter_duration: 0.1, sparks_per_cycle: 1)
     ignition_module.connect_wire(wire1, 0.0000 * units.deg)
     ignition_module.connect_wire(wire5, 120.0000 * units.deg)
     ignition_module.connect_wire(wire3, 240.0000 * units.deg)

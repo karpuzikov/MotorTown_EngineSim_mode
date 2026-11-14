@@ -81,11 +81,6 @@ constexpr double OutputSampleRate = 44100.0;
 
 std::atomic<MufflerTreble> g_muffler{MufflerTreble::Standard}; // settings.ini, see set_engine_sim_muffler
 
-// Engine Simulator low-passes its air noise at 2 kHz, so a diesel had nothing above about 4 kHz ("like over the
-// phone", owner, on EngineVoice's Volvo D13); 15 kHz picked by ear there (2026-11-11). Diesels only: on a petrol
-// engine's mix it only added a scratching hiss.
-constexpr float DieselAirNoiseFrequencyCutoff = 15000.0f;
-
 // A distant (traffic) voice convolves with only the start of its exhaust's
 // response: the long tail cost 0.24 of a core per voice (measured offline) and
 // left the tone as it was (output spectrum within 0.1 dB in every octave band).
@@ -168,9 +163,6 @@ public:
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             audio.levelerMaxGain = EngineSimLevelerMaxGain;
-            // A diesel meters its own fuel: the script's injection pump follows the speed control.
-            if (m_engine->getIgnitionModule()->isCompressionIgnition())
-                audio.airNoiseFrequencyCutoff = DieselAirNoiseFrequencyCutoff;
             m_simulator->synthesizer().setAudioParameters(audio);
             // Generated profiles may carry a boost file; other scripts yield
             // the default (no boost).

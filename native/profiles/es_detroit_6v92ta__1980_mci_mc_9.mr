@@ -1,379 +1,238 @@
-// 1989 MCI MC-9 Crusader II: Detroit Diesel 6V92TA, two-stroke uniflow-scavenged V6 diesel (650 rpm idle, 2100 rpm governed).
-// Written for Engine Simulator (Ange Yaghi, MIT) with the two-stroke extensions (lobes_per_cycle, sparks_per_cycle).
-// Every number marked "assumed" is an engineering estimate; see docs for the data sheet and the calibration against the owner's recording.
+// mtes-real-spec-profile: 1
 import "engine_sim.mr"
 
 units units()
 constants constants()
 impulse_response_library ir_lib()
 
-private node mc9_wires {
-    output wire1: ignition_wire();
-    output wire2: ignition_wire();
-    output wire3: ignition_wire();
-    output wire4: ignition_wire();
-    output wire5: ignition_wire();
-    output wire6: ignition_wire();
+private node motor_town_flame_speed {
+    alias output __out:
+        function(5.0)
+            .add_sample(0.0, 9.0000)
+            .add_sample(5.0, 22.5000)
+            .add_sample(10.0, 45.0000)
+            .add_sample(15.0, 67.5000)
+            .add_sample(20.0, 90.0000)
+            .add_sample(25.0, 112.5000)
+            .add_sample(30.0, 135.0000)
+            .add_sample(35.0, 157.5000)
+            .add_sample(40.0, 180.0000)
+            .add_sample(45.0, 202.5000);
 }
 
-// Exhaust valves in the head (4 per cylinder); scavenge ports are piston-controlled and modelled as the "intake valve".
-private node mc9_head {
-    input intake_camshaft;
-    input exhaust_camshaft;
-    input flip_display: false;
-    alias output __out: head;
-
-    // Flow in cfm at 28 inH2O versus lift in thou. Ports: about 22 cm2 effective at full opening (assumed).
-    function intake_flow(50 * units.thou)
-    intake_flow
-        .add_flow_sample(0, 0)
-        .add_flow_sample(50, 70)
-        .add_flow_sample(100, 150)
-        .add_flow_sample(150, 240)
-        .add_flow_sample(200, 340)
-        .add_flow_sample(250, 430)
-        .add_flow_sample(300, 500)
-        .add_flow_sample(350, 540)
-        .add_flow_sample(400, 560)
-        .add_flow_sample(450, 560)
-
-    // 4 valves, 34 mm seats (assumed), full lift 0.37 in.
-    function exhaust_flow(50 * units.thou)
-    exhaust_flow
-        .add_flow_sample(0, 0)
-        .add_flow_sample(50, 110)
-        .add_flow_sample(100, 220)
-        .add_flow_sample(150, 330)
-        .add_flow_sample(200, 430)
-        .add_flow_sample(250, 500)
-        .add_flow_sample(300, 540)
-        .add_flow_sample(350, 560)
-        .add_flow_sample(400, 560)
-        .add_flow_sample(450, 560)
-
-    generic_cylinder_head head(
-        chamber_volume: 94 * units.cc,
-        intake_runner_volume: 300 * units.cc,
-        intake_runner_cross_section_area: 20 * units.cm2,
-        exhaust_runner_volume: 400 * units.cc,
-        exhaust_runner_cross_section_area: 30 * units.cm2,
-        intake_port_flow: intake_flow,
-        exhaust_port_flow: exhaust_flow,
-        valvetrain: standard_valvetrain(
-            intake_camshaft: intake_camshaft,
-            exhaust_camshaft: exhaust_camshaft
-        ),
-        flip_display: flip_display
-    )
-}
-
-private node mc9_camshaft {
-    input intake_lobe_profile;
-    input exhaust_lobe_profile;
-    input intake_lobe_center;
-    input exhaust_lobe_center;
-    input right_bank_offset: -63.5 * units.deg;
-    input base_radius: 0.75 * units.inch;
-
-    output intake_cam_left: _intake_cam_left;
-    output exhaust_cam_left: _exhaust_cam_left;
-    output intake_cam_right: _intake_cam_right;
-    output exhaust_cam_right: _exhaust_cam_right;
-
-    // Two-stroke: every lobe acts once per crankshaft revolution.
-    camshaft_parameters params(base_radius: base_radius, lobes_per_cycle: 2)
-    camshaft _intake_cam_left(params, lobe_profile: intake_lobe_profile)
-    camshaft _exhaust_cam_left(params, lobe_profile: exhaust_lobe_profile)
-    camshaft _intake_cam_right(params, lobe_profile: intake_lobe_profile)
-    camshaft _exhaust_cam_right(params, lobe_profile: exhaust_lobe_profile)
-
-    label rot360(360 * units.deg)
-
-    // Left bank cylinders 1L, 2L, 3L sit on crank pins 0, 120, 240 degrees; right bank follows by the V angle.
-    _exhaust_cam_left
-        .add_lobe(rot360 - exhaust_lobe_center + 0 * units.deg)
-        .add_lobe(rot360 - exhaust_lobe_center + 120 * units.deg)
-        .add_lobe(rot360 - exhaust_lobe_center + 240 * units.deg)
-    _intake_cam_left
-        .add_lobe(rot360 + intake_lobe_center + 0 * units.deg)
-        .add_lobe(rot360 + intake_lobe_center + 120 * units.deg)
-        .add_lobe(rot360 + intake_lobe_center + 240 * units.deg)
-    _exhaust_cam_right
-        .add_lobe(rot360 - exhaust_lobe_center + right_bank_offset + 0 * units.deg)
-        .add_lobe(rot360 - exhaust_lobe_center + right_bank_offset + 120 * units.deg)
-        .add_lobe(rot360 - exhaust_lobe_center + right_bank_offset + 240 * units.deg)
-    _intake_cam_right
-        .add_lobe(rot360 + intake_lobe_center + right_bank_offset + 0 * units.deg)
-        .add_lobe(rot360 + intake_lobe_center + right_bank_offset + 120 * units.deg)
-        .add_lobe(rot360 + intake_lobe_center + right_bank_offset + 240 * units.deg)
-}
-
-public node mc9_6v92ta {
+public node motor_town_engine {
     alias output __out: engine;
 
     engine engine(
-        name: "MCI MC-9 Detroit Diesel 6V92TA (two-stroke diesel V6)",
-        starter_torque: 250 * units.lb_ft,
+        name: "Detroit Diesel 6V92TA two-stroke V6",
+        starter_torque: 407 * units.lb_ft,
         starter_speed: 200 * units.rpm,
         redline: 2100 * units.rpm,
-        fuel: fuel(
-            name: "Diesel",
-            molecular_mass: 119.7 * units.g,
-            energy_density: 43 * units.kJ / units.g,
-            density: 0.85 * units.kg / units.L,
-            molecular_afr: 12.5,
-            max_turbulence_effect: 2.0,
-            lean_ignition_limit: 1000.0,
-            burning_efficiency_randomness: 0.3,
-            max_burning_efficiency: 0.85
-        ),
-        dyno_min_speed: 500 * units.rpm,
-        dyno_max_speed: 2300 * units.rpm,
-        dyno_hold_step: 50 * units.rpm,
-        throttle_gamma: 1.0,
-        simulation_frequency: 10000,
-        // Fitted to the recording: no derivative path (it made a buzzy, purely periodic tone), most of the flow drives noise.
-        hf_gain: 0.0,
-        jitter: 0.9,
-        noise: 0.85
+        throttle_gamma: 2.0,
+        fuel: fuel(name: "Gasoline", turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
+        simulation_frequency: 10000
     )
-
-    mc9_wires wires()
-
-    label stroke(127 * units.mm)
-    label bore(123 * units.mm)
-    label rod_length(232 * units.mm)
-    label rod_mass(2.6 * units.kg)
-    label compression_height(60 * units.mm)
-    label crank_mass(90 * units.kg)
-    label flywheel_mass(45 * units.kg)
-    label v_angle(63.5 * units.deg)
 
     crankshaft c0(
-        throw: stroke / 2,
-        flywheel_mass: flywheel_mass,
-        mass: crank_mass,
-        friction_torque: 40.0 * units.lb_ft,
-        moment_of_inertia: 4.0,
-        position_x: 0.0,
-        position_y: 0.0,
-        tdc: 90 * units.deg - v_angle / 2
+        throw: 0.063500 * units.m,
+        flywheel_mass: 23.376 * units.kg,
+        mass: 36.217 * units.kg,
+        friction_torque: 28.821 * units.N * units.m,
+        moment_of_inertia: 0.820655 * units.kg * units.m * units.m,
+        position_x: 0.0, position_y: 0.0,
+        tdc: 58.2500 * units.deg
     )
-
-    rod_journal rj0(angle: 0.0 * units.deg)
-    rod_journal rj1(angle: 120.0 * units.deg)
-    rod_journal rj2(angle: 240.0 * units.deg)
-    c0
-        .add_rod_journal(rj0)
-        .add_rod_journal(rj1)
-        .add_rod_journal(rj2)
-
-    piston_parameters piston_params(
-        mass: 2.9 * units.kg,
-        compression_height: compression_height,
-        wrist_pin_position: 0.0,
-        displacement: 0.0
-    )
-
-    connecting_rod_parameters cr_params(
-        mass: rod_mass,
-        moment_of_inertia: rod_moment_of_inertia(mass: rod_mass, length: rod_length),
-        center_of_mass: 0.0,
-        length: rod_length
-    )
-
-    // Air box fed by the Roots blower: always open (diesels meter fuel, not air); boost is set by the host from speed and load.
-    intake intake(
-        plenum_volume: 9.0 * units.L,
-        plenum_cross_section_area: 150.0 * units.cm2,
-        intake_flow_rate: k_carb(4000.0),
-        runner_flow_rate: k_carb(2500.0),
-        runner_length: 2.0 * units.inch,
-        idle_flow_rate: k_carb(0.0),
-        idle_throttle_plate_position: 0.0,
-        throttle_gamma: 1.0,
-        velocity_decay: 0.5,
-        molecular_afr: 23.0,
-        supply_pressure: 1.15 * units.atm,
-        supply_temperature: 320 * units.K
-    )
-
-    // Fitted to the recording by tools/engine_voice_analysis/fit_impulse_response.py
-    impulse_response mc9_exhaust_response(filename: "mc9_exhaust.wav", volume: 0.01)
-
-    exhaust_system_parameters es_params(
-        outlet_flow_rate: k_carb(3000.0),
-        primary_tube_length: 14.0 * units.inch,
-        primary_flow_rate: k_carb(1500.0),
-        velocity_decay: 1.0
-    )
-
-    exhaust_system exhaust_left(
-        es_params,
-        length: 90 * units.inch,
-        audio_volume: 1.0,
-        impulse_response: mc9_exhaust_response
-    )
-    exhaust_system exhaust_right(
-        es_params,
-        length: 90 * units.inch,
-        audio_volume: 1.0,
-        impulse_response: mc9_exhaust_response
-    )
-
-    cylinder_bank_parameters bank_params(
-        bore: bore,
-        deck_height: stroke / 2 + rod_length + compression_height
-    )
-
-    cylinder_bank bank_left(bank_params, angle: -v_angle / 2)
-    cylinder_bank bank_right(bank_params, angle: v_angle / 2)
-
-    label spacing(5.0 * units.inch)
-
-    bank_left
-        .add_cylinder(
-            piston: piston(piston_params, blowby: k_28inH2O(0.1)),
-            connecting_rod: connecting_rod(cr_params),
-            rod_journal: rj0,
-            intake: intake,
-            exhaust_system: exhaust_left,
-            ignition_wire: wires.wire1,
-            primary_length: spacing * 2
-        )
-        .add_cylinder(
-            piston: piston(piston_params, blowby: k_28inH2O(0.1)),
-            connecting_rod: connecting_rod(cr_params),
-            rod_journal: rj1,
-            intake: intake,
-            exhaust_system: exhaust_left,
-            ignition_wire: wires.wire3,
-            primary_length: spacing * 1
-        )
-        .add_cylinder(
-            piston: piston(piston_params, blowby: k_28inH2O(0.1)),
-            connecting_rod: connecting_rod(cr_params),
-            rod_journal: rj2,
-            intake: intake,
-            exhaust_system: exhaust_left,
-            ignition_wire: wires.wire5,
-            primary_length: spacing * 0
-        )
-        .set_cylinder_head(
-            mc9_head(
-                intake_camshaft: camshaft.intake_cam_left,
-                exhaust_camshaft: camshaft.exhaust_cam_left)
-        )
-    bank_right
-        .add_cylinder(
-            piston: piston(piston_params, blowby: k_28inH2O(0.1)),
-            connecting_rod: connecting_rod(cr_params),
-            rod_journal: rj0,
-            intake: intake,
-            exhaust_system: exhaust_right,
-            ignition_wire: wires.wire4,
-            primary_length: spacing * 2
-        )
-        .add_cylinder(
-            piston: piston(piston_params, blowby: k_28inH2O(0.1)),
-            connecting_rod: connecting_rod(cr_params),
-            rod_journal: rj1,
-            intake: intake,
-            exhaust_system: exhaust_right,
-            ignition_wire: wires.wire6,
-            primary_length: spacing * 1
-        )
-        .add_cylinder(
-            piston: piston(piston_params, blowby: k_28inH2O(0.1)),
-            connecting_rod: connecting_rod(cr_params),
-            rod_journal: rj2,
-            intake: intake,
-            exhaust_system: exhaust_right,
-            ignition_wire: wires.wire2,
-            primary_length: spacing * 0
-        )
-        .set_cylinder_head(
-            mc9_head(
-                intake_camshaft: camshaft.intake_cam_right,
-                exhaust_camshaft: camshaft.exhaust_cam_right,
-                flip_display: true)
-        )
-
-    engine
-        .add_cylinder_bank(bank_left)
-        .add_cylinder_bank(bank_right)
+    rod_journal rj1(angle: 0.0000 * units.deg)
+    c0.add_rod_journal(rj1)
+    rod_journal rj2(angle: 240.0000 * units.deg)
+    c0.add_rod_journal(rj2)
+    rod_journal rj3(angle: 120.0000 * units.deg)
+    c0.add_rod_journal(rj3)
+    rod_journal rj4(angle: 3.5000 * units.deg)
+    c0.add_rod_journal(rj4)
+    rod_journal rj5(angle: 243.5000 * units.deg)
+    c0.add_rod_journal(rj5)
+    rod_journal rj6(angle: 123.5000 * units.deg)
+    c0.add_rod_journal(rj6)
     engine.add_crankshaft(c0)
 
-    // Exhaust valves open about 82 deg and close about 221 deg after TDC (assumed): 139 deg duration.
-    harmonic_cam_lobe exhaust_lobe(
-        duration_at_50_thou: 112 * units.deg,
-        gamma: 1.0,
-        lift: 370 * units.thou,
-        steps: 100
-    )
-    // Scavenge ports open 121 and close 239 degrees after TDC (assumed), symmetric about BDC.
-    harmonic_cam_lobe intake_lobe(
-        duration_at_50_thou: 95 * units.deg,
-        gamma: 1.0,
-        lift: 400 * units.thou,
-        steps: 100
-    )
+    piston_parameters piston_params(mass: 837.4 * units.g,
+        compression_height: 0.040590 * units.m,
+        wrist_pin_position: 0.0, displacement: 0.0)
+    connecting_rod_parameters rod_params(mass: 544.3 * units.g,
+        moment_of_inertia: 0.00199175 * units.kg * units.m * units.m,
+        center_of_mass: 0.0, length: 0.209550 * units.m)
+    intake intake(
+        plenum_volume: 9.0543 * units.L,
+        plenum_cross_section_area: 545.187 * units.cm2,
+        intake_flow_rate: k_carb(2014.4),
+        runner_flow_rate: k_carb(5659.6),
+        molecular_afr: 12.5000,
+        runner_length: 0.25 * units.m,
+        idle_flow_rate: k_carb(0.0),
+        idle_throttle_plate_position: 0.864404,
+        velocity_decay: 0.5)
+    exhaust_system_parameters exhaust_params(
+        collector_cross_section_area: 126.677 * units.cm2,
+        length: 1.000 * units.m,
+        outlet_flow_rate: k_carb(7890.2),
+        primary_tube_length: 0.300 * units.m,
+        primary_flow_rate: k_carb(1558.6),
+        velocity_decay: 1.0, audio_volume: 1.0)
+    exhaust_system exhaust0(exhaust_params, impulse_response: ir_lib.default_0)
 
-    mc9_camshaft camshaft(
-        intake_lobe_profile: intake_lobe,
-        exhaust_lobe_profile: exhaust_lobe,
-        intake_lobe_center: 180 * units.deg,
-        exhaust_lobe_center: 208.5 * units.deg
-    )
+    function intake_flow(50 * units.thou)
+    intake_flow.add_sample(0 * units.thou, k_28inH2O(0.00))
+    intake_flow.add_sample(50 * units.thou, k_28inH2O(55.80))
+    intake_flow.add_sample(100 * units.thou, k_28inH2O(111.59))
+    intake_flow.add_sample(150 * units.thou, k_28inH2O(167.39))
+    intake_flow.add_sample(200 * units.thou, k_28inH2O(223.18))
+    intake_flow.add_sample(250 * units.thou, k_28inH2O(278.98))
+    intake_flow.add_sample(300 * units.thou, k_28inH2O(334.77))
+    intake_flow.add_sample(350 * units.thou, k_28inH2O(390.57))
+    intake_flow.add_sample(400 * units.thou, k_28inH2O(446.36))
+    intake_flow.add_sample(450 * units.thou, k_28inH2O(502.16))
+    intake_flow.add_sample(500 * units.thou, k_28inH2O(557.95))
+    intake_flow.add_sample(550 * units.thou, k_28inH2O(613.75))
+    intake_flow.add_sample(600 * units.thou, k_28inH2O(669.54))
+    intake_flow.add_sample(650 * units.thou, k_28inH2O(725.34))
+    intake_flow.add_sample(700 * units.thou, k_28inH2O(781.13))
+    intake_flow.add_sample(750 * units.thou, k_28inH2O(836.93))
+    intake_flow.add_sample(800 * units.thou, k_28inH2O(880.71))
+    intake_flow.add_sample(850 * units.thou, k_28inH2O(880.71))
+    intake_flow.add_sample(900 * units.thou, k_28inH2O(880.71))
+    intake_flow.add_sample(950 * units.thou, k_28inH2O(880.71))
+    intake_flow.add_sample(1000 * units.thou, k_28inH2O(880.71))
+    intake_flow.add_sample(1050 * units.thou, k_28inH2O(880.71))
+    harmonic_cam_lobe intake_lobe(duration_at_50_thou: 96.00 * units.deg,
+        gamma: 1.1, lift: 0.023584 * units.m, steps: 256)
+    function exhaust_flow(50 * units.thou)
+    exhaust_flow.add_sample(0 * units.thou, k_28inH2O(0.00))
+    exhaust_flow.add_sample(50 * units.thou, k_28inH2O(104.76))
+    exhaust_flow.add_sample(100 * units.thou, k_28inH2O(209.51))
+    exhaust_flow.add_sample(150 * units.thou, k_28inH2O(314.27))
+    exhaust_flow.add_sample(200 * units.thou, k_28inH2O(419.03))
+    exhaust_flow.add_sample(250 * units.thou, k_28inH2O(523.79))
+    exhaust_flow.add_sample(300 * units.thou, k_28inH2O(628.54))
+    exhaust_flow.add_sample(350 * units.thou, k_28inH2O(733.30))
+    exhaust_flow.add_sample(400 * units.thou, k_28inH2O(776.15))
+    exhaust_flow.add_sample(450 * units.thou, k_28inH2O(776.15))
+    exhaust_flow.add_sample(500 * units.thou, k_28inH2O(776.15))
+    exhaust_flow.add_sample(550 * units.thou, k_28inH2O(776.15))
+    exhaust_flow.add_sample(600 * units.thou, k_28inH2O(776.15))
+    harmonic_cam_lobe exhaust_lobe(duration_at_50_thou: 146.00 * units.deg,
+        gamma: 1.1, lift: 0.012398 * units.m, steps: 256)
 
-    // Unit injectors: fixed mechanical timing, about 14 deg before TDC.
+    camshaft intake_cam0(advance: 0.0, base_radius: 0.5 * units.inch, lobe_profile: intake_lobe, lobes_per_cycle: 2)
+    camshaft exhaust_cam0(advance: 0.0, base_radius: 0.5 * units.inch, lobe_profile: exhaust_lobe, lobes_per_cycle: 2)
+    cylinder_bank b0(angle: -31.7500 * units.deg, bore: 0.123000 * units.m,
+        deck_height: 0.313640 * units.m)
+    intake_cam0.add_lobe((180.0 + 0.0000) * units.deg)
+    exhaust_cam0.add_lobe((165.0 + 0.0000) * units.deg)
+    ignition_wire wire1()
+    b0.add_cylinder(
+        piston: piston(piston_params, blowby: k_28inH2O(0.0)),
+        connecting_rod: connecting_rod(rod_params),
+        rod_journal: rj1, intake: intake, exhaust_system: exhaust0,
+        ignition_wire: wire1, sound_attenuation: 1.0,
+        primary_length: 0.3329 * units.m)
+    intake_cam0.add_lobe((180.0 + 240.0000) * units.deg)
+    exhaust_cam0.add_lobe((165.0 + 240.0000) * units.deg)
+    ignition_wire wire2()
+    b0.add_cylinder(
+        piston: piston(piston_params, blowby: k_28inH2O(0.0)),
+        connecting_rod: connecting_rod(rod_params),
+        rod_journal: rj2, intake: intake, exhaust_system: exhaust0,
+        ignition_wire: wire2, sound_attenuation: 1.0,
+        primary_length: 0.1915 * units.m)
+    intake_cam0.add_lobe((180.0 + 120.0000) * units.deg)
+    exhaust_cam0.add_lobe((165.0 + 120.0000) * units.deg)
+    ignition_wire wire3()
+    b0.add_cylinder(
+        piston: piston(piston_params, blowby: k_28inH2O(0.0)),
+        connecting_rod: connecting_rod(rod_params),
+        rod_journal: rj3, intake: intake, exhaust_system: exhaust0,
+        ignition_wire: wire3, sound_attenuation: 1.0,
+        primary_length: 0.0500 * units.m)
+    b0.set_cylinder_head(generic_cylinder_head(
+        chamber_volume: 94.316 * units.cc,
+        intake_runner_volume: 558.817 * units.cc,
+        intake_runner_cross_section_area: 90.8646 * units.cm2,
+        exhaust_runner_volume: 2894.788 * units.cc,
+        exhaust_runner_cross_section_area: 80.0771 * units.cm2,
+        intake_port_flow: intake_flow, exhaust_port_flow: exhaust_flow,
+        valvetrain: standard_valvetrain(intake_camshaft: intake_cam0, exhaust_camshaft: exhaust_cam0),
+        flip_display: false))
+    engine.add_cylinder_bank(b0)
+
+    camshaft intake_cam1(advance: 0.0, base_radius: 0.5 * units.inch, lobe_profile: intake_lobe, lobes_per_cycle: 2)
+    camshaft exhaust_cam1(advance: 0.0, base_radius: 0.5 * units.inch, lobe_profile: exhaust_lobe, lobes_per_cycle: 2)
+    cylinder_bank b1(angle: 31.7500 * units.deg, bore: 0.123000 * units.m,
+        deck_height: 0.313640 * units.m)
+    intake_cam1.add_lobe((180.0 + 300.0000) * units.deg)
+    exhaust_cam1.add_lobe((165.0 + 300.0000) * units.deg)
+    ignition_wire wire4()
+    b1.add_cylinder(
+        piston: piston(piston_params, blowby: k_28inH2O(0.0)),
+        connecting_rod: connecting_rod(rod_params),
+        rod_journal: rj4, intake: intake, exhaust_system: exhaust0,
+        ignition_wire: wire4, sound_attenuation: 1.0,
+        primary_length: 0.3329 * units.m)
+    intake_cam1.add_lobe((180.0 + 180.0000) * units.deg)
+    exhaust_cam1.add_lobe((165.0 + 180.0000) * units.deg)
+    ignition_wire wire5()
+    b1.add_cylinder(
+        piston: piston(piston_params, blowby: k_28inH2O(0.0)),
+        connecting_rod: connecting_rod(rod_params),
+        rod_journal: rj5, intake: intake, exhaust_system: exhaust0,
+        ignition_wire: wire5, sound_attenuation: 1.0,
+        primary_length: 0.1915 * units.m)
+    intake_cam1.add_lobe((180.0 + 60.0000) * units.deg)
+    exhaust_cam1.add_lobe((165.0 + 60.0000) * units.deg)
+    ignition_wire wire6()
+    b1.add_cylinder(
+        piston: piston(piston_params, blowby: k_28inH2O(0.0)),
+        connecting_rod: connecting_rod(rod_params),
+        rod_journal: rj6, intake: intake, exhaust_system: exhaust0,
+        ignition_wire: wire6, sound_attenuation: 1.0,
+        primary_length: 0.0500 * units.m)
+    b1.set_cylinder_head(generic_cylinder_head(
+        chamber_volume: 94.316 * units.cc,
+        intake_runner_volume: 558.817 * units.cc,
+        intake_runner_cross_section_area: 90.8646 * units.cm2,
+        exhaust_runner_volume: 2894.788 * units.cc,
+        exhaust_runner_cross_section_area: 80.0771 * units.cm2,
+        intake_port_flow: intake_flow, exhaust_port_flow: exhaust_flow,
+        valvetrain: standard_valvetrain(intake_camshaft: intake_cam1, exhaust_camshaft: exhaust_cam1),
+        flip_display: true))
+    engine.add_cylinder_bank(b1)
+
     function timing_curve(1000 * units.rpm)
-    timing_curve
-        .add_sample(0000 * units.rpm, 14 * units.deg)
-        .add_sample(1000 * units.rpm, 14 * units.deg)
-        .add_sample(2000 * units.rpm, 14 * units.deg)
-        .add_sample(3000 * units.rpm, 14 * units.deg)
-
-    diesel_injection_pump ignition_module(timing_curve: timing_curve, max_fuel_per_injection: 0.07940 * units.g, idle_speed: 600 * units.rpm, governed_speed: 2100 * units.rpm, sparks_per_cycle: 2)
-    // Firing TDC (time order, degrees within one crank revolution; the cycle repeats every revolution): 1L 0, 2R 56.5, 2L 120, 3R 176.5, 3L 240, 1R 296.5.
-    ignition_module
-        .connect_wire(wires.wire1, 0 * units.deg)
-        .connect_wire(wires.wire6, 56.5 * units.deg)
-        .connect_wire(wires.wire3, 120 * units.deg)
-        .connect_wire(wires.wire2, 176.5 * units.deg)
-        .connect_wire(wires.wire5, 240 * units.deg)
-        .connect_wire(wires.wire4, 296.5 * units.deg)
-
+    timing_curve.add_sample(0 * units.rpm, 6.38 * units.deg)
+    timing_curve.add_sample(500 * units.rpm, 6.38 * units.deg)
+    timing_curve.add_sample(1000 * units.rpm, 6.38 * units.deg)
+    timing_curve.add_sample(1500 * units.rpm, 7.49 * units.deg)
+    timing_curve.add_sample(2000 * units.rpm, 8.61 * units.deg)
+    timing_curve.add_sample(2500 * units.rpm, 6.38 * units.deg)
+    timing_curve.add_sample(3000 * units.rpm, 6.38 * units.deg)
+    timing_curve.add_sample(3500 * units.rpm, 6.38 * units.deg)
+    timing_curve.add_sample(4000 * units.rpm, 6.38 * units.deg)
+    ignition_module ignition_module(timing_curve: timing_curve, rev_limit: 2400 * units.rpm, limiter_duration: 0.1, sparks_per_cycle: 2)
+    ignition_module.connect_wire(wire1, 0.0000 * units.deg)
+    ignition_module.connect_wire(wire6, 60.0000 * units.deg)
+    ignition_module.connect_wire(wire3, 120.0000 * units.deg)
+    ignition_module.connect_wire(wire5, 180.0000 * units.deg)
+    ignition_module.connect_wire(wire2, 240.0000 * units.deg)
+    ignition_module.connect_wire(wire4, 300.0000 * units.deg)
     engine.add_ignition_module(ignition_module)
 }
 
-label bus_mass(13500 * units.kg)
-private node mc9_bus {
-    alias output __out:
-        vehicle(
-            mass: bus_mass,
-            drag_coefficient: 0.6,
-            cross_sectional_area: (102 * units.inch) * (140 * units.inch),
-            diff_ratio: 4.1,
-            tire_radius: 20 * units.inch,
-            rolling_resistance: 0.008 * bus_mass * 9.81
-        );
-}
-
-private node mc9_transmission {
-    alias output __out:
-        transmission(max_clutch_torque: 1500 * units.lb_ft)
-        .add_gear(3.5)
-        .add_gear(2.0)
-        .add_gear(1.4)
-        .add_gear(1.0)
-        .add_gear(0.75);
-}
-
 public node main {
-    set_engine(mc9_6v92ta())
-    set_vehicle(mc9_bus())
-    set_transmission(mc9_transmission())
+    set_engine(motor_town_engine())
+    set_vehicle(vehicle(mass: 1500 * units.kg, drag_coefficient: 0.35,
+        cross_sectional_area: 2.0 * units.m * units.m, diff_ratio: 3.42,
+        tire_radius: 0.33 * units.m, rolling_resistance: 200 * units.N))
+    set_transmission(transmission(max_clutch_torque: 1000 * units.lb_ft).add_gear(1.0))
 }
 
 main()

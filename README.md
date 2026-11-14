@@ -6,13 +6,13 @@ Experimental Windows mod project to synchronize combustion audio from [karpuziko
 
 ## Native mod: engines and settings
 
-The native mod plays the engines of **EngineVoice**, a stand-alone program built on the real Engine Simulator where every
-Motor Town engine (142, one per real car and engine option) is checked to start, idle and rev, and the sound is picked by ear:
+The native mod plays the petrol engines of **EngineVoice**, a stand-alone program built on the real Engine Simulator where
+every Motor Town engine (142, one per real car and engine option) is checked to start, idle and rev, and the sound is picked
+by ear:
 
-- petrol engines run as in Engine Simulator itself, with its road-car muffler;
-- diesels are fuel-metered like real diesels, with an exhaust response fitted to a real truck recording and natural
-  cycle-to-cycle variation at idle;
-- the MCI MC-9's Detroit Diesel 6V92TA is written by hand and fitted to a real recording of the bus.
+- every engine runs as in Engine Simulator itself, with its road-car muffler;
+- diesel engines are simulated exactly as petrol engines of the same build (their real displacement, cylinders, bore,
+  stroke, compression and redline); only the GX160 kart keeps an exhaust response fitted to a real recording.
 
 `settings.ini` in the mod folder (`ue4ss\Mods\MotorTownEngineSim`):
 

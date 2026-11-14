@@ -172,7 +172,7 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         def collector_cm2(key):
             return float(re.search(r'collector_cross_section_area: ([0-9.]+)', script(key)).group(1))
         self.assertGreater(collector_cm2('golimasemi'), 4 * collector_cm2('elisa'))  # a semi vs a sedan
-        # The sound path: diesels play the truck response picked by ear in
-        # EngineVoice, petrol cars Engine Simulator's road muffler.
-        self.assertIn('impulse_response: truck_exhaust', script('golimasemi'))
+        # The sound path: diesels, simulated as petrol engines, and petrol cars
+        # alike play Engine Simulator's road muffler.
+        self.assertIn('impulse_response: ir_lib.default_0', script('golimasemi'))
         self.assertIn('impulse_response: ir_lib.default_0', script('elisa'))

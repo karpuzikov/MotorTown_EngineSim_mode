@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
            "C:/mod/assets/sound-library/smooth/smooth_39_treble_plus_8db.wav");
     assert(muffler_variant_path(muffler, profileScript, MufflerTreble::Brightest) ==
            "C:/mod/assets/sound-library/smooth/smooth_39_treble_plus_14db.wav");
-    const std::filesystem::path truck = "C:/mod/assets/truck_exhaust.wav";
-    assert(muffler_variant_path(truck, profileScript, MufflerTreble::Brightest) == truck);
+    const std::filesystem::path kart = "C:/mod/assets/kart_exhaust.wav";
+    assert(muffler_variant_path(kart, profileScript, MufflerTreble::Brightest) == kart);
 
     // A real engine-sim asset may have 24-bit samples; convert to PCM16.
     auto pcm24 = pcm16;
