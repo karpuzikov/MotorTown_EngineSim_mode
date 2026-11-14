@@ -1,0 +1,361 @@
+// Windows-only integration smoke test against the *actual* engine-sim library.
+// This executable is never installed with the mod.
+#include "engine_audio.h"
+#include "engine_sim_backend.h"
+#include "audio_lead.h"
+#include "audio_pipeline.h"
+
+#include <array>
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+
+// Test-only boundary meter: retain the genuine Engine Simulator backend so
+// failed packets reveal whether the producer returned 0, partial or full PCM.
+class MeteredEngineBackend final : public mtes::EngineBackend {
+public:
+    explicit MeteredEngineBackend(std::unique_ptr<mtes::EngineBackend> delegate)
+        : underlying(std::move(delegate)) {}
+    bool load(const std::string& script) override { return underlying->load(script); }
+    bool advance(double seconds, double rpm, double throttle, bool combustion) override {
+        return underlying->advance(seconds, rpm, throttle, combustion);
+    }
+    std::size_t read(std::int16_t* dst, std::size_t frames) override {
+        const auto count = underlying->read(dst, frames);
+        totalFramesRead += count;
+        return count;
+    }
+    void stop() noexcept override { underlying->stop(); }
+
+    std::uint64_t totalFramesRead = 0;
+private:
+    std::unique_ptr<mtes::EngineBackend> underlying;
+};
+
+// Exercise the actual DLL's pacing policy with a real Engine Simulator
+// backend. Fake only the game-specific stock-mute interface and the output
+// device; packet completeness and PCM still come from genuine combustion.
+class SmokeProfiles final : public mtes::VehicleProfileLookup {
+public:
+    explicit SmokeProfiles(std::string path) : script(std::move(path)) {}
+    std::optional<std::string> script_for(
+        const mtes::GameTelemetrySample&) override { return script; }
+    std::string script;
+};
+
+class SmokeStock final : public mtes::StockEngineEmitter {
+public:
+    bool mute() override { muted = true; return true; }
+    bool restore() noexcept override { muted = false; return true; }
+    bool muted = false;
+};
+
+class SmokeEmitters final : public mtes::StockEmitterLookup {
+public:
+    std::shared_ptr<mtes::StockEngineEmitter> stock_for(
+        const mtes::GameTelemetrySample&) override { return stock; }
+    std::shared_ptr<SmokeStock> stock = std::make_shared<SmokeStock>();
+};
+
+class SmokeSink final : public mtes::ProceduralAudioSink {
+public:
+    bool queue(const std::int16_t* data, std::size_t frames) override {
+        if (!data || frames == 0 || !std::any_of(data, data + frames,
+                [](std::int16_t sample) { return sample != 0; })) return false;
+        queuedFrames += frames;
+        return true;
+    }
+    bool start() override { playing = true; return true; }
+    void stop() noexcept override { playing = false; }
+    // Nothing plays: the whole run counts as queued, so no lead is requested.
+    std::size_t queued_frames() const noexcept override { return mtes::OutputLeadTargetFrames; }
+    bool playing = false;
+    std::size_t queuedFrames = 0;
+};
+
+bool run_worker_clock_probe(mtes::EngineAudio& audio, const char* path,
+    int profileNumber) {
+    using Clock = mtes::NativeAudioPipeline::Clock;
+    using namespace std::chrono_literals;
+    SmokeProfiles profiles(path);
+    SmokeEmitters emitters;
+    SmokeSink sink;
+    mtes::GameAudioOutput output(audio, sink);
+    mtes::NativeAudioPipeline pipeline(audio, output, profiles, emitters,
+        mtes::NativeAudioPipeline::NominalPacketFrames,
+        mtes::NativeAudioPipeline::Pacing::WorkerClock);
+    mtes::GameTelemetrySample telemetry;
+    telemetry.session = "genuine-worker-clock-smoke";
+    telemetry.vehicle = "worker-clock-vehicle-" + std::to_string(profileNumber);
+    telemetry.engine_asset = "verified-test-engine";
+    telemetry.engine_volume = 0.7;
+    telemetry.state = {2400.0, 0.7, 2, true};
+
+    // The native worker runs every 20ms even when Unreal can publish a new
+    // Lua telemetry sequence only every 150 or 186ms. The latter must NOT
+    // request an 8192-frame combustion batch on each late game callback.
+    for (const auto cadence : {150ms, 186ms}) {
+        const char* label = cadence == 150ms ? "worker-clock 150ms" :
+            "worker-clock 186ms";
+        constexpr int WarmupTicks = 90;
+        constexpr int MeasuredTicks = 100;
+        constexpr int MinimumCompleteBlocks = 70;
+        int completeWorkerClockBlocks = 0;
+        auto nextWorkerAt = Clock::now();
+        auto nextLuaAt = nextWorkerAt;
+        auto measuredFrom = nextWorkerAt;
+        std::size_t queuedBefore = sink.queuedFrames;
+        for (int frame = -WarmupTicks; frame < MeasuredTicks; ++frame) {
+            const auto now = Clock::now();
+            if (frame == 0) {
+                measuredFrom = now;
+                queuedBefore = sink.queuedFrames;
+            }
+            if (now >= nextLuaAt) {
+                ++telemetry.sequence;
+                nextLuaAt = now + cadence;
+            }
+            const auto beforeTick = sink.queuedFrames;
+            const bool complete = pipeline.process(telemetry, now, true);
+            const bool newPcm = complete && sink.queuedFrames > beforeTick;
+            if (frame >= 0 && newPcm) ++completeWorkerClockBlocks;
+            if (frame >= 0 && frame % 20 == 0) {
+                std::cout << label << " probe frame=" << frame
+                          << " status=" << static_cast<int>(pipeline.stage())
+                          << " queued_new_pcm=" << newPcm << "\n";
+            }
+            nextWorkerAt += 20ms;
+            std::this_thread::sleep_until(nextWorkerAt);
+        }
+        const auto expectedWorkerClockFrames = static_cast<std::size_t>(
+            std::chrono::duration<double>(Clock::now() - measuredFrom).count() * 44100.0);
+        const auto actualFrames = sink.queuedFrames - queuedBefore;
+        std::cout << path << " " << label << " completeWorkerClockBlocks: "
+                  << completeWorkerClockBlocks << "/" << MeasuredTicks
+                  << " queued PCM frames: " << actualFrames << "/"
+                  << expectedWorkerClockFrames << "\n";
+        // If the worker misses a 20ms wake but catches up next tick, one
+        // longer buffer is acceptable. But a persistent 5% shortage of
+        // produced samples would audibly underrun XAudio2 despite a
+        // process() return of true on skipped (<15ms) polls.
+        if (completeWorkerClockBlocks < MinimumCompleteBlocks ||
+            expectedWorkerClockFrames == 0 ||
+            static_cast<double>(actualFrames) < 0.95 * expectedWorkerClockFrames) {
+            std::cerr << "Worker-clock genuine combustion underruns too frequent for "
+                      << label << " (at least 70 new blocks and 95% PCM coverage required)\n";
+            return false;
+        }
+    }
+    // A stopped engine restores stock sound and stops the independent source.
+    telemetry.state.ignition = false;
+    telemetry.state.rpm = 0;
+    ++telemetry.sequence;
+    if (pipeline.process(telemetry, Clock::now(), true) ||
+        sink.playing || emitters.stock->muted) {
+        std::cerr << "Worker-clock pipeline retained stock mute after the engine stopped\n";
+        return false;
+    }
+    return true;
+}
+
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        std::cerr << "Expected one or more absolute Engine Simulator .mr profile paths\n";
+        return 2;
+    }
+    auto measuringBackend = std::make_unique<MeteredEngineBackend>(
+        mtes::make_engine_sim_backend());
+    auto* const meter = measuringBackend.get();
+    mtes::EngineAudio audio(std::move(measuringBackend));
+    std::array<std::int16_t, 882> pcm{};
+    for (int profile = 1; profile < argc; ++profile) {
+        // The same backend must release and reload the real physical model
+        // when Motor Town changes vehicles; no second process is launched.
+        const auto start = std::chrono::steady_clock::now();
+        std::size_t audible = 0;
+        for (int frame = 0; frame < 120; ++frame) {
+            const auto now = start + std::chrono::milliseconds(frame * 20);
+            if (!audio.update("native-test-vehicle-" + std::to_string(profile),
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to load or advance " << argv[profile] << "\n";
+                return 3;
+            }
+            const auto read = audio.render(pcm.data(), pcm.size(), now);
+            for (std::size_t i = 0; i < read; ++i) {
+                if (pcm[i] != 0) ++audible;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::cout << argv[profile] << " audible PCM samples: " << audible << "\n";
+        if (audible < 100) return 4;
+
+        // Reproduce the *real* in-game consumer. The old synth rendering
+        // thread capped its ring buffer at 2000 frames, so an otherwise
+        // healthy 882-frame desktop smoke passed while every 2205-frame
+        // Motor Town packet failed open with a permanent underrun.
+        std::array<std::int16_t, 2205> gamePcm{};
+        int completeGamePackets = 0;
+        for (int frame = 0; frame < 80; ++frame) {
+            const auto now = start + std::chrono::milliseconds(2400 + frame * 50);
+            if (!audio.update("native-test-vehicle-" + std::to_string(profile),
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance Motor Town-size PCM packet\n";
+                return 6;
+            }
+            if (audio.render(gamePcm.data(), gamePcm.size(), now) == gamePcm.size() &&
+                std::any_of(gamePcm.begin(), gamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; })) {
+                ++completeGamePackets;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::cout << argv[profile] << " complete Motor Town PCM packets: "
+                  << completeGamePackets << "\n";
+        if (completeGamePackets < 5) return 7;
+
+        // A requested 50-ms Lua timer may run every ~67 ms when the game
+        // thread misses the nominal deadline. Verify genuine synthesis also
+        // sustains a 2955-frame block instead of passing only fake backends.
+        std::array<std::int16_t, 2955> slowGamePcm{};
+        int completeSlowGamePackets = 0;
+        for (int frame = 0; frame < 80; ++frame) {
+            const auto now = start + std::chrono::milliseconds(6400 + frame * 67);
+            if (!audio.update("native-test-vehicle-" + std::to_string(profile),
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance slow-game PCM packet\n";
+                return 8;
+            }
+            if (audio.render(slowGamePcm.data(), slowGamePcm.size(), now) ==
+                    slowGamePcm.size() &&
+                std::any_of(slowGamePcm.begin(), slowGamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; })) {
+                ++completeSlowGamePackets;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::cout << argv[profile] << " complete slow-game PCM packets: "
+                  << completeSlowGamePackets << "\n";
+        if (completeSlowGamePackets < 5) return 9;
+
+        // In-game frames occasionally take ~150 ms. Run this phase on a
+        // real wall clock (not synthetic 150-ms timestamps with 2-ms sleeps)
+        // so the genuine asynchronous synthesizer has the same production
+        // and consumption cadence as a slow game frame. Its 8192-frame
+        // render batch must supply each complete 6615-frame PCM packet.
+        audio.stop();
+        const auto delayedVehicle =
+            "native-delayed-vehicle-" + std::to_string(profile);
+        if (!audio.update(delayedVehicle, argv[profile],
+                          {2400.0, 0.7, 2, true}, std::chrono::steady_clock::now())) {
+            std::cerr << "Failed to prime delayed-game engine\n";
+            return 10;
+        }
+        std::array<std::int16_t, 6615> delayedGamePcm{};
+        int completeDelayedGamePackets = 0;
+        // A fresh upstream Synthesizer starts with roughly one second of
+        // silent PCM already in its 44.1-kHz output ring. Consume it at the
+        // same real-time cadence before measuring sustained engine audio.
+        constexpr int WarmupPackets = 10;
+        auto nextPacketAt = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(150);
+        std::this_thread::sleep_until(nextPacketAt);
+        for (int frame = -WarmupPackets; frame < 40; ++frame) {
+            const auto now = std::chrono::steady_clock::now();
+            const auto updateBegan = std::chrono::steady_clock::now();
+            if (!audio.update(delayedVehicle,
+                              argv[profile], {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance delayed-game PCM packet\n";
+                return 10;
+            }
+            const auto updateFinished = std::chrono::steady_clock::now();
+            // Diagnose the asynchronous producer scheduling independently
+            // of its capacity: compare 20 immediate reads with 20 reads
+            // given 15ms to finish after the same physical simulation step.
+            if (frame >= 20) std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            const auto beforeRead = meter->totalFramesRead;
+            const auto renderBegan = std::chrono::steady_clock::now();
+            const bool complete = audio.render(delayedGamePcm.data(), delayedGamePcm.size(), now) ==
+                    delayedGamePcm.size() &&
+                std::any_of(delayedGamePcm.begin(), delayedGamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; });
+            if (complete && frame >= 0) {
+                ++completeDelayedGamePackets;
+            }
+            if (frame >= 0 && frame % 5 == 0) {
+                const auto renderFinished = std::chrono::steady_clock::now();
+                const auto ms = [](auto elapsed) {
+                    return std::chrono::duration<double, std::milli>(elapsed).count();
+                };
+                std::cout << "150ms probe frame=" << frame
+                          << " raw=" << meter->totalFramesRead - beforeRead
+                          << "/6615 status=" << static_cast<int>(audio.render_status())
+                          << " update_ms=" << ms(updateFinished - updateBegan)
+                          << " render_ms=" << ms(renderFinished - renderBegan)
+                          << " settled=" << (frame >= 20) << "\n";
+            }
+            nextPacketAt += std::chrono::milliseconds(150);
+            std::this_thread::sleep_until(nextPacketAt);
+        }
+        std::cout << argv[profile] << " complete delayed-game PCM packets: "
+                  << completeDelayedGamePackets
+                  << " (legacy packet-pacing only; diagnostic, not shipped)\n";
+
+        // Exercise the hardest bounded case too: an ~186-ms frame requests
+        // exactly 8192 frames, the maximum native PCM packet. The 150-ms
+        // test alone misses this producer/consumer scheduling edge.
+        std::array<std::int16_t, 8192> maxGamePcm{};
+        int completeMaxGamePackets = 0;
+        auto nextMaxPacketAt = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(186);
+        std::this_thread::sleep_until(nextMaxPacketAt);
+        for (int frame = -4; frame < 20; ++frame) {
+            const auto now = std::chrono::steady_clock::now();
+            const auto updateBegan = std::chrono::steady_clock::now();
+            if (!audio.update(delayedVehicle, argv[profile],
+                              {2400.0, 0.7, 2, true}, now)) {
+                std::cerr << "Failed to advance maximum PCM packet\n";
+                return 12;
+            }
+            const auto updateFinished = std::chrono::steady_clock::now();
+            const auto beforeRead = meter->totalFramesRead;
+            const auto renderBegan = std::chrono::steady_clock::now();
+            const bool complete = audio.render(maxGamePcm.data(), maxGamePcm.size(), now) ==
+                    maxGamePcm.size() &&
+                std::any_of(maxGamePcm.begin(), maxGamePcm.end(),
+                    [](std::int16_t sample) { return sample != 0; });
+            const auto renderFinished = std::chrono::steady_clock::now();
+            if (complete && frame >= 0) {
+                ++completeMaxGamePackets;
+            }
+            if (frame >= 0) {
+                const auto ms = [](auto elapsed) {
+                    return std::chrono::duration<double, std::milli>(elapsed).count();
+                };
+                std::cout << "186ms probe frame=" << frame
+                          << " raw=" << meter->totalFramesRead - beforeRead
+                          << "/8192 status=" << static_cast<int>(audio.render_status())
+                          << " update_ms=" << ms(updateFinished - updateBegan)
+                          << " render_ms=" << ms(renderFinished - renderBegan)
+                          << " complete=" << complete << "\n";
+            }
+            nextMaxPacketAt += std::chrono::milliseconds(186);
+            std::this_thread::sleep_until(nextMaxPacketAt);
+        }
+        std::cout << argv[profile] << " complete maximum-size PCM packets: "
+                  << completeMaxGamePackets
+                  << " (legacy packet-pacing only; diagnostic, not shipped)\n";
+
+        // The production DLL no longer drives synthesis from those delayed
+        // 150/186-ms Lua packets. Gate CI on its actual worker-clock path.
+        audio.stop();
+        if (!run_worker_clock_probe(audio, argv[profile], profile)) return 14;
+    }
+    audio.stop();
+    if (audio.is_replacing_stock()) return 5;
+    return 0;
+}

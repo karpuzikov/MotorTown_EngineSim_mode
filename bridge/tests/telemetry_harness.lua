@@ -20,7 +20,7 @@ io.open = function(path, mode) return native_open(path:gsub('\\', '/'), mode) en
 local clock = 1790000000
 os.time = function() return clock end
 local next_address = 1
-local state = { rpm = 2400, throttle = 0.65, running = true, unsafe_calls = 0 }
+local state = { rpm = 2400, throttle = 0.65, running = true, gear = 3, unsafe_calls = 0 }
 
 local function object(fields, kind)
     local value = io.tmpfile()
@@ -102,6 +102,106 @@ local vehicle, vehicle_fields = object({
     IsA = function(self, name) return name == '/Script/MotorTown.MTVehicle' end,
     GetClass = function() return schema({'VehicleSimulation','ThrottleInput'}, {}) end,
 })
+if scenario == 'deep_vehicle' then
+    local junk = {}
+    for i = 1, 2200 do junk[#junk + 1] = 'Junk' .. i end
+    local seat = object({ GetClass = function() return schema(junk, {}) end })
+    vehicle_fields.DriverSeat = seat
+    vehicle_fields.EngineComponent = engine
+    vehicle_fields.VehicleSimulation = nil
+    vehicle_fields.GetClass = function() return schema({'DriverSeat','EngineComponent','ThrottleInput'}, {}) end
+end
+if scenario == 'gear_probe' then
+    local transmission, transmission_fields = object({
+        CurrentGear = state.gear,
+        GetClass = function() return schema({'CurrentGear'}, {}) end,
+    })
+    vehicle_fields.Transmission = transmission
+    vehicle_fields.GetClass = function() return schema({'VehicleSimulation','Transmission','ThrottleInput'}, {}) end
+    state.transmission_fields = transmission_fields
+end
+if scenario == 'late_gear' then
+    state.late_transmission = object({
+        CurrentGear = state.gear,
+        GetClass = function() return schema({'CurrentGear'}, {}) end,
+    })
+end
+if scenario == 'audio_inventory' then
+    local props = {'VehicleSimulation','EngineSoundComponent'}
+    for i = 1, 350 do props[#props + 1] = 'Aaa' .. i end
+    vehicle_fields.EngineSoundComponent = object({
+        VolumeMultiplier = 0.75,
+        GetClass = function() return schema({'VolumeMultiplier'}, {}) end,
+    })
+    vehicle_fields.GetClass = function() return schema(props, {}) end
+end
+if scenario == 'deep_sound_and_gear' or scenario == 'engine_hot_state_off' or
+   scenario == 'crowded_audio_and_engine_profile' or scenario == 'stable_engine_mapping' then
+    local rpmGetter = getter('GetRPM', function() return state.rpm end)
+    local throttleGetter = getter('GetThrottle', function() return state.throttle end)
+    local hotState, hotStateFields = object({ bIgnitionOn = state.running }, 'UScriptStruct')
+    hotStateFields.ForEachProperty = function(self, visit) each({prop('bIgnitionOn')}, visit) end
+    hotStateFields.ForEachFunction = function() end
+    hotStateFields.GetSuperStruct = function() return nil end
+    local engineProps = {'NetLC_EngineHotState'}
+    local audioAsset = object({ GetClass = function()
+        local huge = {}
+        for i = 1, 2100 do huge[#huge + 1] = 'AssetField' .. i end
+        return schema(huge, {})
+    end })
+    local engineProperty, enginePropertyFields = object({ EngineType = 2, MaxRPM = 2900 }, 'UScriptStruct')
+    enginePropertyFields.ForEachProperty = function(self, visit)
+        each({prop('EngineType'),prop('MaxRPM')}, visit)
+    end
+    enginePropertyFields.ForEachFunction = function() end
+    enginePropertyFields.GetSuperStruct = function() return nil end
+    local engineData = object({ EnginesSound = audioAsset, EngineProperty = engineProperty,
+        GetFullName = function() return 'MT_EngineData /Game/Engines/Boxer.Boxer' end,
+        GetClass = function() return schema({'EnginesSound','EngineProperty'}, {}) end,
+    })
+    if scenario == 'deep_sound_and_gear' or scenario == 'crowded_audio_and_engine_profile' or
+       scenario == 'stable_engine_mapping' then engineProps[#engineProps + 1] = 'EngineData' end
+    engine_fields.GetRPM = rpmGetter
+    engine_fields.GetThrottle = throttleGetter
+    engine_fields.NetLC_EngineHotState = hotState
+    engine_fields.EngineData = engineData
+    engine_fields.GetClass = function() return schema(engineProps, {rpmGetter, throttleGetter}) end
+    local transmission = object({ CurrentGear = 3,
+        GetClass = function() return schema({'CurrentGear'}, {}) end,
+    })
+    vehicle_fields.VehicleSimulation = nil
+    vehicle_fields.EngineComponent = engine
+    vehicle_fields.TransmissionComponent = transmission
+    vehicle_fields.Throttle = 0 -- driver input can be zero under autopilot
+    vehicle_fields.GetClass = function()
+        return schema({'EngineComponent','TransmissionComponent','Throttle'}, {})
+    end
+    if scenario == 'deep_sound_and_gear' then state.throttle = 0.8 end
+    if scenario == 'crowded_audio_and_engine_profile' then
+        local rootFields = {'EngineComponent', 'TransmissionComponent', 'Throttle'}
+        for i = 1, 14 do
+            local field = 'ExtraSoundComponent' .. i
+            vehicle_fields[field] = object({ GetClass = function()
+                local clutter = {}
+                for j = 1, 180 do clutter[#clutter + 1] = 'UnrelatedField' .. j end
+                return schema(clutter, {})
+            end })
+            rootFields[#rootFields + 1] = field
+        end
+        vehicle_fields.GetClass = function() return schema(rootFields, {}) end
+    end
+    if scenario == 'stable_engine_mapping' then
+        state.engine_scans = 0
+        engine_fields.GetClass = function()
+            state.engine_scans = state.engine_scans + 1
+            return schema(engineProps, {rpmGetter, throttleGetter})
+        end
+    end
+    if scenario == 'engine_hot_state_off' then
+        state.running = false
+        hotStateFields.bIgnitionOn = false
+    end
+end
 if scenario == 'struct' then vehicle_fields.VehicleSimulation = component end
 if scenario == 'struct_alias' then
     struct_members.GetStructAddress = function() return 4242 end
@@ -153,13 +253,130 @@ end
 if scenario == 'reflection_error' then
     vehicle_fields.GetClass = function() error('Synthetic reflection failure') end
 end
-local controller = object({ K2_GetPawn = function() return vehicle end })
+if scenario == 'sdk_audio_targets' or scenario == 'sdk_audio_missing' or
+   scenario == 'sdk_audio_crowded' or scenario == 'sdk_audio_late' or
+   scenario:match('^sdk_audio_direct') then
+    -- These mock the exact UE4SS SDK property ownership, not its file layout:
+    -- MTVehicle -> MTEngineComponent -> MTEngineSoundComponent -> TArray.
+    vehicle_fields.VehicleSimulation = nil
+    vehicle_fields.EngineComponent = engine
+    vehicle_fields.HornAudioComponent = object({ VolumeMultiplier = 0.8 })
+    local liveRpm = getter('GetRPM', function() return state.rpm end)
+    local liveIgnition = getter('IsIgnitionOn', function() return state.running end)
+    engine_fields.GetRPM = liveRpm
+    engine_fields.IsIgnitionOn = liveIgnition
+    engine_fields.GetClass = function()
+        return schema({'EngineSoundComponent', 'AudioComponent',
+            'IntakeAudioComponent', 'JakeBrakeAudioComponent',
+            'AfterfireAudioComponents'},
+            {rpm, throttle, ignition, liveRpm, liveIgnition})
+    end
+    do
+        local function sound(name)
+            return object({ GetFullName = function() return 'SoundCue /Game/Audio.' .. name end })
+        end
+        local function channel(name, volume)
+            return object({
+                Sound = sound(name), VolumeMultiplier = volume,
+                GetFullName = function() return 'AudioComponent /Game/Vehicle.' .. name end,
+            })
+        end
+        local function audio_array(items)
+            return object({
+                GetArrayNum = function() return #items end,
+                ForEach = function(self, callback)
+                    for i, item in ipairs(items) do
+                        local element = { get = function() return item end }
+                        if callback(i - 1, element) then break end
+                    end
+                end,
+            }, 'TArray')
+        end
+        if scenario ~= 'sdk_audio_missing' and
+            not scenario:match('^sdk_audio_direct') then
+            local engineAudio = {channel('EngineA', 0.75)}
+            if scenario == 'sdk_audio_crowded' then
+                engineAudio[2] = false -- invalid null element
+            end
+            local owner = object({
+                EngineAudioComponents = audio_array(engineAudio),
+                ExhaustAudioComponents = audio_array({channel('ExhaustA', 0.4)}),
+                GetClass = function() return schema({'EngineAudioComponents', 'ExhaustAudioComponents'}, {}) end,
+            })
+            if scenario == 'sdk_audio_late' then state.late_audio_owner = owner
+            else engine_fields.EngineSoundComponent = owner end
+        end
+        if scenario:match('^sdk_audio_direct') then
+            local main = channel('MainEngine', 0.65)
+            if scenario == 'sdk_audio_direct_late' then state.late_direct_audio = main
+            elseif scenario == 'sdk_audio_direct_invalid' then
+                engine_fields.AudioComponent = object({ready = false})
+            else engine_fields.AudioComponent = main end
+            engine_fields.IntakeAudioComponent = channel('IntakeA', 0.25)
+            local afterfire = channel('AfterfireA', 0.1)
+            if scenario == 'sdk_audio_direct_invalid' then afterfire = false end
+            engine_fields.AfterfireAudioComponents = audio_array({afterfire})
+            if scenario == 'sdk_audio_direct_array_error' then
+                engine_fields.AfterfireAudioComponents = object({
+                    GetArrayNum = function() error('Synthetic unavailable engine array') end,
+                })
+            end
+        end
+    end
+    if scenario == 'sdk_audio_crowded' then
+        local props = {'EngineComponent', 'HornAudioComponent'}
+        for i = 1, 2400 do props[#props + 1] = 'Unrelated' .. i end
+        vehicle_fields.GetClass = function() return schema(props, {}) end
+    else
+        vehicle_fields.GetClass = function()
+            return schema({'EngineComponent', 'HornAudioComponent'}, {})
+        end
+    end
+end
+local controller = object({ K2_GetPawn = function()
+    if state.inVehicle == false then return nil end
+    return vehicle
+end })
+if scenario == 'sdk_audio_direct_switch' then
+    state.vehicleAddress = vehicle:GetAddress()
+    vehicle_fields.GetAddress = function() return state.vehicleAddress end
+end
 package.preload['UEHelpers'] = function() return { GetPlayerController = function() return controller end } end
 FindFirstOf = function() error('Must use the local player controller') end
+if scenario:match('^settings_') then
+    state.engine_volume = 0.65
+    local valueType = 0 -- EMTUserSettingValueType::Float
+    if scenario == 'settings_zero' then state.engine_volume = 0 end
+    if scenario == 'settings_change' then state.engine_volume = 0.4 end
+    if scenario == 'settings_bad_type' then valueType = 1 end
+    if scenario == 'settings_bad_range' then state.engine_volume = 1.5 end
+    local map = object({
+        ForEach = function(self, callback)
+            for _, key in ipairs({25, 28}) do
+                local setting = key == 28 and
+                    {ValueType = valueType, FloatValue = state.engine_volume} or
+                    {ValueType = 0, FloatValue = 0.25}
+                local keyRef = {get = function() return key end}
+                local valueRef = {get = function() return setting end}
+                if callback(keyRef, valueRef) then break end
+            end
+        end,
+    }, 'TMap')
+    local settings = object({
+        Values = map,
+        GetFullName = function() return 'MotorTownUserSettings /Engine/Transient.GameUserSettings' end,
+    })
+    FindFirstOf = function(name)
+        assert(name == 'MotorTownUserSettings', 'Unexpected lookup: ' .. tostring(name))
+        if scenario == 'settings_missing' then return nil end
+        return settings
+    end
+end
 local tick = nil
 LoopInGameThreadWithDelay = function(delay, callback) assert(delay == 50); tick = callback end
 dofile(exporter)
 assert(tick, 'Exporter did not start its game-thread loop')
+if scenario == 'sdk_audio_direct_initial_off' then state.running = false end
 tick()
 if scenario == 'late_component' or scenario == 'late_actual_throttle' then
     engine_fields.ready = true
@@ -184,6 +401,50 @@ elseif scenario == 'changed_throttle_getter' then
     tick() -- old throttle getter is unavailable
     clock = clock + 1
     tick() -- discover the replacement getter
+elseif scenario == 'gear_probe' then
+    state.transmission_fields.CurrentGear = 4
+    clock = clock + 1
+    tick()
+elseif scenario == 'late_gear' then
+    vehicle_fields.TransmissionComponent = state.late_transmission
+    vehicle_fields.GetClass = function()
+        return schema({'VehicleSimulation','TransmissionComponent','ThrottleInput'}, {})
+    end
+    clock = clock + 2
+    tick()
+elseif scenario == 'stable_engine_mapping' then
+    clock = clock + 3
+    tick()
+    assert(state.engine_scans == 1, 'Stable engine mapping must not be rediscovered every second')
+elseif scenario == 'sdk_audio_late' then
+    engine_fields.EngineSoundComponent = state.late_audio_owner
+    clock = clock + 6
+    tick() -- RPM/throttle remain stable; targeted sound inventory must refresh
+elseif scenario == 'sdk_audio_direct_late' then
+    engine_fields.AudioComponent = state.late_direct_audio
+    clock = clock + 6
+    tick()
+elseif scenario == 'sdk_audio_direct_off' then
+    state.running = false
+    clock = clock + 6
+    tick()
+elseif scenario == 'sdk_audio_direct_reenter' then
+    state.inVehicle = false
+    clock = clock + 1
+    tick()
+    state.inVehicle = true
+    state.running = false
+    clock = clock + 6
+    tick()
+elseif scenario == 'sdk_audio_direct_switch' then
+    state.vehicleAddress = state.vehicleAddress + 100
+    state.running = false
+    clock = clock + 6
+    tick()
+elseif scenario == 'settings_change' then
+    state.engine_volume = 0.95
+    clock = clock + 1
+    tick()
 end
 assert(state.unsafe_calls == 0, 'A getter with input parameters was called')
 assert(reflected_count <= 2000, 'Metadata enumeration exceeded budget: ' .. reflected_count)

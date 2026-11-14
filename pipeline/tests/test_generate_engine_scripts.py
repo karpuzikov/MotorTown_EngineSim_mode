@@ -1,0 +1,148 @@
+import json
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import generate_engine_scripts as generator  # noqa: E402
+
+ENGINES, CARS = generator.load_specs()
+
+
+def journal_angles(engine_id):
+    engine = ENGINES[engine_id]
+    fire = generator.firing_angles_deg(engine)
+    banks_deg = generator.bank_angles_deg(engine)
+    banks = generator.cylinders_by_bank(engine, fire, banks_deg)
+    angles = {}
+    for bank, bank_deg in zip(banks, banks_deg):
+        for cylinder in bank:
+            angles[cylinder] = generator.journal_angle_deg(fire[cylinder], bank_deg, banks_deg[0])
+    return banks, angles
+
+
+class FiringGeometryTest(unittest.TestCase):
+    def test_small_block_chevy_odd_cylinders_share_a_bank_and_pins_pair_up(self):
+        banks, angles = journal_angles("chevy_350_l48")
+        self.assertEqual(banks, [[1, 3, 5, 7], [2, 4, 6, 8]])
+        for left, right in ((1, 2), (3, 4), (5, 6), (7, 8)):
+            self.assertAlmostEqual(angles[left], angles[right])
+
+    def test_ford_windsor_numbers_one_to_four_on_one_bank(self):
+        banks, angles = journal_angles("ford_302_windsor")
+        self.assertIn([1, 2, 3, 4], banks)
+        for a, b in ((1, 5), (2, 6), (3, 7), (4, 8)):
+            self.assertAlmostEqual(angles[a], angles[b])
+
+    def test_inline_four_is_a_flat_plane_crank(self):
+        _, angles = journal_angles("chevy_153_i4")
+        self.assertEqual([angles[c] for c in (1, 2, 3, 4)], [0.0, 180.0, 180.0, 0.0])
+
+    def test_uneven_fire_intervals_are_kept(self):
+        fire = generator.firing_angles_deg(ENGINES["honda_cb250_twin"])
+        self.assertEqual(fire, {1: 0.0, 2: 180.0})
+
+
+class ScriptGenerationTest(unittest.TestCase):
+    def test_every_four_stroke_engine_produces_a_script(self):
+        for engine in ENGINES.values():
+            script, derived = generator.engine_script(engine, generator.first_car_using(engine["id"], CARS))
+            self.assertIn("set_engine(motor_town_engine())", script)
+            self.assertTrue(script.isascii(), engine["id"])
+            self.assertTrue(script.rstrip().endswith("main()"), "the compiler only runs top-level statements")
+            self.assertGreater(derived["chamber_volume"], 0.0)
+
+    def test_silenced_exhaust_uses_the_road_vehicle_response_of_engine_simulator(self):
+        # Engine Simulator's own road and truck engines use default_0. The
+        # sporty demo response (mild_exhaust_0_reverb) made every engine boom
+        # at 125 Hz and crackle above 3 kHz; open pipes (minimal_muffling_01) hissed.
+        for car in CARS:
+            if not car.get("exhaust") or not car["exhaust"]["silencers"]:
+                continue  # electric: keeps the stock sound
+            script, _ = generator.engine_script(ENGINES[car["engines"][0]], car)
+            self.assertIn("impulse_response: ir_lib.default_0", script, car["real_car"])
+            self.assertNotIn("mild_exhaust", script, car["real_car"])
+            self.assertNotIn("minimal_muffling", script, car["real_car"])
+
+    def test_diesels_are_simulated_exactly_as_petrol_engines(self):
+        raw = json.loads((generator.PIPELINE_DIR / "real_engines.json").read_text())["engines"]
+        diesels = [engine for engine in raw if engine["fuel"] in ("diesel", "multifuel")]
+        self.assertTrue(diesels)
+        for engine in diesels:
+            petrol = dict(engine, fuel="petrol" if engine["cycle"] == 4 else "petrol-oil")
+            car = generator.first_car_using(engine["id"], CARS)
+            script, _ = generator.engine_script(ENGINES[engine["id"]], car)
+            self.assertEqual(script, generator.engine_script(petrol, car)[0], engine["id"])
+            self.assertNotIn("Diesel", script.replace(engine["name"], ""), engine["id"])
+
+    def test_a_car_without_silencer_data_fails_loudly(self):
+        car = dict(CARS[0], exhaust=dict(CARS[0]["exhaust"], silencers=[]))
+        with self.assertRaises(ValueError):
+            generator.engine_script(ENGINES[car["engines"][0]], car)
+
+    def test_compression_ratio_sets_clearance_volume(self):
+        derived = generator.derive(ENGINES["chevy_350_l48"], generator.first_car_using("chevy_350_l48", CARS))
+        swept = derived["displacement_litres"] / 8 / 1000.0
+        self.assertAlmostEqual((swept + derived["chamber_volume"]) / derived["chamber_volume"], 10.25)
+
+    def test_two_stroke_fires_and_opens_every_revolution(self):
+        script, _ = generator.engine_script(ENGINES["detroit_8v71"], generator.first_car_using("detroit_8v71", CARS))
+        self.assertIn("sparks_per_cycle: 2", script)
+        self.assertIn("lobes_per_cycle: 2", script)
+        self.assertEqual(generator.firing_angles_deg(ENGINES["detroit_8v71"])[7], 45.0)
+        boost = generator.boost(ENGINES["vespa_150_2t"], generator.derive(
+            ENGINES["vespa_150_2t"], generator.first_car_using("vespa_150_2t", CARS)))
+        self.assertGreaterEqual(boost["full_load_pressure_ratio"], 1.25)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class ClosedThrottleTest(unittest.TestCase):
+    def test_choked_leak_passes_more_than_its_rating(self):
+        # Choked at idle vacuum vs the 1.5 inHg rating point (gamma 1.4).
+        self.assertAlmostEqual(generator.choked_to_carb_rating_flow_ratio(), 2.225, places=2)
+
+    def test_closed_plate_leak_feeds_idle_at_idle_vacuum(self):
+        # Regression: a fixed 0.995 plate on the 6x throttle idled at 0.6-0.93 atm.
+        engine = ENGINES["chevy_350_l48"]
+        displacement_ci = 350.0
+        wide_open = generator.throttle_cfm(engine, displacement_ci)
+        position = generator.closed_throttle_plate_position(engine, displacement_ci, wide_open)
+        leak_cfm = wide_open * generator.math.cos(position * generator.math.pi / 2)
+        idle_rpm = min(max(0.25 * engine["redline_rpm"], 600.0), 900.0)
+        idle_scfm = displacement_ci / 1728.0 * idle_rpm / 2 * generator.IDLE_MANIFOLD_PRESSURE_ATM
+        self.assertAlmostEqual(leak_cfm * generator.choked_to_carb_rating_flow_ratio(), idle_scfm, places=3)
+        self.assertGreater(position, 0.995)
+
+
+
+class ExhaustRunnerTest(unittest.TestCase):
+    def test_runner_volume_includes_the_primary_pipe(self):
+        # Regression: the port alone (~40 cc) chattered and popped at idle.
+        engine = ENGINES["ford_flathead_239"]
+        car = next(c for c in CARS if c["real_car"] == "1948 Ford F-1")
+        derived = generator.derive(engine, car)
+        volume = generator.exhaust_runner_volume_m3(derived)
+        self.assertAlmostEqual(volume, derived["exhaust_runner_area"] * (derived["port_length"] + derived["primary_tube_length"]))
+        self.assertGreater(volume, 5 * derived["exhaust_runner_area"] * derived["port_length"])
+
+    def test_primary_conductance_is_the_bench_flow_through_the_runner_not_the_fitted_one(self):
+        # Regression (2026-11-05, "everything makes knocking sound"): the 3.2x
+        # pipe fit on the primary made every exhaust pulse sharp. Engine
+        # Simulator's own engines sit near the bench figure. Offline, half the
+        # energy fell at a median 398 Hz (theirs 164 Hz, bench primary 188 Hz).
+        bench_velocity = generator.math.sqrt(
+            2.0 * generator.PRESSURE_1_5_INCH_HG_PA / generator.AIR_DENSITY_KG_M3)
+        for car in CARS:
+            if not car.get("exhaust") or not car["exhaust"]["silencers"]:
+                continue  # electric: keeps the stock sound
+            for engine_id in car["engines"]:
+                engine = ENGINES[engine_id]
+                script, derived = generator.engine_script(engine, car)
+                bench_cfm = (derived["exhaust_runner_area"] * bench_velocity
+                             * generator.CUBIC_METRES_PER_SECOND_TO_CFM)
+                self.assertIn(f"primary_flow_rate: k_carb({bench_cfm:.1f})", script, f"{car['real_car']} {engine_id}")
+                # the fit stays where power is limited: the tailpipe
+                self.assertIn(f"outlet_flow_rate: k_carb({derived['exhaust_outlet_cfm']:.1f})", script)

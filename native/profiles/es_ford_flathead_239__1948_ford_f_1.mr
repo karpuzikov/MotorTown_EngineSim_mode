@@ -1,0 +1,427 @@
+// mtes-real-spec-profile: 1
+// Hand-made: Ford 239 flathead V8 (8RT truck engine) in the 1948 Ford F-1,
+// the Dory's real truck. Written in Engine Simulator's own style (its GM LS
+// and Chevrolet 454 truck engines) from the real specs:
+//   239.4 cu in, bore 3-3/16 in, stroke 3-3/4 in, 6.8:1, 100 hp, 180 lb-ft
+//   (Ford ratings; Wikipedia Ford flathead V8 / F-Series first generation)
+//   firing order 1-5-4-8-6-3-7-2, cross-plane crank, side valves in the block
+//   cam 8BA-6250: lift 0.307 in, 198 deg at 0.050, intake centre 109.5 ATDC,
+//   exhaust centre 112.5 BTDC, lash .014/.018 (Tilden Technologies, Ford drawings)
+//   Holley/Ford 94 two-barrel, ~160 cfm; ~21 deg total advance at the crank
+//   exhaust: each bank's three ports (the middle two cylinders siamesed) pass
+//   through the block into a cast manifold; the left manifold crosses over
+//   to the right, one muffler, side tailpipe
+// The muffler's response is Engine Simulator's road-vehicle one (default_0), the
+// same as every generated engine: real_engine_1 left 4 kHz only 4 dB under the
+// loudest band (a hiss) where the same engine on default_0 sits 23 dB under.
+import "engine_sim.mr"
+
+units units()
+constants constants()
+impulse_response_library ir_lib()
+label cycle(2 * 360 * units.deg)
+
+private node wires {
+    output wire1: ignition_wire();
+    output wire2: ignition_wire();
+    output wire3: ignition_wire();
+    output wire4: ignition_wire();
+    output wire5: ignition_wire();
+    output wire6: ignition_wire();
+    output wire7: ignition_wire();
+    output wire8: ignition_wire();
+}
+
+// Side-valve ports: the valves sit beside the bore and the charge turns twice
+// through the L-shaped chamber, so they flow far less than overhead ports.
+private node flathead_8ba_block_ports {
+    input intake_camshaft;
+    input exhaust_camshaft;
+    input flow_attenuation: 1.0;
+    input flip_display: false;
+    alias output __out: head;
+
+    function intake_flow(50 * units.thou)
+    intake_flow
+        .add_flow_sample(0, 0 * flow_attenuation)
+        .add_flow_sample(50, 30 * flow_attenuation)
+        .add_flow_sample(100, 58 * flow_attenuation)
+        .add_flow_sample(150, 80 * flow_attenuation)
+        .add_flow_sample(200, 95 * flow_attenuation)
+        .add_flow_sample(250, 104 * flow_attenuation)
+        .add_flow_sample(300, 110 * flow_attenuation)
+        .add_flow_sample(350, 112 * flow_attenuation)
+
+    function exhaust_flow(50 * units.thou)
+    exhaust_flow
+        .add_flow_sample(0, 0 * flow_attenuation)
+        .add_flow_sample(50, 28 * flow_attenuation)
+        .add_flow_sample(100, 52 * flow_attenuation)
+        .add_flow_sample(150, 70 * flow_attenuation)
+        .add_flow_sample(200, 84 * flow_attenuation)
+        .add_flow_sample(250, 92 * flow_attenuation)
+        .add_flow_sample(300, 97 * flow_attenuation)
+        .add_flow_sample(350, 99 * flow_attenuation)
+
+    generic_cylinder_head head(
+        // 6.8:1 on 490 cc per cylinder
+        chamber_volume: 84.6 * units.cc,
+        intake_runner_volume: 200.0 * units.cc,
+        intake_runner_cross_section_area: 1.0 * units.inch * 1.4 * units.inch,
+        // block passage and manifold branch
+        exhaust_runner_volume: 200.0 * units.cc,
+        exhaust_runner_cross_section_area: 1.25 * units.inch * 1.25 * units.inch,
+
+        intake_port_flow: intake_flow,
+        exhaust_port_flow: exhaust_flow,
+        valvetrain: standard_valvetrain(
+            intake_camshaft: intake_camshaft,
+            exhaust_camshaft: exhaust_camshaft
+        ),
+        flip_display: flip_display
+    )
+}
+
+private node flathead_8ba_camshaft {
+    input intake_lobe_profile;
+    input exhaust_lobe_profile;
+    input intake_lobe_center: 109.5 * units.deg;
+    input exhaust_lobe_center: 112.5 * units.deg;
+    input base_radius: 0.5 * units.inch;
+
+    // One camshaft in the block; one set of lobes per bank.
+    output intake_cam_right: _intake_cam_right;
+    output exhaust_cam_right: _exhaust_cam_right;
+    output intake_cam_left: _intake_cam_left;
+    output exhaust_cam_left: _exhaust_cam_left;
+
+    camshaft_parameters params(advance: 0.0 * units.deg, base_radius: base_radius)
+    camshaft _intake_cam_right(params, lobe_profile: intake_lobe_profile)
+    camshaft _exhaust_cam_right(params, lobe_profile: exhaust_lobe_profile)
+    camshaft _intake_cam_left(params, lobe_profile: intake_lobe_profile)
+    camshaft _exhaust_cam_left(params, lobe_profile: exhaust_lobe_profile)
+
+    label rot(90 * units.deg)
+    label rot360(360 * units.deg)
+
+    // Firing order 1-5-4-8-6-3-7-2: cylinder 1 at 0, 5 at 90, 4 at 180 ...
+    _exhaust_cam_right
+        .add_lobe(rot360 - exhaust_lobe_center + 0 * rot) // 1
+        .add_lobe(rot360 - exhaust_lobe_center + 7 * rot) // 2
+        .add_lobe(rot360 - exhaust_lobe_center + 5 * rot) // 3
+        .add_lobe(rot360 - exhaust_lobe_center + 2 * rot) // 4
+    _intake_cam_right
+        .add_lobe(rot360 + intake_lobe_center + 0 * rot) // 1
+        .add_lobe(rot360 + intake_lobe_center + 7 * rot) // 2
+        .add_lobe(rot360 + intake_lobe_center + 5 * rot) // 3
+        .add_lobe(rot360 + intake_lobe_center + 2 * rot) // 4
+    _exhaust_cam_left
+        .add_lobe(rot360 - exhaust_lobe_center + 1 * rot) // 5
+        .add_lobe(rot360 - exhaust_lobe_center + 4 * rot) // 6
+        .add_lobe(rot360 - exhaust_lobe_center + 6 * rot) // 7
+        .add_lobe(rot360 - exhaust_lobe_center + 3 * rot) // 8
+    _intake_cam_left
+        .add_lobe(rot360 + intake_lobe_center + 1 * rot) // 5
+        .add_lobe(rot360 + intake_lobe_center + 4 * rot) // 6
+        .add_lobe(rot360 + intake_lobe_center + 6 * rot) // 7
+        .add_lobe(rot360 + intake_lobe_center + 3 * rot) // 8
+}
+
+public node ford_flathead_239_8rt {
+    alias output __out: engine;
+
+    engine engine(
+        name: "Ford 239 flathead V8 (8RT)",
+        starter_torque: 150 * units.lb_ft,
+        starter_speed: 150 * units.rpm,
+        redline: 3800 * units.rpm,
+        throttle_gamma: 2.0,
+        fuel: fuel(
+            max_turbulence_effect: 3.0,
+            burning_efficiency_randomness: 0.5,
+            max_burning_efficiency: 0.72
+        ),
+        hf_gain: 0.01,
+        noise: 1.0,
+        jitter: 0.5,
+        simulation_frequency: 10000
+    )
+
+    wires wires()
+
+    label stroke(3.75 * units.inch)
+    label bore(3.1875 * units.inch)
+    label rod_length(7.0 * units.inch)
+    label rod_mass(680 * units.g)
+    label compression_height(1.6 * units.inch)
+    label crank_mass(62 * units.lb)
+    label flywheel_mass(32 * units.lb)
+    label flywheel_radius(7 * units.inch)
+
+    label crank_moment(
+        1.5 * disk_moment_of_inertia(mass: crank_mass, radius: stroke)
+    )
+    label flywheel_moment(
+        disk_moment_of_inertia(mass: flywheel_mass, radius: flywheel_radius)
+    )
+    label other_moment(
+        disk_moment_of_inertia(mass: 1 * units.kg, radius: 1.0 * units.cm)
+    )
+
+    label v_angle(90 * units.deg)
+    crankshaft c0(
+        throw: stroke / 2,
+        flywheel_mass: flywheel_mass,
+        mass: crank_mass,
+        friction_torque: 15.0 * units.lb_ft,
+        moment_of_inertia: crank_moment + flywheel_moment + other_moment,
+        position_x: 0.0,
+        position_y: 0.0,
+        tdc: 90 * units.deg - (v_angle / 2.0)
+    )
+
+    // Cross-plane crank; cylinders 1 and 5 share the front pin.
+    rod_journal rj_front(angle: 90 * units.deg)
+    rod_journal rj_2(angle: 0 * units.deg)
+    rod_journal rj_3(angle: 180 * units.deg)
+    rod_journal rj_rear(angle: 270 * units.deg)
+    c0
+        .add_rod_journal(rj_front)
+        .add_rod_journal(rj_2)
+        .add_rod_journal(rj_3)
+        .add_rod_journal(rj_rear)
+
+    piston_parameters piston_params(
+        mass: 450 * units.g,
+        compression_height: compression_height,
+        wrist_pin_position: 0.0,
+        displacement: 0.0
+    )
+
+    connecting_rod_parameters cr_params(
+        mass: rod_mass,
+        moment_of_inertia: rod_moment_of_inertia(mass: rod_mass, length: rod_length),
+        center_of_mass: 0.0,
+        length: rod_length
+    )
+
+    // Holley/Ford 94 two-barrel on the stock manifold. At idle the plate's
+    // leak holds ~18 inHg vacuum, as stock flatheads idle (17-19 inHg).
+    intake intake(
+        plenum_volume: 1.0 * units.L,
+        plenum_cross_section_area: 20.0 * units.cm2,
+        intake_flow_rate: k_carb(160.0),
+        runner_flow_rate: k_carb(250.0),
+        runner_length: 10.0 * units.inch,
+        idle_flow_rate: k_carb(0.0),
+        idle_throttle_plate_position: 0.981632,
+        velocity_decay: 0.5
+    )
+
+    // Cast log manifolds into 2-in pipe. The left bank's pulses also travel
+    // the crossover pipe to the right side before the shared muffler.
+    exhaust_system_parameters es_params(
+        collector_cross_section_area: circle_area(1.0 * units.inch),
+        outlet_flow_rate: k_carb(300.0),
+        primary_tube_length: 10.0 * units.inch,
+        primary_flow_rate: k_carb(150.0),
+        velocity_decay: 1.0
+    )
+    exhaust_system exhaust_right(
+        es_params,
+        audio_volume: 20.0,
+        length: 110 * units.inch,
+        impulse_response: ir_lib.default_0
+    )
+    exhaust_system exhaust_left(
+        es_params,
+        audio_volume: 20.0,
+        length: (110 + 30) * units.inch,
+        impulse_response: ir_lib.default_0
+    )
+
+    cylinder_bank_parameters bank_params(
+        bore: bore,
+        deck_height: stroke / 2 + rod_length + compression_height
+    )
+
+    // Exhaust paths to the manifold outlet at the rear of each bank; the two
+    // middle cylinders share one siamesed port. Bore spacing 4.25 in.
+    label pitch(4.25 * units.inch)
+    label passage(6.0 * units.inch)
+
+    cylinder_bank right(bank_params, angle: v_angle / 2.0)
+    cylinder_bank left(bank_params, angle: -v_angle / 2.0)
+    right
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.2)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_front,
+            intake: intake,
+            exhaust_system: exhaust_right,
+            ignition_wire: wires.wire1,
+            sound_attenuation: 1.0,
+            primary_length: passage + 3 * pitch
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.3)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_2,
+            intake: intake,
+            exhaust_system: exhaust_right,
+            ignition_wire: wires.wire2,
+            sound_attenuation: 0.9,
+            primary_length: passage + 1.5 * pitch
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.2)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_3,
+            intake: intake,
+            exhaust_system: exhaust_right,
+            ignition_wire: wires.wire3,
+            sound_attenuation: 0.9,
+            primary_length: passage + 1.5 * pitch
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.4)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_rear,
+            intake: intake,
+            exhaust_system: exhaust_right,
+            ignition_wire: wires.wire4,
+            sound_attenuation: 1.05,
+            primary_length: passage
+        )
+        .set_cylinder_head(
+            flathead_8ba_block_ports(
+                intake_camshaft: camshaft.intake_cam_right,
+                exhaust_camshaft: camshaft.exhaust_cam_right,
+                flip_display: true)
+        )
+    left
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.3)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_front,
+            intake: intake,
+            exhaust_system: exhaust_left,
+            ignition_wire: wires.wire5,
+            sound_attenuation: 0.95,
+            primary_length: passage + 3 * pitch
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.2)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_2,
+            intake: intake,
+            exhaust_system: exhaust_left,
+            ignition_wire: wires.wire6,
+            sound_attenuation: 0.85,
+            primary_length: passage + 1.5 * pitch
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.3)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_3,
+            intake: intake,
+            exhaust_system: exhaust_left,
+            ignition_wire: wires.wire7,
+            sound_attenuation: 0.9,
+            primary_length: passage + 1.5 * pitch
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.2)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj_rear,
+            intake: intake,
+            exhaust_system: exhaust_left,
+            ignition_wire: wires.wire8,
+            sound_attenuation: 1.0,
+            primary_length: passage
+        )
+        .set_cylinder_head(
+            flathead_8ba_block_ports(
+                intake_camshaft: camshaft.intake_cam_left,
+                exhaust_camshaft: camshaft.exhaust_cam_left)
+        )
+
+    engine
+        .add_cylinder_bank(right)
+        .add_cylinder_bank(left)
+
+    engine.add_crankshaft(c0)
+
+    // 0.307 in cam lift less ~0.016 in lash: direct-acting tappets, no rockers.
+    harmonic_cam_lobe intake_lobe(
+        duration_at_50_thou: 198 * units.deg,
+        gamma: 0.9,
+        lift: 291 * units.thou,
+        steps: 256
+    )
+    harmonic_cam_lobe exhaust_lobe(
+        duration_at_50_thou: 199 * units.deg,
+        gamma: 0.9,
+        lift: 289 * units.thou,
+        steps: 256
+    )
+    flathead_8ba_camshaft camshaft(
+        intake_lobe_profile: intake_lobe,
+        exhaust_lobe_profile: exhaust_lobe
+    )
+
+    // Distributor: ~4 deg initial, centrifugal advance to ~21 deg at the crank.
+    function timing_curve(1000 * units.rpm)
+    timing_curve
+        .add_sample(0000 * units.rpm, 4 * units.deg)
+        .add_sample(1000 * units.rpm, 8 * units.deg)
+        .add_sample(2000 * units.rpm, 16 * units.deg)
+        .add_sample(3000 * units.rpm, 21 * units.deg)
+        .add_sample(4000 * units.rpm, 21 * units.deg)
+        .add_sample(5000 * units.rpm, 21 * units.deg)
+
+    ignition_module ignition_module(
+        timing_curve: timing_curve,
+        rev_limit: 4200 * units.rpm,
+        limiter_duration: 0.1)
+    ignition_module
+        .connect_wire(wires.wire1, 0 * 90 * units.deg)
+        .connect_wire(wires.wire5, 1 * 90 * units.deg)
+        .connect_wire(wires.wire4, 2 * 90 * units.deg)
+        .connect_wire(wires.wire8, 3 * 90 * units.deg)
+        .connect_wire(wires.wire6, 4 * 90 * units.deg)
+        .connect_wire(wires.wire3, 5 * 90 * units.deg)
+        .connect_wire(wires.wire7, 6 * 90 * units.deg)
+        .connect_wire(wires.wire2, 7 * 90 * units.deg)
+
+    engine.add_ignition_module(ignition_module)
+}
+
+// 1948 F-1: ~3,100 lb, 3-speed, 3.92 axle, 6.00-16 tyres
+private node ford_f1_1948 {
+    alias output __out:
+        vehicle(
+            mass: 1400 * units.kg,
+            drag_coefficient: 0.55,
+            cross_sectional_area: (72 * units.inch) * (70 * units.inch),
+            diff_ratio: 3.92,
+            tire_radius: 14.5 * units.inch,
+            rolling_resistance: 300 * units.N
+        );
+}
+
+private node ford_f1_1948_transmission {
+    alias output __out:
+        transmission(max_clutch_torque: 300 * units.lb_ft)
+            .add_gear(2.82)
+            .add_gear(1.60)
+            .add_gear(1.00);
+}
+
+public node main {
+    set_engine(ford_flathead_239_8rt())
+    set_vehicle(ford_f1_1948())
+    set_transmission(ford_f1_1948_transmission())
+}
+
+main()
