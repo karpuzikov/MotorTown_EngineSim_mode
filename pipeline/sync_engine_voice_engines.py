@@ -24,12 +24,19 @@ import re
 import shutil
 import sys
 
+import compression_ignition
+import generate_engine_scripts
+
 HAND_MADE = {"mc9_6v92ta.mr": "es_detroit_6v92ta__1980_mci_mc_9.mr"}
 EXHAUST_OVERRIDE = re.compile(r"#exhaust=[^\t\n]*")
 
 
+ENGINES, _ = generate_engine_scripts.load_specs()
+
+
 def write_script(source, target):
-    target.write_text(source.read_text().rstrip("\n") + "\n\nmain()\n")
+    script = source.read_text().rstrip("\n") + "\n\nmain()\n"
+    target.write_text(compression_ignition.convert_script(script, ENGINES[compression_ignition.engine_id_of(target)]))
     source_boost, target_boost = source.with_suffix(".boost.json"), target.with_suffix(".boost.json")
     if source_boost.exists():
         shutil.copyfile(source_boost, target_boost)

@@ -82,10 +82,6 @@ IDLE_RPM_PER_REDLINE_RPM = 0.25
 IDLE_RPM_RANGE = (600.0, 900.0)
 IDLE_LEAK_FLOW_SCALE = 1.0
 PLENUM_VOLUME_TO_DISPLACEMENT = 1.0
-# A diesel's fuel is injected in the cylinder; Engine Simulator premixes it in
-# the intake, so a small premix volume keeps the pedal response immediate
-# (the full-size plenum lagged several revolutions in game).
-DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT = 0.1
 INTAKE_RUNNER_LENGTH_M = 0.25
 CYLINDER_PITCH_TO_BORE = 1.15
 PRIMARY_LENGTH_BY_MANIFOLD_M = {"cast-log": 0.20, "cast": 0.30, "turbo": 0.30, "tubular": 0.75}
@@ -101,13 +97,14 @@ PIPE_DISCHARGE_COEFFICIENT = 3.2                 # fleet fit 2026-11-03; Engine 
 # 500 Hz to 5 % (168 profiles), and peak power and torque move by less than
 # 1.5 % (17 engines on the offline dynamometer).
 PRIMARY_PIPE_DISCHARGE_COEFFICIENT = 1.0
-# A diesel is throttled like a petrol engine, never fuel-metered: Engine
-# Simulator's flame goes out when the charge is leaner than about the full-load
-# one, so metering fuel made every one of 28 diesels flare and stall about 1.6
-# times a second (engine speed swinging 8-17% around a steady target, the
-# pulsing heard in game; measured 2026-11-04). Air control holds it within 2%.
-DIESEL_FULL_LOAD_LAMBDA = 1.45                   # diesels burn lean even at full load
-ENGINE_SIM_INTAKE_LAMBDA = 0.8                   # fixed in Engine Simulator's Intake::process
+# A diesel is compression ignition (Engine Simulator's diesel_injection_pump):
+# the pump meters fuel, the intake stays open, the charge lights by compression.
+# Engine Simulator burns every fuel with octane's 12.5 mol O2 per mol fuel, so
+# the diesel is a pseudo-fuel: the 117.6 g of diesel (C12H23, 167 g/mol, 17.75
+# mol O2) that 12.5 mol of O2 burns, which keeps mass, oxygen demand and heat
+# release per kg of air equal to diesel's.
+DIESEL_FUEL_ENERGY_KJ_PER_G = 42.8
+DIESEL_BRAKE_THERMAL_EFFICIENCY = 0.40           # at rated torque, sets the pump's full-load fuel
 SIMULATION_FREQUENCY_PER_REDLINE_RPM = 2.0
 MINIMUM_SIMULATION_FREQUENCY_HZ = 10000
 
@@ -157,9 +154,9 @@ FUEL_SCRIPT = {
     "petrol": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     "petrol-oil": "fuel(name: \"Gasoline\", " + FLAME_SPEED_ARGUMENT + ")",
     # Diesel C12H23: 167 g/mol, 17.75 mol O2 per mol fuel, 45.5 kJ/g.
-    "diesel": ("fuel(name: \"Diesel\", molecular_mass: 167 * units.g, "
-               "energy_density: 45.5 * units.kJ / units.g, "
-               "density: 0.832 * units.kg / units.L, molecular_afr: 17.75, " + FLAME_SPEED_ARGUMENT + ")"),
+    "diesel": ("fuel(name: \"Diesel\", molecular_mass: 117.6 * units.g, "
+               f"energy_density: {DIESEL_FUEL_ENERGY_KJ_PER_G} * units.kJ / units.g, "
+               "density: 0.832 * units.kg / units.L, molecular_afr: 12.5, " + FLAME_SPEED_ARGUMENT + ")"),
 }
 # A multifuel engine (M35's LDT-465) is a compression-ignition diesel cycle.
 FUEL_SCRIPT["multifuel"] = FUEL_SCRIPT["diesel"]
@@ -332,14 +329,8 @@ def area_flow_cfm(area_m2, discharge_coefficient=None):
     return pipe_flow_cfm(math.sqrt(4.0 * area_m2 / math.pi), discharge_coefficient)
 
 
-def intake_molecular_afr(engine):
-    """The intake's molecular_afr input at full load.
-
-    Engine Simulator's intake always mixes 0.8 x this ratio (lambda 0.8, a
-    petrol full-power mixture), so a lean diesel charge divides that back out.
-    """
-    if engine["fuel"] in ("diesel", "multifuel"):
-        return 17.75 * DIESEL_FULL_LOAD_LAMBDA / ENGINE_SIM_INTAKE_LAMBDA
+def intake_molecular_afr():
+    """Engine Simulator's intake mixes 0.8 x this ratio: lambda 0.8, a petrol full-power mixture."""
     return 25.0 / 2.0
 
 
@@ -380,8 +371,8 @@ def choked_to_carb_rating_flow_ratio(heat_capacity_ratio=1.4):
 def closed_throttle_plate_position(engine, displacement_ci, wide_open_cfm):
     """Engine Simulator plate position (flow scales with cos(position * pi/2))
     whose leak holds IDLE_MANIFOLD_PRESSURE_ATM at idle speed."""
-    idle_rpm = min(max(IDLE_RPM_PER_REDLINE_RPM * engine["redline_rpm"], IDLE_RPM_RANGE[0]), IDLE_RPM_RANGE[1])
-    idle_scfm = displacement_ci / 1728.0 * idle_rpm / (engine["cycle"] // 2) * IDLE_MANIFOLD_PRESSURE_ATM
+    idle = idle_rpm(engine)
+    idle_scfm = displacement_ci / 1728.0 * idle / (engine["cycle"] // 2) * IDLE_MANIFOLD_PRESSURE_ATM
     leak_rating_cfm = IDLE_LEAK_FLOW_SCALE * idle_scfm / choked_to_carb_rating_flow_ratio()
     return 2 / math.pi * math.acos(min(1.0, leak_rating_cfm / wide_open_cfm))
 
@@ -463,8 +454,7 @@ def derive(engine, car):
         "throttle_cfm": throttle_cfm(engine, displacement_ci),
         "closed_throttle_plate_position": closed_throttle_plate_position(
             engine, displacement_ci, throttle_cfm(engine, displacement_ci)),
-        "plenum_volume": (DIESEL_PLENUM_VOLUME_TO_DISPLACEMENT if engine["fuel"] in ("diesel", "multifuel")
-                          else PLENUM_VOLUME_TO_DISPLACEMENT) * displacement_litres / 1000.0,
+        "plenum_volume": PLENUM_VOLUME_TO_DISPLACEMENT * displacement_litres / 1000.0,
         "exhaust_pipe": pipe, "exhaust_outlet_cfm": pipe_flow_cfm(pipe),
         "exhaust_primary_cfm": area_flow_cfm(RUNNER_AREA_TO_VALVE_AREA * exhaust_valve_area,
                                              PRIMARY_PIPE_DISCHARGE_COEFFICIENT),
@@ -473,6 +463,17 @@ def derive(engine, car):
         "simulation_frequency": max(MINIMUM_SIMULATION_FREQUENCY_HZ, round(
             SIMULATION_FREQUENCY_PER_REDLINE_RPM * engine["redline_rpm"], -3)),
     }
+
+
+def idle_rpm(engine):
+    return min(max(IDLE_RPM_PER_REDLINE_RPM * engine["redline_rpm"], IDLE_RPM_RANGE[0]), IDLE_RPM_RANGE[1])
+
+
+def full_load_fuel_per_injection_g(engine):
+    """Fuel one cylinder burns per cycle at rated torque."""
+    radians_per_cycle = 2 * math.pi * (2 if engine["cycle"] == 4 else 1)
+    energy_per_cycle_j = rated_peak_torque_nm(engine) * radians_per_cycle / DIESEL_BRAKE_THERMAL_EFFICIENCY
+    return energy_per_cycle_j / (DIESEL_FUEL_ENERGY_KJ_PER_G * 1000.0) / engine["cylinders"]
 
 
 def rated_peak_torque_nm(engine):
@@ -511,8 +512,6 @@ def not_modelled(engine):
     gaps = []
     if engine["cycle"] == 2:
         gaps.append("two-stroke: no crankcase model, scavenge pressure fixed by rule")
-    if engine["fuel"] == "diesel":
-        gaps.append("compression ignition (spark at injection timing)")
     if engine["aspiration"] != "NA":
         gaps.append(f"{engine['aspiration']}: boost from rated torque, no lag or wastegate")
     return gaps
@@ -585,7 +584,7 @@ def engine_script(engine, car):
             f"        plenum_cross_section_area: {d['intake_runner_area'] * engine['cylinders'] * 1e4:.3f} * units.cm2,",
             f"        intake_flow_rate: k_carb({d['throttle_cfm']:.1f}),",
             f"        runner_flow_rate: k_carb({area_flow_cfm(d['intake_runner_area']):.1f}),",
-            f"        molecular_afr: {intake_molecular_afr(engine):.4f},",
+            f"        molecular_afr: {intake_molecular_afr():.4f},",
             f"        runner_length: {INTAKE_RUNNER_LENGTH_M} * units.m,",
             f"        idle_flow_rate: k_carb(0.0),",
             f"        idle_throttle_plate_position: {d['closed_throttle_plate_position']:.5f},",
@@ -652,9 +651,15 @@ def engine_script(engine, car):
             advance = SPARK_ADVANCE_IDLE_DEG + (SPARK_ADVANCE_FULL_DEG - SPARK_ADVANCE_IDLE_DEG) \
                 * min(1.0, max(0.0, (rpm - 1000.0) / (full_rpm - 1000.0)))
         out.append(f"    timing_curve.add_sample({rpm} * units.rpm, {advance:.2f} * units.deg)")
-    out.append(f"    ignition_module ignition_module(timing_curve: timing_curve, "
-               f"rev_limit: {redline + 300} * units.rpm, limiter_duration: 0.1, "
-               f"sparks_per_cycle: {lobes_per_cycle})")
+    if diesel:
+        out.append(f"    diesel_injection_pump ignition_module(timing_curve: timing_curve, "
+                   f"max_fuel_per_injection: {full_load_fuel_per_injection_g(engine):.5f} * units.g, "
+                   f"idle_speed: {idle_rpm(engine):.0f} * units.rpm, governed_speed: {redline} * units.rpm, "
+                   f"sparks_per_cycle: {lobes_per_cycle})")
+    else:
+        out.append(f"    ignition_module ignition_module(timing_curve: timing_curve, "
+                   f"rev_limit: {redline + 300} * units.rpm, limiter_duration: 0.1, "
+                   f"sparks_per_cycle: {lobes_per_cycle})")
     for cylinder in engine["firing_order"]:
         out.append(f"    ignition_module.connect_wire(wire{cylinder}, {fire[cylinder]:.4f} * units.deg)")
     out += ["    engine.add_ignition_module(ignition_module)", "}", ""]

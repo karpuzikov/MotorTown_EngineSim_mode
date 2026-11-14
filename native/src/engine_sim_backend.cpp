@@ -86,18 +86,6 @@ std::atomic<MufflerTreble> g_muffler{MufflerTreble::Standard}; // settings.ini, 
 // engine's mix it only added a scratching hiss.
 constexpr float DieselAirNoiseFrequencyCutoff = 15000.0f;
 
-// A diesel is load-controlled by the amount of fuel, not by a throttle: its air
-// is never throttled and the flame starts in any excess air (engine script:
-// fuel lean_ignition_limit far above gasoline's 1.9, intake plate open). The
-// speed follower's output is the injection rack: the intake's fuel-air ratio is
-// the full-load one times the rack. Throttling diesels like petrol engines
-// (c62717f) was a stand-in while Engine Simulator could not ignite a lean charge;
-// EngineVoice's MC-9 idles and revs this way.
-constexpr double DieselLeanIgnitionLimitAbove = 100.0;
-constexpr double DieselStartingRack = 0.6;          // fuel while cranking, as a cold-start rack
-constexpr double DieselStartingRackBelowRpm = 250.0;
-constexpr double DieselLowestRack = 0.035;          // EngineVoice: 0.02 stalled a 2.2 l diesel after a rev, 0.05 hung the MC-9 at 990 rpm
-
 // A distant (traffic) voice convolves with only the start of its exhaust's
 // response: the long tail cost 0.24 of a core per voice (measured offline) and
 // left the tone as it was (output spectrum within 0.1 dB in every octave band).
@@ -180,14 +168,13 @@ public:
             audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
             audio.levelerMaxGain = EngineSimLevelerMaxGain;
-            m_diesel = m_engine->getIntakeCount() > 0 &&
-                m_engine->getFuel()->getLeanIgnitionLimit() > DieselLeanIgnitionLimitAbove;
-            if (m_diesel) audio.airNoiseFrequencyCutoff = DieselAirNoiseFrequencyCutoff;
+            // A diesel meters its own fuel: the script's injection pump follows the speed control.
+            if (m_engine->getIgnitionModule()->isCompressionIgnition())
+                audio.airNoiseFrequencyCutoff = DieselAirNoiseFrequencyCutoff;
             m_simulator->synthesizer().setAudioParameters(audio);
             // Generated profiles may carry a boost file; other scripts yield
             // the default (no boost).
             m_boost = read_full_load_boost(script);
-            m_fullRackMolecularAfr = m_diesel ? m_engine->getIntake(0)->getMolecularAfr() : 0.0;
             m_rpmScale = profile_rpm_scale(script);
             m_follower.reset();
             m_starterEngaged = true;
@@ -307,16 +294,7 @@ public:
                     m_secondsFollowingFaster > 0.0 ? WarmStartFasterFollowingScale : 1.0)
                 : 0.0;
             m_secondsFollowingFaster = std::max(0.0, m_secondsFollowingFaster - m_simulator->getTimestep());
-            if (m_diesel) {
-                const double rack = engineRpm < DieselStartingRackBelowRpm
-                    ? DieselStartingRack : std::max(pedal, DieselLowestRack);
-                m_engine->setSpeedControl(1.0);
-                for (int i = 0; i < m_engine->getIntakeCount(); ++i)
-                    m_engine->getIntake(i)->setMolecularAfr(m_fullRackMolecularAfr / rack);
-            }
-            else {
-                m_engine->setSpeedControl(pedal);
-            }
+            m_engine->setSpeedControl(pedal);
             apply_boost(m_engine, m_boost, targetRpm, throttle);
             const double smoothedRpm = m_follower.smoothedRpm();
             if (combustion && smoothedRpm >= starterReleaseRpm) m_hasRun = true;
@@ -416,8 +394,6 @@ private:
     std::atomic<std::size_t> m_framesToDiscard{0}; // advance() thread -> read() thread
     double m_rpmScale = 1.0;
     FullLoadBoost m_boost;
-    bool m_diesel = false;               // fuel-metered, see DieselLeanIgnitionLimitAbove
-    double m_fullRackMolecularAfr = 0.0; // the script's intake fuel-air ratio = full rack
 };
 
 } // namespace

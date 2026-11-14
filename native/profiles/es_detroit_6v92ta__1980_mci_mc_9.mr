@@ -118,10 +118,10 @@ public node mc9_6v92ta {
         redline: 2100 * units.rpm,
         fuel: fuel(
             name: "Diesel",
-            molecular_mass: 170 * units.g,
+            molecular_mass: 119.7 * units.g,
             energy_density: 43 * units.kJ / units.g,
             density: 0.85 * units.kg / units.L,
-            molecular_afr: 17.75,
+            molecular_afr: 12.5,
             max_turbulence_effect: 2.0,
             lean_ignition_limit: 1000.0,
             burning_efficiency_randomness: 0.3,
@@ -334,11 +334,7 @@ public node mc9_6v92ta {
         .add_sample(2000 * units.rpm, 14 * units.deg)
         .add_sample(3000 * units.rpm, 14 * units.deg)
 
-    ignition_module ignition_module(
-        timing_curve: timing_curve,
-        rev_limit: 2400 * units.rpm,
-        limiter_duration: 0.2,
-        sparks_per_cycle: 2)
+    diesel_injection_pump ignition_module(timing_curve: timing_curve, max_fuel_per_injection: 0.07940 * units.g, idle_speed: 600 * units.rpm, governed_speed: 2100 * units.rpm, sparks_per_cycle: 2)
     // Firing TDC (time order, degrees within one crank revolution; the cycle repeats every revolution): 1L 0, 2R 56.5, 2L 120, 3R 176.5, 3L 240, 1R 296.5.
     ignition_module
         .connect_wire(wires.wire1, 0 * units.deg)

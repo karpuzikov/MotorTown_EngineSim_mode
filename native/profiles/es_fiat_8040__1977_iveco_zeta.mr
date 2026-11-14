@@ -29,7 +29,7 @@ public node motor_town_engine {
         starter_speed: 200 * units.rpm,
         redline: 3200 * units.rpm,
         throttle_gamma: 2.0,
-        fuel: fuel(name: "Diesel", lean_ignition_limit: 1000.0, cycle_to_cycle_variation: 0.1, molecular_mass: 167 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 17.75, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
+        fuel: fuel(name: "Diesel", lean_ignition_limit: 1000.0, cycle_to_cycle_variation: 0.1, molecular_mass: 117.6 * units.g, energy_density: 45.5 * units.kJ / units.g, density: 0.832 * units.kg / units.L, molecular_afr: 12.5, turbulence_to_flame_speed_ratio: motor_town_flame_speed(), max_burning_efficiency: 0.44),
         hf_gain: 0.0,
         jitter: 0.9,
         noise: 0.85,
@@ -179,7 +179,7 @@ public node motor_town_engine {
     timing_curve.add_sample(4000 * units.rpm, 6.38 * units.deg)
     timing_curve.add_sample(4500 * units.rpm, 6.38 * units.deg)
     timing_curve.add_sample(5000 * units.rpm, 6.38 * units.deg)
-    ignition_module ignition_module(timing_curve: timing_curve, rev_limit: 3500 * units.rpm, limiter_duration: 0.1, sparks_per_cycle: 1)
+    diesel_injection_pump ignition_module(timing_curve: timing_curve, max_fuel_per_injection: 0.04459 * units.g, idle_speed: 800 * units.rpm, governed_speed: 3200 * units.rpm, sparks_per_cycle: 1)
     ignition_module.connect_wire(wire1, 0.0000 * units.deg)
     ignition_module.connect_wire(wire3, 180.0000 * units.deg)
     ignition_module.connect_wire(wire4, 360.0000 * units.deg)

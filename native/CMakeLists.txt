@@ -11,8 +11,8 @@ include(FetchContent)
 # the lifetime fixes this build used to patch in, plus physically based
 # exhaust sound, intake boost and two-stroke support used by the real-spec
 # profiles, and the fuel inputs EngineVoice's diesels use (lean_ignition_limit,
-# cycle_to_cycle_variation). FetchContent keeps the checkout inside the build directory.
-set(motor_town_engine_sim_core_commit 5cb969c5f7bf0f638eed32d4c07f1d848247c467)
+# cycle_to_cycle_variation), and compression-ignition diesels (diesel_injection_pump). FetchContent keeps the checkout inside the build directory.
+set(motor_town_engine_sim_core_commit ecacf4de00b28e8629173ff25157e12817e665c9)
 # One checkout per pinned commit: the Piranha fix below edits the checkout,
 # so moving an existing one to another commit makes Git refuse (local changes).
 string(SUBSTRING "${motor_town_engine_sim_core_commit}" 0 7 motor_town_engine_sim_core_short)
