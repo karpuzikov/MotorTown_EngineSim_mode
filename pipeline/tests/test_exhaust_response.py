@@ -80,11 +80,10 @@ class ExhaustFromHardwareTest(unittest.TestCase):
 
 
 class BackendCalibrationTest(unittest.TestCase):
-    def test_responses_are_calibrated_for_the_volume_the_backend_plays_them_at(self):
+    def test_the_backend_plays_every_response_as_a_passive_silencer(self):
+        # Its loudest frequency at gain 1, whatever the file's own scale: the response shapes the tone only.
         backend = (Path(__file__).resolve().parents[2] / "native/src/engine_sim_backend.cpp").read_text()
-        match = re.search(r"VehicleExhaustImpulseVolume = ([0-9.]+);", backend)
-        self.assertTrue(match)
-        self.assertEqual(float(match.group(1)), exhaust.BACKEND_VOLUME)
+        self.assertIn("passive_impulse_volume(samples)", backend)
 
 
 class ResponseImpulseTest(unittest.TestCase):

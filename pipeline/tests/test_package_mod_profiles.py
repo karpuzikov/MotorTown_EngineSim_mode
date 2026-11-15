@@ -33,8 +33,11 @@ class PackageModProfilesTest(unittest.TestCase):
                 self.assertEqual(responses, {"kart_exhaust"}, profile.name)
             else:
                 self.assertEqual(responses, {"ir_lib.default_0"}, profile.name)
-        for response in ("smooth/smooth_39_treble_plus_8db.wav", "smooth/smooth_39_treble_plus_14db.wav"):
-            self.assertTrue((packager.SOUND_LIBRARY_DIR / response).is_file(), response)
+        brighter = ["smooth/smooth_39"] + [f"exhaust/{p.stem}" for p in (packager.SOUND_LIBRARY_DIR / "exhaust").glob("lp?_???.wav")]
+        self.assertGreater(len(brighter), 5)
+        for response in brighter:  # settings.ini "muffler"
+            for suffix in ("_treble_plus_8db.wav", "_treble_plus_14db.wav"):
+                self.assertTrue((packager.SOUND_LIBRARY_DIR / (response + suffix)).is_file(), response + suffix)
 
     def test_a_response_a_script_names_ships_next_to_it(self):
         # Engine Simulator resolves a response named in a script relative to the script's folder. With
@@ -50,18 +53,28 @@ class PackageModProfilesTest(unittest.TestCase):
                 rows.append(line.split("\t"))
         return rows
 
-    def test_every_rule_names_a_shipped_script_and_no_exhaust_override(self):
+    def test_every_rule_names_a_shipped_script_and_response(self):
         # A rule naming a file that is not installed voids the whole manifest in game (the mod then keeps every
-        # stock sound). No "#exhaust=": each script plays the response it names, as heard in EngineVoice.
-        scripted = 0
+        # stock sound). "#exhaust=" is the car's own silencers, except for scripts that name a response of their
+        # own (the kart's, fitted to a recording of that engine).
+        scripted = with_silencers = 0
         for field, pattern, script, *_ in self.rules():
             if script == "-":
                 continue
             scripted += 1
-            match = re.fullmatch(r"assets/(es_\w+)\.mr", script)
+            match = re.fullmatch(r"assets/(es_\w+)\.mr(?:#exhaust=(exhaust/\w+\.wav))?", script)
             self.assertTrue(match, f"{field} {pattern}: {script}")
-            self.assertTrue((packager.PROFILES_DIR / f"{match.group(1)}.mr").is_file(), script)
+            profile = packager.PROFILES_DIR / f"{match.group(1)}.mr"
+            self.assertTrue(profile.is_file(), script)
+            names_own_response = re.search(r'impulse_response \w+\(filename:', profile.read_text())
+            if match.group(2):
+                with_silencers += 1
+                self.assertFalse(names_own_response, script)
+                self.assertTrue((packager.SOUND_LIBRARY_DIR / match.group(2)).is_file(), script)
+            else:
+                self.assertTrue(names_own_response, script)
         self.assertGreater(scripted, 200)
+        self.assertGreater(with_silencers, 200)
 
     def test_the_shipped_responses_are_those_the_specs_ask_for(self):
         # No stale or missing response after a spec change without repackaging.
@@ -76,7 +89,8 @@ class PackageModProfilesTest(unittest.TestCase):
                 corner, stages = exhaust_response.exhaust_response(
                     displacement, exhaust["pipe_mm"], len(exhaust["silencers"]))
                 wanted.add(exhaust_response.response_name(corner, stages))
-        shipped = {f"exhaust/{path.name}" for path in (packager.SOUND_LIBRARY_DIR / "exhaust").glob("*.wav")}
+        shipped = {f"exhaust/{path.name}" for path in (packager.SOUND_LIBRARY_DIR / "exhaust").glob("*.wav")
+                   if "_treble_plus_" not in path.name}  # the "muffler" setting's brighter versions
         self.assertEqual(shipped, wanted)
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ import re
 import shutil
 import sys
 
-EXHAUST_OVERRIDE = re.compile(r"#exhaust=[^\t\n]*")
+EXHAUST_OVERRIDE_OF_SCRIPT = re.compile(r"assets/([^\t\n#]+\.mr)#exhaust=[^\t\n]*")
 NAMED_RESPONSE = re.compile(r'impulse_response \w+\(filename: "([^"]+)"')
 
 
@@ -72,7 +72,12 @@ def main():
         if response.name in named:
             shutil.copyfile(response, profiles_folder / response.name)
     manifest = profiles_folder / "engine_families.tsv"
-    manifest.write_text(EXHAUST_OVERRIDE.sub("", manifest.read_text()))
+
+    def drop_override_of_script_with_own_response(match):
+        script = profiles_folder / match.group(1)
+        return f"assets/{match.group(1)}" if NAMED_RESPONSE.search(script.read_text()) else match.group(0)
+
+    manifest.write_text(EXHAUST_OVERRIDE_OF_SCRIPT.sub(drop_override_of_script_with_own_response, manifest.read_text()))
 
     not_from_engine_voice = sorted({p.name for p in profiles_folder.glob("es_*.mr")} - set(written) - set(generated_diesels))
     if not_from_engine_voice:

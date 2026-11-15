@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import exhaust_response  # noqa: E402
+import make_muffler_treble_variants  # noqa: E402
 import generate_engine_scripts as generator  # noqa: E402
 
 PROFILES_DIR = Path(__file__).resolve().parents[1] / "native" / "profiles"
@@ -159,7 +160,10 @@ def main():
         target = fallback_scripts[engine_id] if engine_id else "-"
         lines.append("\t".join([field, pattern, target] + ([horsepower] if horsepower else [])))
     (PROFILES_DIR / "engine_families.tsv").write_text("\n".join(lines) + "\n")
-    responses = len(list((SOUND_LIBRARY_DIR / "exhaust").glob("*.wav")))
+    responses = sorted((SOUND_LIBRARY_DIR / "exhaust").glob("*.wav"))
+    for response in responses:  # settings.ini "muffler" brightens the cars' silencers too
+        make_muffler_treble_variants.write_variants(response, response.parent)
+    responses = len(responses)
     print(f"{len(list(PROFILES_DIR.glob('es_*.mr')))} scripts, {responses} exhaust responses, "
           f"{len(lines)} manifest lines")
 
