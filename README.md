@@ -19,7 +19,7 @@ by ear:
 | Setting | Values | Effect |
 |---|---|---|
 | `volume` | `1.0` (default), `0.5` = half | Loudness relative to Motor Town's own engine sound |
-| `muffler` | `standard` (default), `brighter`, `brightest` | How much treble each car's silencers remove: as made from the car's exhaust hardware, or the same with +8 dB / +14 dB above 2.5 kHz. Only the silencer file changes (made by `pipeline/make_muffler_treble_variants.py`); the engine, the CPU cost and the loudness below 2.5 kHz stay the same. The kart keeps its own exhaust. All muffler files are whistle-free (checked by `pipeline/tests/test_no_whistles.py`). |
+| `muffler` | `standard` (default), `brighter`, `brightest` | How much treble the road-car muffler removes: Engine Simulator's own muffler recording, or the same with +8 dB / +14 dB above 2.5 kHz. Only the muffler file changes (made once by `pipeline/make_muffler_treble_variants.py`); the engine, the loudness and the CPU cost stay the same. Diesels, the MC-9 and the kart keep their own exhaust. All muffler files are whistle-free (checked by `pipeline/tests/test_no_whistles.py`). |
 
 An unknown value keeps the default and is reported in `UE4SS.log` (`[MTES] settings.ini: ...`).
 

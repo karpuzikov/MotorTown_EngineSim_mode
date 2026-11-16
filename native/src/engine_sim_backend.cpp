@@ -22,7 +22,6 @@
 #include <array>
 #include <atomic>
 #include <cmath>
-#include <cstdlib>
 #include <optional>
 #include <vector>
 #include <filesystem>
@@ -31,33 +30,25 @@
 namespace mtes {
 namespace {
 
-// One CPU budget for every engine: Engine Simulator steps as fast as the budget allows the engine's cylinders.
-// The scripts' own rate (2 x redline) cost the Aventador's V12 at 17 000 Hz 2.4x a V8 at 10 000 Hz, and its
-// sound broke up in game; it left the single-cylinder scooter at 13 000 Hz, where the fluid simulation whistled
-// at 2.25 kHz (gone at 20 000 Hz) (owner, in game, 2026-11-14).
-constexpr double SimulationCylinderStepsPerSecond = 90000.0; // a V8 at 11 250 Hz: V8s at 10-11 000 Hz play clean
-constexpr int SlowestSimulationFrequency = 10000; // Engine Simulator's default; slower, its fluid simulation blows up
-constexpr int FastestSimulationFrequency = 40000; // the fastest of Ange Yaghi's demo engines
-int simulation_frequency_for(int cylinders) {
-    const double budgeted = SimulationCylinderStepsPerSecond / std::max(cylinders, 1);
-    return std::clamp(static_cast<int>(budgeted), SlowestSimulationFrequency, FastestSimulationFrequency);
-}
-
-// Loudness is physics: Engine Simulator's core gives every engine's sound as the pressure 1 m away, in pascals (its
-// exhaust, intake mouth and block), and one scale for every engine turns pascals into samples. A truck is louder
-// than a kei car because it moves more gas, faster, not by a setting. The scale puts the loudest engine of the fleet
-// at full load (the MCI MC-9's two-stroke 6V92TA, 104 dB(A) at 1 m; its peaks 37 Pa) at the leveler's ceiling, so the
-// leveler only limits peaks and never evens engines out.
-constexpr float SamplesPerPascalAtOneMetre = 400.0f;
-// The leveler (Engine Simulator's own loudness control) as a peak limiter only, with half its stock 30000 target:
-// its gain smoothing lags each firing pulse and overshot 30000, clipping ~4% of samples.
+// Engine Simulator's leveler (its own loudness control) with half its stock
+// target: its gain smoothing lags each firing pulse and overshot the stock 30000
+// target, clipping ~4% of samples. A level, not a tone, change.
 constexpr float EngineSimLevelerTargetWithHeadroom = 15000.0f;
-// A silencer is passive: it can only take sound away, so every exhaust's impulse response is scaled to a gain of 1
-// at its loudest frequency (searched in 1/12-octave steps over 20 Hz-10 kHz). It shapes the tone; it does not
-// decide how loud an engine is. The scripts' own response volumes were picked by ear, per engine.
-constexpr double ExhaustResponseLowestHz = 20.0;
-constexpr double ExhaustResponseHighestHz = 10000.0;
-constexpr double ExhaustResponseFrequencyStep = 1.0594630943592953; // 2^(1/12)
+// Its stock maximum boost (x1.9) left a throttled diesel's idle 6-10 dB under
+// every petrol engine; at x8 each engine reaches the target (measured: no
+// clipping; the pedal-and-rpm level below then applies to all alike). Engine
+// Simulator's own road-vehicle exhaust response (default_0) is 10x quieter
+// than the sporty one the generated engines used before, and x8 then left the
+// Mercedes OM 422 diesel 10 dB under the rest of 28 engines (11 dB spread; at
+// x64 the spread is 3 dB). The leveler attacks at once, so the cap only matters
+// for engines whose raw output is quiet. One of those is the unfired crank of
+// the key turn: at x64 it played 20-36 dB under the idle (silence, then the
+// engine: "binary on/off" in game); at x1024 it is 10-15 dB under it on every
+// engine measured (V8, six, four, diesels, bikes), where the level laws below
+// put it, and the idle itself does not change (offline, 2026-11-05).
+constexpr float EngineSimLevelerMaxGain = 1024.0f;
+// Volume of a rule's own exhaust response (#exhaust=), when it names one.
+constexpr double VehicleExhaustImpulseVolume = 0.02;
 // Motor Town simulates a drivetrain; Engine Simulator here does not. Its
 // dynamometer stands in for it, but only at the extremes, so the engine's own
 // combustion keeps shaping its crank speed (a rigid hold removed ~10 dB of
@@ -94,25 +85,6 @@ std::atomic<MufflerTreble> g_muffler{MufflerTreble::Standard}; // settings.ini, 
 // response: the long tail cost 0.24 of a core per voice (measured offline) and
 // left the tone as it was (output spectrum within 0.1 dB in every octave band).
 constexpr std::size_t DistantImpulseFrames = 4096;
-
-// The volume Engine Simulator's synthesizer scales an impulse response by (it uses volume * sample / 32767, up to
-// the last sample over 100 and at most 10 000 samples) so that its loudest frequency has a gain of 1.
-double passive_impulse_volume(const std::vector<std::int16_t> &samples) {
-    std::size_t length = 0;
-    for (std::size_t n = 0; n < samples.size(); ++n) if (std::abs(samples[n]) > 100) length = n + 1;
-    length = std::min<std::size_t>(length, 10000);
-    double loudestGain = 0.0;
-    for (double hz = ExhaustResponseLowestHz; hz <= ExhaustResponseHighestHz; hz *= ExhaustResponseFrequencyStep) {
-        const double step = 2.0 * 3.14159265358979323846 * hz / OutputSampleRate;
-        double real = 0.0, imaginary = 0.0;
-        for (std::size_t n = 0; n < length; ++n) {
-            real += samples[n] * std::cos(step * n);
-            imaginary -= samples[n] * std::sin(step * n);
-        }
-        loudestGain = std::max(loudestGain, std::hypot(real, imaginary));
-    }
-    return 32767.0 / loudestGain;
-}
 
 void shorten_impulse(std::vector<std::int16_t> &samples) {
     if (samples.size() <= DistantImpulseFrames) return;
@@ -176,22 +148,21 @@ public:
         m_transmission = output.transmission;
         try {
             m_engine->calculateDisplacement();
+            m_classLoudnessDb = engine_class_loudness_db(m_engine->getDisplacement() * 1000.0);
             m_simulator = m_engine->createSimulator(m_vehicle, m_transmission);
             if (!m_simulator) {
                 stop();
                 return false;
             }
-            m_simulator->setSimulationFrequency(simulation_frequency_for(m_engine->getCylinderCount()));
+            m_simulator->setSimulationFrequency(
+                static_cast<int>(m_engine->getSimulationFrequency()));
 
             auto audio = m_simulator->synthesizer().getAudioParameters();
             audio.inputSampleNoise = static_cast<float>(m_engine->getInitialJitter());
             audio.airNoise = static_cast<float>(m_engine->getInitialNoise());
-            // The core's input is already radiated sound pressure (it is dQ/dt); Engine Simulator's "high frequency
-            // gain" mixed in the time derivative of its old pressure signal, which here would differentiate twice
-            // and make loudness grow with pitch: at 0.01 it made a 3-litre six 20 dB louder than a 13-litre truck.
-            audio.dF_F_mix = 0.0f;
+            audio.dF_F_mix = static_cast<float>(m_engine->getInitialHighFrequencyGain());
             audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;
-            audio.levelerMaxGain = SamplesPerPascalAtOneMetre;
+            audio.levelerMaxGain = EngineSimLevelerMaxGain;
             m_simulator->synthesizer().setAudioParameters(audio);
             // Generated profiles may carry a boost file; other scripts yield
             // the default (no boost).
@@ -231,14 +202,9 @@ public:
                     stop();
                     return false;
                 }
-                const auto volume = static_cast<float>(passive_impulse_volume(samples));
                 m_simulator->synthesizer().initializeImpulseResponse(
-                    samples.data(), static_cast<unsigned int>(samples.size()), volume, i);
-                // The air box is a reactive chamber sized to the engine like a silencer: the intake mouth's
-                // sound passes the first exhaust's response too.
-                if (i == 0) m_simulator->synthesizer().initializeImpulseResponse(
-                    samples.data(), static_cast<unsigned int>(samples.size()), volume,
-                    m_simulator->intakeSoundChannel());
+                    samples.data(), static_cast<unsigned int>(samples.size()),
+                    spec.exhaustImpulse.empty() ? response->getVolume() : VehicleExhaustImpulseVolume, i);
             }
             m_simulator->startAudioRenderingThread();
             return true;
@@ -258,7 +224,7 @@ public:
         const double redlineRpm = m_engine->getRedline() / units::rpm(1.0);
         const double targetRpm = engine_rpm_for_game_rpm(
             gameRpm * m_rpmScale, m_gameMaxRpm * m_rpmScale, redlineRpm);
-        m_targetLoudnessGain.store(1.0);  // how loud the engine is comes from the simulation (SamplesPerPascalAtOneMetre)
+        m_targetLoudnessGain.store(std::pow(10.0, m_classLoudnessDb / 20.0));
         const double starterReleaseRpm = starter_release_rpm(
             m_engine->getStarterSpeed() / units::rpm(1.0), targetRpm);
 
@@ -320,11 +286,7 @@ public:
                     m_secondsFollowingFaster > 0.0 ? WarmStartFasterFollowingScale : 1.0)
                 : 0.0;
             m_secondsFollowingFaster = std::max(0.0, m_secondsFollowingFaster - m_simulator->getTimestep());
-            // The game's throttle is the engine's load: under more throttle than the game's rpm alone needs,
-            // the dynamometer holds the crank at the game's rpm and takes the extra torque, as Engine
-            // Simulator's own dynamometer does, so the cylinders burn and sound loaded (the speed follower
-            // alone fed only the fuel to spin at that speed).
-            m_engine->setSpeedControl(std::max(pedal, throttle));
+            m_engine->setSpeedControl(pedal);
             apply_boost(m_engine, m_boost, targetRpm, throttle);
             const double smoothedRpm = m_follower.smoothedRpm();
             if (combustion && smoothedRpm >= starterReleaseRpm) m_hasRun = true;
@@ -345,8 +307,7 @@ public:
                 m_motoring = m_secondsFarBelowGameRpm >= DrivetrainMotoringDwellSeconds;
             }
             const bool driven = m_motoring || crankingUnfired;
-            const bool loaded = throttle > pedal;
-            const bool held = driven || loaded || m_secondsHeldAtGameRpm > 0.0;
+            const bool held = driven || m_secondsHeldAtGameRpm > 0.0;
             if (driven) start_turning_forward(m_engine, units::rpm(followedRpm));
             m_secondsHeldAtGameRpm = std::max(0.0, m_secondsHeldAtGameRpm - m_simulator->getTimestep());
             m_simulator->m_dyno.m_hold = held;
@@ -414,6 +375,7 @@ private:
     double m_secondsFarBelowGameRpm = 0.0;
     double m_secondsHeldAtGameRpm = 0.0;     // warm start
     double m_secondsFollowingFaster = 0.0;   // warm start
+    double m_classLoudnessDb = 0.0;                // this engine's size, from load()
     // advance() thread -> read() thread. Silent until the first advance() says
     // how loud: a read before it took 0 dB as the level, 24 dB over the real one,
     // and the slow fall then played it as a loud start.

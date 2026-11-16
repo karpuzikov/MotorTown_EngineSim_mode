@@ -83,13 +83,10 @@ class PackagedFamilyRuleTests(unittest.TestCase):
             self.assertIn(field, ('vehicle', 'asset', 'cue', 'maxrpm'))
             if profile != '-':
                 # Engine scripts from EngineVoice (pipeline/sync_engine_voice_engines.py),
-                # with the car's own silencers (#exhaust=). A rule naming a
+                # each playing the exhaust response it names. A rule naming a
                 # file that is not installed voids the whole manifest.
-                match = re.fullmatch(r'assets/(es_\w+\.mr)(?:#exhaust=(exhaust/\w+\.wav))?', profile)
-                self.assertTrue(match, profile)
-                if match.group(2):
-                    self.assertTrue((ROOT / 'profiles/sound-library' / match.group(2)).is_file(), profile)
-                script = ROOT / 'profiles' / match.group(1)
+                self.assertRegex(profile, r'^assets/es_\w+\.mr$')
+                script = ROOT / 'profiles' / Path(profile).name
                 self.assertTrue(script.is_file(), profile)
                 self.assertTrue(script.read_text().rstrip().endswith('main()'), profile)
 
@@ -171,12 +168,11 @@ class PackagedFamilyRuleTests(unittest.TestCase):
         lines = (ROOT / 'profiles/engine_families.tsv').read_text().splitlines()
         def script(key):
             rule = next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2]
-            return (ROOT / 'profiles' / Path(rule.partition('#exhaust=')[0]).name).read_text()
+            return (ROOT / 'profiles' / Path(rule).name).read_text()
         def collector_cm2(key):
             return float(re.search(r'collector_cross_section_area: ([0-9.]+)', script(key)).group(1))
         self.assertGreater(collector_cm2('golimasemi'), 4 * collector_cm2('elisa'))  # a semi vs a sedan
-        # The sound path: each car's own silencers, from its real exhaust hardware (a semi's corner lower).
-        def silencer_corner_hz(key):
-            rule = next(l for l in lines if l.startswith(f'vehicle\t^{key}\t')).split('\t')[2]
-            return int(re.search(r'#exhaust=exhaust/lp\d_(\d+)\.wav', rule).group(1))
-        self.assertLess(silencer_corner_hz('golimasemi'), silencer_corner_hz('elisa'))
+        # The sound path: diesels, simulated as petrol engines, and petrol cars
+        # alike play Engine Simulator's road muffler.
+        self.assertIn('impulse_response: ir_lib.default_0', script('golimasemi'))
+        self.assertIn('impulse_response: ir_lib.default_0', script('elisa'))

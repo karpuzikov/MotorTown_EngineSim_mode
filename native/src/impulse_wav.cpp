@@ -30,16 +30,9 @@ std::filesystem::path impulse_wav_path(const std::string &script,
 
 std::filesystem::path muffler_variant_path(const std::filesystem::path &impulse, const std::string &script,
     MufflerTreble muffler) {
-    if (muffler == MufflerTreble::Standard) return impulse;
-    // Engine Simulator's road muffler, and the cars' own silencers (sound-library/exhaust): each has its brighter
-    // versions next to it (pipeline/make_muffler_treble_variants.py).
-    const bool roadMuffler = impulse.filename() == "smooth_39.wav";
-    const bool carSilencers = impulse.parent_path().filename() == "exhaust";
-    if (!roadMuffler && !carSilencers) return impulse;
-    const auto folder = roadMuffler ? std::filesystem::path(script).parent_path() / "sound-library" / "smooth"
-                                    : impulse.parent_path();
-    return folder / (impulse.stem().string() +
-        (muffler == MufflerTreble::Brighter ? "_treble_plus_8db.wav" : "_treble_plus_14db.wav"));
+    if (impulse.filename() != "smooth_39.wav" || muffler == MufflerTreble::Standard) return impulse;
+    return std::filesystem::path(script).parent_path() / "sound-library" / "smooth" /
+        (muffler == MufflerTreble::Brighter ? "smooth_39_treble_plus_8db.wav" : "smooth_39_treble_plus_14db.wav");
 }
 
 std::vector<std::int16_t> parse_impulse_wav(const std::vector<std::uint8_t> &bytes) {

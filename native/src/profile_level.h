@@ -65,7 +65,7 @@ inline std::string distant_engine_sound_spec(std::string spec) {
     return spec;
 }
 
-// The output gain is reached with
+// The output gain (the engine's size, engine_class_loudness_db) is reached with
 // a one-pole glide, quickly up and slowly down, so a new voice fades in instead
 // of starting with a click.
 inline constexpr double LoudnessRiseSeconds = 0.10;
@@ -75,6 +75,24 @@ inline constexpr double LoudnessFallSeconds = 0.40;
 inline double glide_loudness_gain(double gain, double target, double dt) {
     const double seconds = target > gain ? LoudnessRiseSeconds : LoudnessFallSeconds;
     return gain + (target - gain) * (dt / seconds);
+}
+
+// Engines differ in size, and the leveler hides that too: a kei truck's 0.66 L
+// would play as loud as an industrial 20 L diesel. A real engine's sound power
+// follows its power, and power follows displacement: 10 dB per decade, one rule
+// for every vehicle, from the displacement of the engine the script describes.
+// 0 dB is a 20-litre industrial diesel (anything larger too); a 12.8-litre semi
+// engine sits 1.9 dB under it, a 2-litre car 10 dB, and 12 dB is the floor.
+inline constexpr double LoudnessReferenceDisplacementLitres = 20.0;
+inline constexpr double LoudnessDbPerDecadeOfDisplacement = 10.0;
+inline constexpr double LoudnessClassFloorDb = -12.0;
+
+// Unknown displacement (0, NaN): no change.
+inline double engine_class_loudness_db(double displacementLitres) {
+    if (!std::isfinite(displacementLitres) || !(displacementLitres > 0)) return 0.0;
+    return std::clamp(LoudnessDbPerDecadeOfDisplacement *
+            std::log10(displacementLitres / LoudnessReferenceDisplacementLitres),
+        LoudnessClassFloorDb, 0.0);
 }
 
 // Motor Town's rev range often tops out above the real engine's redline (a

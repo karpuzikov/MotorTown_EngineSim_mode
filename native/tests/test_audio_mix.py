@@ -40,20 +40,14 @@ class AudioMixTests(unittest.TestCase):
         # rpm and pedal: in EngineVoice the owner heard that as "the throttle
         # working as a volume knob is insanity" (2026-11-11).
         self.assertIn('audio.levelerTarget = EngineSimLevelerTargetWithHeadroom;', backend)
+        self.assertIn('audio.levelerMaxGain = EngineSimLevelerMaxGain;', backend)
         self.assertNotIn('engine_loudness_gain_db(', backend)
-        # Loudness is physics: the core gives sound pressure in pascals 1 m away, one scale for every engine turns it
-        # into samples, and the leveler only limits peaks (its gain never above that scale). A per-engine gain
-        # evened engines out; at x1024 an idling car carried as far as a revving one (in game, 2026-11-14).
-        self.assertIn('audio.levelerMaxGain = SamplesPerPascalAtOneMetre;', backend)
-        self.assertIn('constexpr float SamplesPerPascalAtOneMetre =', backend)
-        self.assertNotIn('full_load_gain', backend)
-        # The core's input is already radiated pressure: no second derivative mixed in.
-        self.assertIn('audio.dF_F_mix = 0.0f;', backend)
-        # Responses are passive (loudest frequency at gain 1): a silencer shapes the tone, not the loudness; the
-        # scripts' per-engine response volumes are not used, and the intake passes the first exhaust's response.
-        self.assertIn('passive_impulse_volume(samples)', backend)
-        self.assertNotIn('response->getVolume()', backend)
-        self.assertIn('m_simulator->intakeSoundChannel()', backend)
+        # The leveler may lift a quiet raw signal this far: the unfired crank of
+        # a key turn is one (at x64 it played 20-36 dB under the idle: silence,
+        # then the engine, "binary on/off" in game).
+        reach = re.search(r'EngineSimLevelerMaxGain = (\d+)\.0f;', backend)
+        self.assertTrue(reach)
+        self.assertGreaterEqual(int(reach.group(1)), 1024)
         # The level glides, fast up and slow down, and is silent until the first
         # advance() says how loud (a read before it took 0 dB: a loud blip).
         self.assertIn('glide_loudness_gain(m_loudnessGain, target,', backend)
@@ -68,7 +62,8 @@ class AudioMixTests(unittest.TestCase):
                       backend)
         self.assertIn('m_simulator->m_dyno.m_enabled = combustion || crankingUnfired;', backend)
         self.assertNotIn('m_dyno.m_enabled = combustion;', backend)
-        self.assertNotIn('engine_class_loudness_db', backend)
+        # Size, from the simulated engine's own displacement: one rule for all.
+        self.assertIn('engine_class_loudness_db(m_engine->getDisplacement() * 1000.0)', backend)
         self.assertNotIn('LoudnessLeveler', backend)
 
     def test_every_packaged_profile_is_a_complete_engine(self):

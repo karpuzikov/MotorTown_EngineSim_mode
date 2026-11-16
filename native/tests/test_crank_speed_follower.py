@@ -31,11 +31,7 @@ class CrankSpeedFollowerTests(unittest.TestCase):
         # first key turn, or (for a quarter second) one that just joined a
         # running car and has not fired yet.
         self.assertIn('const bool driven = m_motoring || crankingUnfired;', backend)
-        # Under more throttle than the follower needs, the crank is held at the
-        # game's rpm and the throttle is the engine's load.
-        self.assertIn('m_engine->setSpeedControl(std::max(pedal, throttle));', backend)
-        self.assertIn('const bool loaded = throttle > pedal;', backend)
-        self.assertIn('const bool held = driven || loaded || m_secondsHeldAtGameRpm > 0.0;', backend)
+        self.assertIn('const bool held = driven || m_secondsHeldAtGameRpm > 0.0;', backend)
         self.assertIn('m_simulator->m_dyno.m_hold = held;', backend)
         self.assertNotIn('m_dyno.m_hold = true', backend)
         for forbidden in ('use_real_spec_sound', 'FiringHarmonicCut',
