@@ -1,0 +1,85 @@
+name: Native UE4SS DLL (Windows development build)
+
+# The private UEPseudo submodule is only fetched for trusted branch/manual
+# builds. Do not use pull_request_target or pass this secret to forked PR code.
+on:
+  push:
+    branches: [feat/native-engine-audio]
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-ue4ss-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-ue4ss-dll:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - name: Require authorized Epic-linked Unreal source access
+        shell: pwsh
+        env:
+          UE4SS_SUBMODULE_TOKEN: ${{ secrets.UEPSEUDO_PAT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:UE4SS_SUBMODULE_TOKEN)) {
+            throw 'Set UEPSEUDO_PAT in this repository Actions secrets with read-only access to Re-UE4SS/UEPseudo. The generated Motor Town SDK is not a substitute.'
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The verified Motor Town loader reported this UE4SS commit. A mismatched
+      # C++ mod can crash on load due to UE4SS C++ ABI / CRT differences.
+      - name: Check out game-compatible UE4SS with authorized private submodules
+        uses: actions/checkout@v4
+        with:
+          repository: UE4SS-RE/RE-UE4SS
+          ref: f885e8d2d4dd25258082538f1a9fd56a1c3b1bf1
+          path: ue4ss-src
+          submodules: recursive
+          token: ${{ secrets.UEPSEUDO_PAT }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reject wrong UE4SS revision or uninitialized private submodules
+        shell: pwsh
+        run: python native/ue4ss-parent/verify_checkout.py ue4ss-src
+
+      - name: Install Engine Simulator build dependencies
+        shell: pwsh
+        run: |
+          choco install winflexbison3 -y --no-progress
+          & 'C:\vcpkg\vcpkg.exe' install 'sdl2:x64-windows' 'sdl2-image:x64-windows' 'boost-filesystem:x64-windows'
+
+      - name: Configure actual UE4SS + native Engine Simulator DLL
+        shell: pwsh
+        run: |
+          $ue4ssSource = (Resolve-Path 'ue4ss-src').Path
+          cmake -S native/ue4ss-parent -B native/build-ue4ss -G 'Visual Studio 17 2022' -A x64 `
+            "-DMTES_UE4SS_SOURCE=$ue4ssSource" `
+            '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile and stage UE4SS native main.dll
+        shell: pwsh
+        run: |
+          cmake --build native/build-ue4ss --config Game__Shipping__Win64 --target mtes-stage-dev --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dll = 'native/build-ue4ss/dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls/main.dll'
+          if (-not (Test-Path $dll -PathType Leaf)) { throw "Missing native UE4SS DLL: $dll" }
+          if ((Get-Item $dll).Length -eq 0) { throw "Empty native UE4SS DLL: $dll" }
+          Get-FileHash -Algorithm SHA256 $dll | Format-List
+
+      - name: Upload unverified development DLL (not a playable release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotorTownEngineSim-UE4SS-dev-unverified
+          path: native/build-ue4ss/dev-stage/ue4ss/Mods/MotorTownEngineSim/dlls/main.dll
+          if-no-files-found: error
+          retention-days: 7

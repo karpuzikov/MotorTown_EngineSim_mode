@@ -1,0 +1,114 @@
+name: Native headless audio (Windows)
+
+on:
+  push:
+    branches: [feat/native-engine-audio]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine-sim-pcm:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify local one-command Windows build helper parses and plans safely
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'native/ue4ss-parent/build-local.ps1').Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'PowerShell parse failed' }
+          & (Resolve-Path 'native/ue4ss-parent/build-local.ps1').Path -PlanOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Includes the stale vcpkg CMake cache checks, executed by Windows pwsh.
+          python -m unittest native.tests.test_local_windows_builder -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify native UE4SS parent CMake wiring (stand-in SDK only)
+        shell: pwsh
+        run: python -m unittest native.tests.test_ue4ss_build_parent -v
+
+      - name: Verify native loader dependency audit
+        shell: pwsh
+        run: python -m unittest native.tests.test_native_load_diagnostics -v
+
+      - name: Verify development installer scope, backup and PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'native/ue4ss-parent/install-dev-test.ps1').Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'Dev installer PowerShell parse failed' }
+          python -m unittest native.tests.test_dev_test_installer -v
+
+      - name: Install original Engine Simulator build dependencies
+        shell: pwsh
+        run: |
+          choco install winflexbison3 -y --no-progress
+          & 'C:\vcpkg\vcpkg.exe' install 'sdl2:x64-windows' 'sdl2-image:x64-windows' 'boost-filesystem:x64-windows'
+
+      - name: Reproduce stale vcpkg root post-build failure and verify the builder settings
+        shell: pwsh
+        run: python -m unittest native.tests.test_vcpkg_applocal_windows -v
+
+      - name: Configure headless PCM smoke (no UE4SS or GUI)
+        shell: pwsh
+        run: |
+          cmake -S native -B native/build-windows -G 'Visual Studio 17 2022' -A x64 `
+            -DMTES_HEADLESS_SMOKE=ON `
+            -DCMAKE_TOOLCHAIN_FILE='C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+
+      - name: Build genuine Engine Simulator PCM source
+        shell: pwsh
+        run: cmake --build native/build-windows --config Release --target mtes-headless-smoke --parallel 4
+
+      - name: Run actual combustion audio smoke
+        shell: pwsh
+        run: |
+          $assets = Join-Path (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-*-src').Path 'assets'
+          $original = Get-Content -Raw (Join-Path $assets 'main.mr')
+          $defaultEngine = 'engines/atg-video-2/01_subaru_ej25_eh.mr'
+          if (-not $original.Contains($defaultEngine)) { throw 'Pinned engine test fixture changed' }
+          $profiles = @((Join-Path $assets 'main.mr'))
+          # Boxer 4, American V8, Japanese V10. Each wrapper uses the original
+          # script/compiler/synth, with imports kept relative to the assets dir.
+          foreach ($variant in @(
+              @{ name = 'gm-ls-v8'; engine = 'engines/atg-video-2/07_gm_ls.mr' },
+              @{ name = 'lfa-v10'; engine = 'engines/atg-video-2/10_lfa_v10.mr' }
+            )) {
+            $path = Join-Path $assets ("mtes-" + $variant.name + '.mr')
+            [System.IO.File]::WriteAllText($path,
+              $original.Replace($defaultEngine, $variant.engine),
+              [System.Text.UTF8Encoding]::new($false))
+            $profiles += $path
+          }
+          # Exercise the generated real-engine profile shipped for the Dory.
+          $dory = Join-Path $assets 'es_ford_flathead_239__1948_ford_f_1.mr'
+          Copy-Item 'native/profiles/es_ford_flathead_239__1948_ford_f_1.mr' $dory
+          $profiles += $dory
+          & 'native/build-windows/Release/mtes-headless-smoke.exe' @profiles
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run packaged profiles with only assets shipped in the native mod
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path 'native/build-windows/_deps/mtes_engine_sim-*-src').Path
+          $trial = Join-Path (Resolve-Path 'native/build-windows').Path 'packaged-trial'
+          $assets = Join-Path $trial 'assets'
+          New-Item -ItemType Directory -Force -Path $assets | Out-Null
+          Copy-Item 'native/profiles/es_*' $assets
+          Copy-Item (Join-Path $source 'es/sound-library') (Join-Path $assets 'sound-library') -Recurse
+          Copy-Item (Join-Path $source 'es') (Join-Path $trial 'es') -Recurse
+          # Real-spec engines: V8, twin-turbo I6, V12, turbo diesel I6, two-strokes.
+          & 'native/build-windows/Release/mtes-headless-smoke.exe' @(
+            'es_chevy_350_l48.mr', 'es_toyota_2jz_gte.mr', 'es_lambo_l539_65.mr',
+            'es_volvo_d13.mr', 'es_vespa_150_2t.mr', 'es_detroit_8v71__1980_mci_mc_9.mr' |
+              ForEach-Object { Join-Path $assets $_ })
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
