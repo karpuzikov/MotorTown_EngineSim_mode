@@ -67,6 +67,24 @@ class PatchTests(unittest.TestCase):
             self.assertEqual(file.read_text(), s)
             self.assertEqual(len(list((root/'src').glob('*.before-mtes-*'))), 1)
 
+    def test_v0210_bridge_is_upgraded_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'src').mkdir()
+            file = root / 'src/engine_sim_application.cpp'
+            start = ORIGINAL_SOURCE.index(module.FUNCTION_START) + len(module.FUNCTION_START)
+            end = ORIGINAL_SOURCE.index(module.FUNCTION_END)
+            previous = module.HEADER + '\n' + ORIGINAL_SOURCE[:start] + module.PREVIOUS_OVERRIDE + ORIGINAL_SOURCE[end:]
+            file.write_bytes(previous.replace('\n', '\r\n').encode())
+            module.patch(root)
+            updated = file.read_bytes()
+            self.assertIn(b'MTES_BRIDGE_V2', updated)
+            self.assertEqual(updated.count(b'// MTES_BRIDGE_V1'), 2)
+            self.assertNotIn(b'\n', updated.replace(b'\r\n', b''))
+            module.patch(root)
+            self.assertEqual(updated, file.read_bytes())
+            self.assertEqual(len(list((root / 'src').glob('*.before-mtes-*'))), 1)
+
     def test_refuse_unknown_source(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

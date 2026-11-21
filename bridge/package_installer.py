@@ -25,6 +25,7 @@ def package():
         "over": patcher.OVERRIDE,
         "hdr": patcher.HEADER,
         "legacyOver": patcher.LEGACY_OVERRIDE,
+        "previousOver": patcher.PREVIOUS_OVERRIDE,
         "lua": (ROOT / "bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua").read_text(encoding="utf-8"),
         "runtimePatch": json.dumps(patcher.runtime_spec(), ensure_ascii=True),
     }

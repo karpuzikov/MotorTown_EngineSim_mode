@@ -45,7 +45,8 @@ class InstallerTests(unittest.TestCase):
         spec.loader.exec_module(patcher)
         self.assertIn("$originalInputSha256 = '" + patcher.ORIGINAL_INPUT_SHA256 + "'", embedded_installer())
         for name, expected in [('over', patcher.OVERRIDE), ('hdr', patcher.HEADER),
-                               ('legacyOver', patcher.LEGACY_OVERRIDE)]:
+                               ('legacyOver', patcher.LEGACY_OVERRIDE),
+                               ('previousOver', patcher.PREVIOUS_OVERRIDE)]:
             with self.subTest(payload=name):
                 match = re.search(r'\$' + name + r" = Decode '([^']+)'", embedded_installer())
                 self.assertIsNotNone(match)

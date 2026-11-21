@@ -273,7 +273,8 @@ LEGACY_OVERRIDE = r'''
     }
 '''
 
-OVERRIDE = r'''
+# v0.2.10-v0.2.11 control body. Installations with exactly this body are upgraded in place.
+PREVIOUS_OVERRIDE = r'''
     // MTES_BRIDGE_V1: engine control comes only from fresh game telemetry.
     // Motor Town physics are untouched; standalone keyboard controls are disabled.
     if (m_iceEngine == nullptr || m_simulator == nullptr) return;
@@ -285,6 +286,47 @@ OVERRIDE = r'''
     m_simulator->m_dyno.m_enabled = on;
     m_simulator->m_dyno.m_hold = on;
     m_dynoSpeed = on ? units::rpm(mt.rpm) : 0.0;
+    m_simulator->m_dyno.m_rotationSpeed = m_dynoSpeed;
+    m_simulator->getTransmission()->changeGear(-1);
+    m_simulator->getTransmission()->setClutchPressure(0.0);
+    m_speedSetting = m_targetSpeedSetting = on ? mt.throttle : 0.0;
+    m_iceEngine->setSpeedControl(m_speedSetting);
+    // Muting also silences coast-down/compression noise while disconnected.
+    if (m_audioSource != nullptr) m_audioSource->SetVolume(on ? 1.0f : 0.0f);
+    if (m_infoCluster != nullptr) {
+        m_infoCluster->setLogMessage(!connected ? "MotorTown: waiting for telemetry"
+            : on ? "MotorTown: live engine telemetry" : "MotorTown: engine off / no RPM");
+    }
+'''
+
+OVERRIDE = r'''
+    // MTES_BRIDGE_V1: engine control comes only from fresh game telemetry.
+    // Motor Town physics are untouched; standalone keyboard controls are disabled.
+    if (m_iceEngine == nullptr || m_simulator == nullptr) return;
+    // MTES_BRIDGE_V2: the game rewrites the packet 20 times a second, so a read can
+    // land mid-write or while antivirus scans the file. Reuse the last good packet
+    // for a few frames so a missed read does not cut ignition or mute the audio.
+    static MtTelemetry mtLast;
+    static int mtMissedFrames = 1000;
+    static double mtRpm = 0.0;
+    MtTelemetry mt;
+    if (readMtTelemetry(mt)) {
+        mtLast = mt;
+        mtMissedFrames = 0;
+    }
+    else if (mtMissedFrames < 1000) {
+        ++mtMissedFrames;
+    }
+    const bool connected = mtMissedFrames <= 15;
+    if (connected) mt = mtLast;
+    const bool on = connected && mt.running && mt.rpm >= 50.0;
+    // Packets arrive at 20 Hz; ease toward each one instead of stepping the crankshaft.
+    mtRpm = !on ? 0.0 : (mtRpm <= 0.0 ? mt.rpm : mtRpm + (mt.rpm - mtRpm) * 0.35);
+    m_simulator->getEngine()->getIgnitionModule()->m_enabled = on;
+    m_simulator->m_starterMotor.m_enabled = false;
+    m_simulator->m_dyno.m_enabled = on;
+    m_simulator->m_dyno.m_hold = on;
+    m_dynoSpeed = on ? units::rpm(mtRpm) : 0.0;
     m_simulator->m_dyno.m_rotationSpeed = m_dynoSpeed;
     m_simulator->getTransmission()->changeGear(-1);
     m_simulator->getTransmission()->setClutchPressure(0.0);
@@ -312,16 +354,20 @@ def patch(root: Path) -> Path:
     installed = MARK in source
     body = source[start + len(FUNCTION_START):end]
     original_body = body
+    upgrade_only = False
     if installed:
         if source.count(HEADER) != 1:
             raise RuntimeError('Incomplete or changed telemetry header. No source changes made.')
         if body == OVERRIDE:
             print('Already patched:', filename)
             return filename
-        if not body.endswith(LEGACY_OVERRIDE):
+        if body == PREVIOUS_OVERRIDE:
+            upgrade_only = True
+        elif not body.endswith(LEGACY_OVERRIDE):
             raise RuntimeError('Unknown existing telemetry patch. No source changes made.')
-        original_body = body[:-len(LEGACY_OVERRIDE)]
-    if hashlib.sha256(original_body.encode('utf-8')).hexdigest() != ORIGINAL_INPUT_SHA256:
+        else:
+            original_body = body[:-len(LEGACY_OVERRIDE)]
+    if not upgrade_only and hashlib.sha256(original_body.encode('utf-8')).hexdigest() != ORIGINAL_INPUT_SHA256:
         raise RuntimeError('Unsupported or modified Engine Simulator input controls. No source changes made.')
     # Replace the control body so keyboard throttle/ignition cannot run before
     # the first valid packet, during autopilot, or after the game exits.

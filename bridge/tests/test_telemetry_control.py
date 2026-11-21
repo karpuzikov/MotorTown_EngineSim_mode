@@ -65,8 +65,19 @@ int main() {
         assert(app.sim.engine.throttle == 0.8);
         assert(app.audio.volume > 0);
         assert(app.sim.transmission.gear == -1 && app.sim.transmission.clutch == 0);
-        // Losing the file must stop audio on the next frame.
-        std::remove((std::string(std::getenv("MTES_TEMP")) + "MotorTownEngineSim_telemetry.txt").c_str());
+        const std::string packet = std::string(std::getenv("MTES_TEMP")) + "MotorTownEngineSim_telemetry.txt";
+        // 20 Hz packets are eased in rather than stepping the crankshaft.
+        { std::ofstream(packet) << "MTES1 4500 0.8 1 " << std::time(nullptr) << "\n"; }
+        app.processEngineInput();
+        assert(app.sim.m_dyno.m_rotationSpeed > 3849.9 && app.sim.m_dyno.m_rotationSpeed < 3850.1);
+        // A torn or briefly locked packet must not cut ignition or mute audio.
+        { std::ofstream(packet) << ""; }
+        app.processEngineInput();
+        assert(app.sim.engine.ignition.m_enabled && app.audio.volume > 0);
+        std::remove(packet.c_str());
+        for (int frame = 0; frame < 14; ++frame) app.processEngineInput();
+        assert(app.sim.engine.ignition.m_enabled && app.audio.volume > 0);
+        // Telemetry missing for longer than the grace window stops the engine.
         app.processEngineInput();
     }
     assert(!app.sim.engine.ignition.m_enabled);

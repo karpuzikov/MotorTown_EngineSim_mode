@@ -8,85 +8,103 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LUA = os.environ.get('MTES_TEST_LUA') or shutil.which('lua') or shutil.which('texlua')
+LUA = os.environ.get('MTES_TEST_LUA') or shutil.which('lua5.4') or shutil.which('lua') or shutil.which('texlua')
+EXPORTER = ROOT / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua'
 
 
 @unittest.skipUnless(LUA, 'Requires Lua 5.3+ or texlua')
 class TelemetryTests(unittest.TestCase):
     lua = LUA
-    def sample(self, scenario, report='diagnostics'):
-        with tempfile.TemporaryDirectory() as temp:
-            env = dict(os.environ, TMP=temp, TEMP=temp)
-            result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'),
-                                     str(ROOT / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua'), scenario],
-                                    env=env, text=True, capture_output=True, timeout=10)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            packet = (Path(temp) / 'MotorTownEngineSim_telemetry.txt').read_text().split()
-            diagnostics = (Path(temp) / f'MotorTownEngineSim_{report}.txt').read_text()
-            return packet, diagnostics
 
-    def test_getters_follow_autopilot_with_zero_driver_input(self):
+    def run_scenario(self, scenario):
+        temp = tempfile.mkdtemp(prefix='MTES telemetry ')
+        self.addCleanup(shutil.rmtree, temp, True)
+        env = dict(os.environ, TMP=temp, TEMP=temp)
+        result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'), str(EXPORTER), scenario],
+                                env=env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return Path(temp)
+
+    def read(self, folder, name):
+        path = folder / f'MotorTownEngineSim_{name}.txt'
+        return path.read_text() if path.exists() else ''
+
+    def sample(self, scenario, report='diagnostics'):
+        folder = self.run_scenario(scenario)
+        return self.read(folder, 'telemetry').split(), self.read(folder, report)
+
+    def test_reads_documented_motor_town_engine_state(self):
+        packet, _ = self.sample('live')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+
+    def test_discovery_snapshot_names_the_live_fields(self):
+        _, snapshot = self.sample('live', report='discovery')
+        self.assertIn('v0.3.0', snapshot)
+        self.assertIn('Mapping rpm = NetLC_EngineHotState.CurrentRPM (value 2400', snapshot)
+        self.assertIn('Mapping throttle = Throttle (value 0.65', snapshot)
+        self.assertIn('Mapping ignition = NetLC_EngineHotState.bIgnitionOn (value true', snapshot)
+
+    def test_autopilot_values_come_from_vehicle_state(self):
         packet, _ = self.sample('autopilot')
         self.assertEqual(packet[:4], ['MTES1', '4100.000', '0.8000', '1'])
 
-    def test_nested_struct_data_is_read_from_its_own_layout(self):
-        packet, _ = self.sample('struct')
-        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+    def test_rpm_follows_the_game_every_sample(self):
+        packet, _ = self.sample('rpm_follows')
+        self.assertEqual(packet[:4], ['MTES1', '3100.000', '0.6500', '1'])
 
-    def test_missing_component_is_rediscovered_after_initial_vehicle_detection(self):
-        packet, _ = self.sample('late_component')
-        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
-
-    def test_explicit_ignition_off_is_preserved_despite_residual_rpm(self):
+    def test_ignition_off_is_reported(self):
         packet, _ = self.sample('ignition_off')
+        self.assertEqual(packet[:4], ['MTES1', '0.000', '0.0000', '0'])
+
+    def test_ignition_off_wins_over_residual_rpm(self):
+        packet, _ = self.sample('engine_stopping')
         self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '0'])
 
-    def test_ignition_false_is_a_valid_candidate_during_discovery(self):
-        packet, _ = self.sample('ignition_initially_off')
-        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '0'])
+    def test_renamed_fields_are_found_inside_struct_layouts(self):
+        # Struct values have no ForEachProperty in UE4SS; the layout comes from GetStruct().
+        packet, snapshot = self.sample('renamed_fields', report='discovery')
+        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
+        self.assertIn('Mapping rpm = EngineState.EngineRPM', snapshot)
+        self.assertIn('Mapping throttle = ThrottleInput', snapshot)
+        self.assertIn('EngineState.MaxRPM (FloatProperty) = 7000', snapshot)
+        self.assertNotIn('Net_PTOThrottle (value', snapshot)
 
-    def test_reflection_failure_is_visible_in_diagnostics(self):
-        packet, diagnostics = self.sample('reflection_error')
+    def test_on_foot_sends_engine_off(self):
+        packet, diagnostics = self.sample('on_foot')
         self.assertEqual(packet[:4], ['MTES1', '0.000', '0.0000', '0'])
-        self.assertIn('Synthetic reflection failure', diagnostics)
+        self.assertIn('not driving a vehicle', diagnostics)
 
-    def test_getter_failure_is_visible_in_diagnostics(self):
-        packet, diagnostics = self.sample('getter_error')
+    def test_leaving_the_vehicle_stops_the_engine_sound(self):
+        packet, _ = self.sample('leave_vehicle')
         self.assertEqual(packet[:4], ['MTES1', '0.000', '0.0000', '0'])
-        self.assertIn('Synthetic RPM getter failure', diagnostics)
 
-    def test_late_actual_throttle_replaces_a_complete_driver_input_fallback(self):
-        packet, _ = self.sample('late_actual_throttle')
+    def test_seated_player_uses_the_controllers_vehicle(self):
+        packet, _ = self.sample('seated')
         self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
 
-    def test_nested_structs_at_the_same_data_address_keep_distinct_layouts(self):
-        packet, _ = self.sample('struct_alias')
+    def test_switching_vehicles_remaps(self):
+        packet, diagnostics = self.sample('vehicle_switch')
+        self.assertEqual(packet[:4], ['MTES1', '3000.000', '0.6500', '1'])
+        self.assertIn('Vehicle DoryWrecker_C', diagnostics)
+        self.assertIn('Vehicle Jemusi_C', diagnostics)
+
+    def test_nothing_is_sampled_during_game_boot(self):
+        folder = self.run_scenario('startup_delay')
+        self.assertFalse((folder / 'MotorTownEngineSim_telemetry.txt').exists())
+        self.assertIn('sampling starts in 30 s', self.read(folder, 'diagnostics'))
+
+    def test_falls_back_to_async_loop_when_game_thread_timer_is_unavailable(self):
+        packet, diagnostics = self.sample('timer_fallback')
         self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.6500', '1'])
-
-    def test_reflection_work_is_bounded_during_metadata_enumeration(self):
-        packet, _ = self.sample('metadata_budget')
-        self.assertEqual(packet[:4], ['MTES1', '0.000', '0.0000', '0'])
-
-    def test_failed_throttle_path_is_rediscovered(self):
-        packet, _ = self.sample('changed_throttle_getter')
-        self.assertEqual(packet[:4], ['MTES1', '2400.000', '0.7500', '1'])
-
-    def test_truncated_getter_signature_is_never_invoked(self):
-        packet, diagnostics = self.sample('truncated_getter')
-        self.assertEqual(packet[:4], ['MTES1', '0.000', '0.0000', '0'])
-        self.assertIn('metadata budget exhausted', diagnostics)
-
-    def test_discovery_snapshot_records_a_component_that_appears_later(self):
-        _, snapshot = self.sample('late_component', report='discovery')
-        self.assertIn('v0.2.11', snapshot)
-        self.assertIn('VehicleSimulation.GetEngineRPM() = 2400', snapshot)
-        self.assertIn('RPM=VehicleSimulation.GetEngineRPM()', snapshot)
+        self.assertIn('using LoopAsync', diagnostics)
 
 
 @unittest.skipUnless(shutil.which('g++') and ctypes.util.find_library('lua5.4'),
                      'Requires a C++ compiler and Lua5.4 shared library')
 class NativeIterationTests(TelemetryTests):
+    """Re-runs every scenario through the real UE4SS iterator stack operations."""
     __unittest_skip__ = False
+
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory(prefix='MTES native Lua ')
@@ -103,8 +121,7 @@ class NativeIterationTests(TelemetryTests):
         cls.temp.cleanup()
 
     def test_native_binding_reproduces_false_failure_and_accepts_nil_and_true(self):
-        result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'),
-                                 str(ROOT / 'bridge/UE4SS/Mods/MotorTownEngineSim/Scripts/main.lua'),
+        result = subprocess.run([self.lua, str(ROOT / 'bridge/tests/telemetry_harness.lua'), str(EXPORTER),
                                  'iterator_contract'], capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
